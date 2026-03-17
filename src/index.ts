@@ -1,13 +1,17 @@
+import 'dotenv/config';
 import { WorkflowRunner } from './engine/WorkflowRunner';
 import { NodeExecutorRegistry } from './engine/NodeExecutorRegistry';
 import { HttpNode } from './nodes/HttpNode';
+import { LLMNode } from './nodes/LLMNode';
+import { ChatMemoryManager } from './llm/ChatMemoryManager';
 import { WorkflowDefinition } from './types/workflow.types';
 
-// 1. Create the registry and register your nodes
 const registry = new NodeExecutorRegistry();
-registry.register('http', new HttpNode());
+const memoryManager = new ChatMemoryManager();
 
-// 2. Create the runner
+registry.register('http', new HttpNode());
+registry.register('llm', new LLMNode(memoryManager));
+
 const runner = new WorkflowRunner(registry);
 
 // 3. Define a sample workflow (this is your "workflow JSON")
@@ -29,11 +33,15 @@ const sampleWorkflow: WorkflowDefinition = {
     },
     {
       id: 'node-2',
-      type: 'http',
-      name: 'Fetch a second fact',
+      type: 'llm',
+      name: 'Summarize the fact',
       config: {
-        url: 'https://uselessfacts.jsph.pl/api/v2/facts/random',
-        method: 'GET',
+        provider: 'openai',
+        model: 'gpt-4o-mini',       // cost-effective for testing
+        temperature: 0.7,
+        maxTokens: 200,
+        systemPrompt: 'You are a helpful assistant that explains facts in simple terms.',
+        userPrompt: 'Explain this fact in one friendly sentence: {{ nodes.node-1.output }}',
       },
       next: [],
     },
@@ -46,16 +54,24 @@ async function main() {
   console.log('─'.repeat(40));
 
   try {
-    const results = await runner.run(sampleWorkflow, { startedBy: 'manual' });
+    const { executionId, results } = await runner.run(sampleWorkflow, { startedBy: 'manual' });
 
     for (const result of results) {
-      console.log(`\n📦 Node: ${result.nodeId}`);
-      console.log(`   Status  : ${result.status}`);
-      console.log(`   Duration: ${result.durationMs}ms`);
-      console.log(`   Output  :`, JSON.stringify(result.output, null, 2));
+      console.log(`\n📦 Node: ${result.nodeId} [${result.status}] (${result.durationMs}ms)`);
+      if (result.status === 'success') {
+        const output = result.output as any;
+        // Pretty print LLM response vs raw HTTP response
+        console.log('   Output:', output?.content ?? JSON.stringify(output, null, 2));
+      } else {
+        console.log('   Error:', result.error);
+      }
     }
 
-    console.log('\n✅ Workflow completed successfully!');
+    // Inspect memory after run
+    console.log('\n🧠 Conversation History:');
+    console.log(memoryManager.getHistory(executionId));
+
+    console.log('\n✅ Workflow completed!');
   } catch (err) {
     console.error('❌ Workflow failed:', err);
   }

@@ -1,11 +1,11 @@
-import { WorkflowDefinition, ExecutionContext, NodeResult } from "../types/workflow.types";
+import { WorkflowDefinition, ExecutionContext, NodeResult, WorkflowExecutionResult } from "../types/workflow.types";
 import { NodeExecutorRegistry } from './NodeExecutorRegistry';
 
 export class WorkflowRunner {
     constructor(private registry: NodeExecutorRegistry) {}
 
-    async run(workflow: WorkflowDefinition, input: unknown): Promise<NodeResult[]> {
-        const context: ExecutionContext= {
+    async run(workflow: WorkflowDefinition, input: unknown): Promise<WorkflowExecutionResult> {
+        const context: ExecutionContext = {
             workflowId: workflow.id,
             executionId: crypto.randomUUID(),
             variables: { input },
@@ -14,9 +14,9 @@ export class WorkflowRunner {
 
         const results: NodeResult[] = [];
         const visited = new Set<string>();
-
         await this.executeNode(workflow, workflow.entryNodeId, context, results, visited);
-        return results;
+
+        return { executionId: context.executionId, results };
     }
 
     private async executeNode(
