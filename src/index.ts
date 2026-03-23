@@ -20,6 +20,9 @@ import { webhookRoutes } from './routes/webhooks';
 import { getDatabase } from './db/database';
 import crypto from 'crypto';
 
+import sensible from '@fastify/sensible';
+import { registerErrorHandler } from './errors/errorHandler';
+
 async function bootstrap() {
     // 1. Engine setup
     const registry = new NodeExecutorRegistry();
@@ -46,15 +49,20 @@ async function bootstrap() {
     }
 
     // 4. Fastify server
-    const fastify = Fastify({ logger: true });
+    const fastify = Fastify({
+		logger: true,
+		genReqId: () => crypto.randomUUID(),
+	});
 
     await fastify.register(helmet);
     await fastify.register(rateLimit, { max: 100, timeWindow: '1 minute' });
+	await fastify.register(sensible);
 
     // 5. Register routes
+	registerErrorHandler(fastify);
     await fastify.register(workflowRoutes, { workflowService, workflowRepo });
     await fastify.register(executionRoutes, { executionRepo });
-    await fastify.register(webhookRoutes, { workflowService });
+    await fastify.register(webhookRoutes, { workflowService, workflowRepo });
 
     // 6. Health check
     fastify.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }));

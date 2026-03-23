@@ -1,5 +1,6 @@
 import { getDatabase } from "../db/database";
 import { ExecutionSummary } from "../types/api.types";
+import { PaginatedResponse } from "../types/api.types";
 
 interface ExecutionRow {
     id: string;
@@ -45,6 +46,34 @@ export class ExecutionRepository {
         .all(workflowId) as ExecutionRow[];
 
         return rows.map(this.rowToSummary);
+    }
+
+    findByWorkflowIdPaginated(
+        workflowId: string,
+        limit: number,
+        cursor?: string
+    ): PaginatedResponse<ExecutionSummary> {
+        const fetchLimit = limit + 1;
+
+        const rows = cursor
+            ? this.db.prepare(`
+                SELECT * FROM executions
+                WHERE workflow_id = ? AND started_at < ?
+                ORDER BY started_at DESC
+                LIMIT ?
+              `).all(workflowId, cursor, fetchLimit) as ExecutionRow[]
+            : this.db.prepare(`
+                SELECT * FROM executions
+                WHERE workflow_id = ?
+                ORDER BY started_at DESC
+                LIMIT ?
+              `).all(workflowId, fetchLimit) as ExecutionRow[];
+
+        const hasMore = rows.length > limit;
+        const data = rows.slice(0, limit).map(this.rowToSummary);
+        const nextCursor = hasMore ? rows[limit - 1].started_at : null;
+
+        return { data, pagination: { hasMore, nextCursor, limit } };
     }
 
     private rowToSummary(row: ExecutionRow): ExecutionSummary {

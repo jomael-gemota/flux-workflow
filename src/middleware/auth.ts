@@ -1,5 +1,6 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { getDatabase } from '../db/database';
+import { UnauthorizedError, ForbiddenError } from '../errors/ApiError';
 
 interface ApiKeyRow {
     id: string;
@@ -14,8 +15,7 @@ export async function apiKeyAuth(
     const apiKey = request.headers['x-api-key'];
 
     if (!apiKey || typeof apiKey !== 'string') {
-        reply.code(401).send({ error: 'Missing API key. Provide it via x-api-key header.' });
-        return;
+        throw UnauthorizedError();
     }
 
     const db = getDatabase();
@@ -24,8 +24,7 @@ export async function apiKeyAuth(
         .get(apiKey) as ApiKeyRow | undefined;
 
     if (!row) {
-        reply.code(403).send({ error: 'Invalid API key.' });
-        return;
+        throw ForbiddenError();
     }
 
     (request as any).apiKey = row;

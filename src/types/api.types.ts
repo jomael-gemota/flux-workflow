@@ -24,3 +24,22 @@ export interface ExecutionSummary {
     completedAt: Date;
     results: unknown[];
 }
+
+export interface PaginatedResponse<T> {
+    data: T[];
+    pagination: {
+        hasMore: boolean;
+        nextCursor: string | null;
+        limit: number;
+    };
+}
+
+export interface WorkflowWithSecret {
+    id: string;
+    name: string;
+    version: number;
+    definition: unknown;
+    webhookSecret: string;
+    createdAt: string;
+    updatedAt: string;
+}

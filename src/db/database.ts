@@ -22,6 +22,7 @@ function runMigrations(db: Database.Database): void {
             name TEXT NOT NULL,
             version INTEGER NOT NULL DEFAULT 1,
             definition TEXT NOT NULL,
+            webhook_secret TEXT,
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             updated_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
@@ -34,7 +35,7 @@ function runMigrations(db: Database.Database): void {
             results TEXT,
             started_at TEXT NOT NULL,
             completed_at TEXT,
-            FOREIGN KEY (workflow_id) REFERENCES workflows(id)
+            FOREIGN KEY (workflow_id) REFERENCES workflows(id) ON DELETE CASCADE
         );
 
         CREATE TABLE IF NOT EXISTS api_keys (
@@ -43,5 +44,9 @@ function runMigrations(db: Database.Database): void {
             name TEXT NOT NULL,
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
+
+        CREATE INDEX IF NOT EXISTS idx_workflows_created_at ON workflows(created_at);
+        CREATE INDEX IF NOT EXISTS idx_executions_started_at ON executions(started_at);
+        CREATE INDEX IF NOT EXISTS idx_executions_workflow_id ON executions(workflow_id);
     `);
 }
