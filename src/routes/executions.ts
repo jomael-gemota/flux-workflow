@@ -2,9 +2,9 @@ import { FastifyInstance } from 'fastify';
 import { apiKeyAuth } from '../middleware/auth';
 import { ExecutionRepository } from '../repositories/ExecutionRepository';
 import { WorkflowService } from '../services/WorkflowService';
-import { ExecutionQuerySchema } from '../validation/schemas';
+import { ExecutionQuerySchema, DeleteExecutionsSchema } from '../validation/schemas';
 import { toJsonSchema } from '../validation/toJsonSchema';
-import { NotFoundError } from '../errors/ApiError';
+import { NotFoundError, BadRequestError } from '../errors/ApiError';
 
 export async function executionRoutes(
     fastify: FastifyInstance,
@@ -53,6 +53,41 @@ export async function executionRoutes(
             } catch {
                 throw NotFoundError(`Execution ${request.params.id}`);
             }
+        }
+    );
+
+    // ── Delete a single execution ──────────────────────────────────────────
+    fastify.delete<{ Params: { id: string } }>(
+        '/executions/:id',
+        { preHandler: apiKeyAuth },
+        async (request, reply) => {
+            const deleted = await executionRepo.deleteById(request.params.id);
+            if (!deleted) throw NotFoundError(`Execution ${request.params.id}`);
+            return reply.code(200).send({ deleted: true, id: request.params.id });
+        }
+    );
+
+    // ── Bulk delete: by IDs or all for a workflow ──────────────────────────
+    fastify.delete<{ Body: { ids?: string[]; workflowId?: string; deleteAll?: boolean } }>(
+        '/executions',
+        {
+            preHandler: apiKeyAuth,
+            schema: { body: toJsonSchema(DeleteExecutionsSchema) },
+        },
+        async (request, reply) => {
+            const { ids, workflowId, deleteAll } = request.body ?? {};
+
+            if (ids && ids.length > 0) {
+                const count = await executionRepo.deleteManyByIds(ids);
+                return reply.code(200).send({ deleted: count });
+            }
+
+            if (workflowId && deleteAll === true) {
+                const count = await executionRepo.deleteAllByWorkflowId(workflowId);
+                return reply.code(200).send({ deleted: count });
+            }
+
+            throw BadRequestError('Provide either "ids" array or "workflowId" + "deleteAll": true');
         }
     );
 }

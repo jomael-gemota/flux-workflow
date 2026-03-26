@@ -113,3 +113,20 @@ export function listExecutions(workflowId: string, limit = 20, cursor?: string) 
 export function getExecution(id: string) {
   return request<ExecutionSummary>(`/executions/${id}`);
 }
+
+export function deleteExecution(id: string) {
+  return request<{ deleted: boolean; id: string }>(`/executions/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+export function deleteExecutions(params: {
+  ids?: string[];
+  workflowId?: string;
+  deleteAll?: boolean;
+}) {
+  return request<{ deleted: number }>('/executions', {
+    method: 'DELETE',
+    body: JSON.stringify(params),
+  });
+}

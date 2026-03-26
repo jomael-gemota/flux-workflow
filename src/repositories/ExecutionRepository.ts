@@ -139,6 +139,21 @@ export class ExecutionRepository {
         );
     }
 
+    async deleteById(id: string): Promise<boolean> {
+        const result = await ExecutionModel.deleteOne({ executionId: id });
+        return result.deletedCount > 0;
+    }
+
+    async deleteManyByIds(ids: string[]): Promise<number> {
+        const result = await ExecutionModel.deleteMany({ executionId: { $in: ids } });
+        return result.deletedCount;
+    }
+
+    async deleteAllByWorkflowId(workflowId: string): Promise<number> {
+        const result = await ExecutionModel.deleteMany({ workflowId });
+        return result.deletedCount;
+    }
+
     async findAllNodeTestResults(
         workflowId: string
     ): Promise<Record<string, NodeTestResult>> {

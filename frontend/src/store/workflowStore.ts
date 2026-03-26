@@ -43,9 +43,11 @@ interface WorkflowStore {
   isDirty: boolean;
   setDirty: (dirty: boolean) => void;
 
-  // Execution log visibility
+  // Panel visibility
   logOpen: boolean;
   setLogOpen: (open: boolean) => void;
+  configOpen: boolean;
+  setConfigOpen: (open: boolean) => void;
 
   // Last triggered execution
   lastExecutionId: string | null;
@@ -78,6 +80,14 @@ export const useWorkflowStore = create<WorkflowStore>((set) => ({
 
   logOpen: false,
   setLogOpen: (open) => set({ logOpen: open }),
+
+  configOpen: (() => {
+    try { return localStorage.getItem('wap_panel_config_open') !== 'false'; } catch { return true; }
+  })(),
+  setConfigOpen: (open) => {
+    try { localStorage.setItem('wap_panel_config_open', String(open)); } catch { /* ignore */ }
+    set({ configOpen: open });
+  },
 
   lastExecutionId: null,
   setLastExecutionId: (id) => set({ lastExecutionId: id }),

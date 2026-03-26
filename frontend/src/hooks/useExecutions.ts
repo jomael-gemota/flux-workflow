@@ -1,6 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as api from '../api/client';
 import type { PaginatedResponse, ExecutionSummary } from '../types/workflow';
+import { useWorkflowStore } from '../store/workflowStore';
 
 export function useExecutionList(workflowId: string | null, enabled = true) {
   return useQuery({
@@ -53,6 +54,54 @@ export function useExecutionLog(workflowId: string | null, limit: number) {
         (e) => e.status === 'pending' || e.status === 'running'
       );
       return hasActive ? 2000 : false;
+    },
+  });
+}
+
+export function useDeleteExecution(workflowId: string | null) {
+  const qc = useQueryClient();
+  const { lastExecutionId, setLastExecutionId, clearExecutionStatuses, setIsExecuting } =
+    useWorkflowStore.getState();
+
+  return useMutation({
+    mutationFn: (id: string) => api.deleteExecution(id),
+    onSuccess: (_data, id) => {
+      if (id === lastExecutionId) {
+        clearExecutionStatuses();
+        setIsExecuting(false);
+        setLastExecutionId(null);
+      }
+      qc.invalidateQueries({ queryKey: ['executions', 'log', workflowId] });
+      qc.removeQueries({ queryKey: ['executions', 'detail', id] });
+    },
+  });
+}
+
+export function useDeleteExecutions(workflowId: string | null) {
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: (params: { ids?: string[]; workflowId?: string; deleteAll?: boolean }) =>
+      api.deleteExecutions(params),
+    onSuccess: (_data, params) => {
+      const { lastExecutionId, setLastExecutionId, clearExecutionStatuses, setIsExecuting } =
+        useWorkflowStore.getState();
+
+      // If we deleted the currently-viewed execution, clear the canvas overlay
+      const deletedIds = new Set(params.ids ?? []);
+      const clearedAll = params.deleteAll === true;
+      if (clearedAll || (lastExecutionId && deletedIds.has(lastExecutionId))) {
+        clearExecutionStatuses();
+        setIsExecuting(false);
+        setLastExecutionId(null);
+      }
+
+      qc.invalidateQueries({ queryKey: ['executions', 'log', workflowId] });
+      if (params.ids) {
+        for (const id of params.ids) {
+          qc.removeQueries({ queryKey: ['executions', 'detail', id] });
+        }
+      }
     },
   });
 }

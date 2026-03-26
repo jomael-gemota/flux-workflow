@@ -1,4 +1,4 @@
-import { Save, Play, Loader2, GitBranch, LogOut } from 'lucide-react';
+import { Save, Play, Loader2, GitBranch, LogOut, PanelRight } from 'lucide-react';
 import { Button } from './ui/Button';
 import { useWorkflowStore } from '../store/workflowStore';
 import { useUpdateWorkflow, useTriggerWorkflow, useCreateWorkflow } from '../hooks/useWorkflows';
@@ -16,6 +16,8 @@ export function Toolbar() {
     setLogOpen,
     setLastExecutionId,
     beginExecution,
+    configOpen,
+    setConfigOpen,
   } = useWorkflowStore();
 
   const update = useUpdateWorkflow();
@@ -167,6 +169,21 @@ export function Toolbar() {
           )}
           Trigger
         </Button>
+
+        <div className="w-px h-5 bg-slate-700" />
+
+        <button
+          onClick={() => setConfigOpen(!configOpen)}
+          title={configOpen ? 'Hide configuration panel' : 'Show configuration panel'}
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+            configOpen
+              ? 'bg-slate-700 text-slate-200'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+          }`}
+        >
+          <PanelRight className="w-3.5 h-3.5" />
+          Config
+        </button>
 
         <button
           onClick={handleLogout}

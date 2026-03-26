@@ -64,6 +64,12 @@ export const NodeTestSchema = z.object({
     context: z.record(z.string(), z.unknown()).optional(),
 });
 
+export const DeleteExecutionsSchema = z.object({
+    ids:        z.array(z.string().min(1)).min(1).optional(),
+    workflowId: z.string().min(1).optional(),
+    deleteAll:  z.boolean().optional(),
+});
+
 export type TriggerWorkflowInput = z.infer<typeof TriggerWorkflowSchema>;
 export type WebhookPayloadInput = z.infer<typeof WebhookPayloadSchema>;
 export type WorkflowDefinitionInput = z.infer<typeof WorkflowDefinitionSchema>;

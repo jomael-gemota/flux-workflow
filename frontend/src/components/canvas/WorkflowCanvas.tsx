@@ -93,6 +93,7 @@ export function WorkflowCanvas() {
     setNodes,
     setEdges,
     setSelectedNodeId,
+    setConfigOpen,
     activeWorkflow,
     setDirty,
     executionStatuses,
@@ -163,6 +164,14 @@ export function WorkflowCanvas() {
     [setSelectedNodeId]
   );
 
+  const onNodeDoubleClick = useCallback(
+    (_: React.MouseEvent, node: CanvasNode) => {
+      setSelectedNodeId(node.id);
+      setConfigOpen(true);
+    },
+    [setSelectedNodeId, setConfigOpen]
+  );
+
   const onPaneClick = useCallback(() => {
     setSelectedNodeId(null);
   }, [setSelectedNodeId]);
@@ -205,6 +214,7 @@ export function WorkflowCanvas() {
         onDrop={onDrop}
         onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
         onNodeClick={onNodeClick}
+        onNodeDoubleClick={onNodeDoubleClick}
         onPaneClick={onPaneClick}
         onInit={(instance) => { rfInstance.current = instance; }}
         nodeTypes={nodeTypes}

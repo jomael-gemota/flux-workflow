@@ -1,4 +1,4 @@
-import { Settings2, Star, Braces, Play, Loader2, ChevronDown, ChevronUp, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
+import { Settings2, Star, Braces, Play, Loader2, ChevronDown, ChevronUp, AlertCircle, CheckCircle2, Clock, Copy, Check, ArrowRight } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useWorkflowStore } from '../../store/workflowStore';
 import type { CanvasNode } from '../../store/workflowStore';
@@ -338,73 +338,334 @@ function ExpressionInput({
 
 // ── Node test result display ──────────────────────────────────────────────────
 
-function TestResultDisplay({ result }: { result: NodeTestResult }) {
-  const [rawOpen, setRawOpen] = useState(false);
-
+/** One-click copy button with a brief "✓ Copied" confirmation */
+function CopyButton({ text, className = '' }: { text: string; className?: string }) {
+  const [copied, setCopied] = useState(false);
   return (
-    <div className={`rounded-md border ${
-      result.status === 'success' ? 'border-emerald-800/50' : 'border-red-800/50'
-    } overflow-hidden`}>
-      {/* Status bar */}
-      <div className={`flex items-center justify-between px-2.5 py-1.5 ${
-        result.status === 'success' ? 'bg-emerald-900/30' : 'bg-red-900/30'
-      }`}>
-        <div className="flex items-center gap-1.5">
-          {result.status === 'success'
-            ? <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-            : <AlertCircle className="w-3 h-3 text-red-400" />
-          }
-          <span className={`text-[10px] font-semibold ${
-            result.status === 'success' ? 'text-emerald-400' : 'text-red-400'
-          }`}>
-            {result.status === 'success' ? 'Success' : 'Failed'}
-          </span>
-        </div>
-        <div className="flex items-center gap-1 text-slate-500">
+    <button
+      type="button"
+      title="Copy to clipboard"
+      onClick={() => {
+        navigator.clipboard.writeText(text).catch(() => {});
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }}
+      className={`p-1 rounded hover:bg-slate-700 transition-colors text-slate-500 hover:text-slate-200 ${className}`}
+    >
+      {copied
+        ? <Check  className="w-3 h-3 text-emerald-400" />
+        : <Copy   className="w-3 h-3" />}
+    </button>
+  );
+}
+
+/** Shared header strip shown on every test result card */
+function ResultHeader({ result }: { result: NodeTestResult }) {
+  const ranAt = result.ranAt ? new Date(result.ranAt).toLocaleTimeString() : null;
+  return (
+    <div className={`flex items-center justify-between px-3 py-2 ${
+      result.status === 'success' ? 'bg-emerald-900/30' : 'bg-red-900/30'
+    }`}>
+      <div className="flex items-center gap-1.5">
+        {result.status === 'success'
+          ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+          : <AlertCircle  className="w-3.5 h-3.5 text-red-400" />}
+        <span className={`text-[11px] font-semibold ${
+          result.status === 'success' ? 'text-emerald-400' : 'text-red-400'
+        }`}>
+          {result.status === 'success' ? 'Test passed' : 'Test failed'}
+        </span>
+      </div>
+      <div className="flex items-center gap-2.5 text-[10px] text-slate-500">
+        {ranAt && <span>{ranAt}</span>}
+        <div className="flex items-center gap-0.5">
           <Clock className="w-2.5 h-2.5" />
-          <span className="text-[10px]">{result.durationMs}ms</span>
+          <span>{result.durationMs} ms</span>
         </div>
       </div>
+    </div>
+  );
+}
 
-      {/* Error */}
-      {result.status === 'failure' && result.error && (
-        <div className="px-2.5 py-2 bg-red-950/20">
-          <p className="text-[10px] text-red-300 break-words">{result.error}</p>
+// ── HTTP result ───────────────────────────────────────────────────────────────
+
+function HttpResultDisplay({ result }: { result: NodeTestResult }) {
+  const [headersOpen, setHeadersOpen] = useState(false);
+  const out = (result.output ?? {}) as { status?: number; body?: unknown; headers?: Record<string, string> };
+  const httpOk = out.status != null && out.status >= 200 && out.status < 300;
+  const bodyStr = out.body != null ? JSON.stringify(out.body, null, 2) : null;
+
+  return (
+    <div className="p-3 space-y-3">
+      {/* Status code */}
+      {out.status != null && (
+        <div className="flex items-center gap-3">
+          <span className={`text-3xl font-bold tabular-nums leading-none ${
+            httpOk ? 'text-emerald-400' : 'text-red-400'
+          }`}>
+            {out.status}
+          </span>
+          <div>
+            <p className="text-xs font-medium text-slate-300">
+              {httpOk ? 'Request succeeded' : 'Request failed'}
+            </p>
+            <p className="text-[10px] text-slate-500">HTTP status code</p>
+          </div>
         </div>
       )}
 
-      {/* Success output */}
+      {/* Response body */}
+      {bodyStr && (
+        <div className="space-y-1">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+              Response data
+            </span>
+            <CopyButton text={bodyStr} />
+          </div>
+          <pre className="bg-slate-800 rounded-md p-2.5 text-[10px] text-slate-300 font-mono overflow-auto max-h-44 leading-relaxed whitespace-pre-wrap break-all">
+            {bodyStr}
+          </pre>
+        </div>
+      )}
+
+      {/* Headers — collapsible */}
+      {out.headers && Object.keys(out.headers).length > 0 && (
+        <div>
+          <button
+            type="button"
+            onClick={() => setHeadersOpen((p) => !p)}
+            className="flex items-center gap-1 text-[10px] text-slate-500 hover:text-slate-300 transition-colors"
+          >
+            {headersOpen
+              ? <ChevronUp   className="w-3 h-3" />
+              : <ChevronDown className="w-3 h-3" />}
+            Response headers ({Object.keys(out.headers).length})
+          </button>
+          {headersOpen && (
+            <div className="mt-1 space-y-0.5 bg-slate-800 rounded p-2">
+              {Object.entries(out.headers).map(([k, v]) => (
+                <div key={k} className="flex gap-1 text-[10px]">
+                  <span className="text-slate-500 shrink-0 min-w-0">{k}:</span>
+                  <span className="text-slate-400 break-all">{v}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── LLM result ────────────────────────────────────────────────────────────────
+
+function LLMResultDisplay({ result }: { result: NodeTestResult }) {
+  const out = (result.output ?? {}) as {
+    content?: string;
+    model?: string;
+    usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number };
+  };
+
+  return (
+    <div className="p-3 space-y-3">
+      {/* AI reply — the most important thing */}
+      {out.content && (
+        <div className="space-y-1">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+              AI Response
+            </span>
+            <CopyButton text={out.content} />
+          </div>
+          <div className="bg-slate-800 rounded-md p-2.5 border-l-2 border-blue-500">
+            <p className="text-xs text-slate-200 leading-relaxed whitespace-pre-wrap">
+              {out.content}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Stats strip */}
+      <div className="flex flex-wrap gap-3 text-[10px] text-slate-500 bg-slate-800/50 rounded px-2.5 py-2">
+        {out.model && (
+          <span>
+            <span className="text-slate-400 font-medium">Model </span>
+            {out.model}
+          </span>
+        )}
+        {out.usage?.totalTokens != null && (
+          <span>
+            <span className="text-slate-400 font-medium">Tokens </span>
+            {out.usage.totalTokens}
+            {out.usage.promptTokens != null && (
+              <span className="text-slate-600 ml-1">
+                ({out.usage.promptTokens} prompt + {out.usage.completionTokens} reply)
+              </span>
+            )}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Condition result ──────────────────────────────────────────────────────────
+
+function ConditionResultDisplay({ result }: { result: NodeTestResult }) {
+  const out = (result.output ?? {}) as { result?: boolean; nextNodeId?: string };
+  const passed = out.result === true;
+
+  return (
+    <div className="p-3 space-y-2">
+      <div className="flex items-center gap-3">
+        <span className={`text-2xl font-bold ${passed ? 'text-emerald-400' : 'text-amber-400'}`}>
+          {passed ? 'TRUE' : 'FALSE'}
+        </span>
+        <p className="text-xs text-slate-300 leading-snug">
+          {passed
+            ? 'Condition was met — takes the true branch'
+            : 'Condition was not met — takes the false branch'}
+        </p>
+      </div>
+      {out.nextNodeId && (
+        <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
+          <ArrowRight className="w-3 h-3 shrink-0" />
+          Routes to node{' '}
+          <span className="font-mono text-slate-400">{out.nextNodeId}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Switch result ─────────────────────────────────────────────────────────────
+
+function SwitchResultDisplay({ result }: { result: NodeTestResult }) {
+  const out = (result.output ?? {}) as { matchedCase?: string; nextNodeId?: string };
+  const isDefault = !out.matchedCase || out.matchedCase === 'default';
+
+  return (
+    <div className="p-3 space-y-2">
+      <div>
+        <p className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold mb-1.5">
+          Matched case
+        </p>
+        <span className={`inline-block px-2.5 py-1 rounded text-xs font-semibold ${
+          isDefault
+            ? 'bg-slate-700 text-slate-300'
+            : 'bg-blue-900/50 text-blue-300 border border-blue-700/40'
+        }`}>
+          {out.matchedCase ?? 'default'}
+        </span>
+      </div>
+      {out.nextNodeId && (
+        <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
+          <ArrowRight className="w-3 h-3 shrink-0" />
+          Routes to{' '}
+          <span className="font-mono text-slate-400">{out.nextNodeId}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Generic result (transform / output / trigger / fallback) ──────────────────
+
+function GenericResultDisplay({ result }: { result: NodeTestResult }) {
+  const out = result.output;
+  const outStr = JSON.stringify(out, null, 2);
+
+  if (typeof out === 'string') {
+    return (
+      <div className="p-3 space-y-1">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Output</span>
+          <CopyButton text={out} />
+        </div>
+        <div className="bg-slate-800 rounded-md p-2.5">
+          <p className="text-xs text-slate-200 whitespace-pre-wrap leading-relaxed">{out}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (typeof out === 'object' && out !== null) {
+    const entries = Object.entries(out as Record<string, unknown>);
+    return (
+      <div className="p-3 space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+            Output — {entries.length} field{entries.length !== 1 ? 's' : ''}
+          </span>
+          <CopyButton text={outStr} />
+        </div>
+        <div className="space-y-1">
+          {entries.map(([k, v]) => (
+            <div key={k} className="flex items-start gap-2 bg-slate-800 rounded px-2.5 py-1.5">
+              <span className="text-[10px] font-mono text-blue-400 shrink-0 pt-0.5 min-w-[60px]">{k}</span>
+              <span className="text-[10px] text-slate-300 break-all min-w-0 flex-1">
+                {v == null
+                  ? <span className="text-slate-600 italic">empty</span>
+                  : typeof v === 'boolean'
+                    ? <span className={v ? 'text-emerald-400 font-semibold' : 'text-amber-400 font-semibold'}>
+                        {v ? 'true' : 'false'}
+                      </span>
+                    : typeof v === 'object'
+                      ? <span className="text-slate-400 font-mono">{JSON.stringify(v)}</span>
+                      : <span>{String(v)}</span>
+                }
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Primitive or null
+  return (
+    <div className="p-3 space-y-1">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Output</span>
+        {out != null && <CopyButton text={String(out)} />}
+      </div>
+      <p className="text-xs text-slate-200 bg-slate-800 rounded px-2.5 py-2">
+        {out == null
+          ? <span className="italic text-slate-600">No output</span>
+          : String(out)}
+      </p>
+    </div>
+  );
+}
+
+// ── Main result wrapper — routes to the right display per node type ────────────
+
+function TestResultDisplay({ result, nodeType }: { result: NodeTestResult; nodeType: string }) {
+  return (
+    <div className={`rounded-md border overflow-hidden ${
+      result.status === 'success' ? 'border-emerald-800/50' : 'border-red-800/50'
+    }`}>
+      <ResultHeader result={result} />
+
+      {/* Error detail */}
+      {result.status === 'failure' && result.error && (
+        <div className="p-3 bg-red-950/20 space-y-1">
+          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">What went wrong</p>
+          <p className="text-xs text-red-300 break-words leading-relaxed">{result.error}</p>
+        </div>
+      )}
+
+      {/* Success output — node-type-aware */}
       {result.status === 'success' && result.output != null && (
-        <div className="px-2.5 py-2 bg-slate-900 space-y-1.5">
-          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Output fields</p>
-          {typeof result.output === 'object' && result.output !== null ? (
-            <>
-              <div className="space-y-1">
-                {Object.entries(result.output as Record<string, unknown>).map(([key, val]) => (
-                  <div key={key} className="flex items-start gap-2">
-                    <span className="text-[10px] font-mono text-emerald-400 shrink-0 mt-0.5">.{key}</span>
-                    <span className="text-[10px] min-w-0 break-all">
-                      <ValuePreview value={val} />
-                    </span>
-                  </div>
-                ))}
-              </div>
-              <button
-                type="button"
-                onClick={() => setRawOpen((p) => !p)}
-                className="flex items-center gap-1 text-[10px] text-slate-500 hover:text-slate-300 transition-colors mt-1"
-              >
-                {rawOpen ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
-                {rawOpen ? 'Hide' : 'Show'} raw JSON
-              </button>
-              {rawOpen && (
-                <pre className="text-[10px] text-slate-300 bg-slate-800 rounded p-2 overflow-auto max-h-40 font-mono">
-                  {JSON.stringify(result.output, null, 2)}
-                </pre>
-              )}
-            </>
-          ) : (
-            <ValuePreview value={result.output} />
+        <div className="bg-slate-900/80">
+          {nodeType === 'http'      && <HttpResultDisplay      result={result} />}
+          {nodeType === 'llm'       && <LLMResultDisplay       result={result} />}
+          {nodeType === 'condition' && <ConditionResultDisplay result={result} />}
+          {nodeType === 'switch'    && <SwitchResultDisplay    result={result} />}
+          {nodeType !== 'http' && nodeType !== 'llm' &&
+           nodeType !== 'condition' && nodeType !== 'switch' && (
+            <GenericResultDisplay result={result} />
           )}
         </div>
       )}
@@ -417,10 +678,12 @@ function TestResultDisplay({ result }: { result: NodeTestResult }) {
 function NodeTestPanel({
   nodeId,
   workflowId,
+  nodeType,
   savedResult,
 }: {
   nodeId: string;
   workflowId: string;
+  nodeType: string;
   savedResult: NodeTestResult | null;
 }) {
   const [open, setOpen] = useState(false);
@@ -471,7 +734,7 @@ function NodeTestPanel({
           </button>
 
           {/* Last result */}
-          {displayResult && <TestResultDisplay result={displayResult} />}
+          {displayResult && <TestResultDisplay result={displayResult} nodeType={nodeType} />}
 
           {!displayResult && !testNode.isPending && (
             <p className="text-[10px] text-slate-600 text-center italic">
@@ -601,6 +864,7 @@ export function NodeConfigPanel() {
           key={selectedNodeId}
           nodeId={selectedNodeId!}
           workflowId={activeWorkflow!.id}
+          nodeType={nodeType}
           savedResult={savedTestResult}
         />
       )}
