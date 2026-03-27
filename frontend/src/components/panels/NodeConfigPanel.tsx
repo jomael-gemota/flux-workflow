@@ -1,11 +1,13 @@
-import { Settings2, Star, Braces, Play, Loader2, ChevronDown, ChevronUp, AlertCircle, CheckCircle2, Clock, Copy, Check, ArrowRight } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { Settings2, Star, Braces, Play, Loader2, ChevronDown, ChevronUp, AlertCircle, CheckCircle2, Clock, Copy, Check, ArrowRight, Power, X, AlertTriangle } from 'lucide-react';
+import { useRef, useState, useEffect } from 'react';
 import { useWorkflowStore } from '../../store/workflowStore';
 import type { CanvasNode } from '../../store/workflowStore';
 import { Select } from '../ui/Input';
 import { useTestNode, useNodeTestResults } from '../../hooks/useNodeTest';
 import type { NodeTestResult } from '../../types/workflow';
 import { useCredentialList } from '../../hooks/useCredentials';
+import { useSaveWorkflow } from '../../hooks/useSaveWorkflow';
+import { NodeIcon } from '../nodes/NodeIcons';
 
 // ── Output field catalogue (human-friendly labels per node type) ──────────────
 
@@ -93,6 +95,67 @@ function ValuePreview({ value }: { value: unknown }) {
     <span className="text-emerald-400 font-mono">
       {str.length > 40 ? str.slice(0, 40) + '…' : str}
     </span>
+  );
+}
+
+// ── Expression display helpers ────────────────────────────────────────────────
+
+const NODE_TYPE_LABEL: Record<string, string> = {
+  http: 'HTTP', llm: 'AI', trigger: 'Trigger', condition: 'Condition',
+  switch: 'Switch', transform: 'Transform', output: 'Output',
+  gmail: 'Gmail', gdrive: 'Drive', gdocs: 'Docs', gsheets: 'Sheets',
+};
+
+function nodeTypeLabel(type: string) {
+  return NODE_TYPE_LABEL[type] ?? type.toUpperCase();
+}
+
+type ExprSegment =
+  | { kind: 'text'; text: string }
+  | { kind: 'expr'; nodeType: string; nodeName: string; field: string };
+
+function parseExprSegments(value: string, nodes: CanvasNode[]): ExprSegment[] {
+  const parts = value.split(/(\{\{nodes\.[^}]+\}\})/g);
+  return parts.flatMap((part): ExprSegment[] => {
+    const m = part.match(/^\{\{nodes\.([^.}]+)\.([^}]+)\}\}$/);
+    if (m) {
+      const node = nodes.find(n => n.id === m[1]);
+      return [{
+        kind: 'expr',
+        nodeType: node?.data.nodeType ?? '',
+        nodeName: node?.data.label ?? m[1],
+        field: m[2],
+      }];
+    }
+    return part ? [{ kind: 'text', text: part }] : [];
+  });
+}
+
+const EXPR_RE = /\{\{nodes\.[^}]+\}\}/;
+
+function ExprToken({ nodeType, nodeName, field }: { nodeType: string; nodeName: string; field: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-900/60 border border-blue-700/50 text-[10px] font-medium mx-0.5 align-middle whitespace-nowrap">
+      <span className="text-blue-400 font-bold uppercase text-[9px]">{nodeTypeLabel(nodeType)}</span>
+      <span className="text-slate-500">·</span>
+      <span className="text-slate-200">{nodeName}</span>
+      <span className="text-slate-500">·</span>
+      <span className="font-mono text-blue-300">{field}</span>
+    </span>
+  );
+}
+
+function DisplayValue({ value, nodes, placeholder }: { value: string; nodes: CanvasNode[]; placeholder?: string }) {
+  if (!value) return <span className="text-slate-500 text-xs italic">{placeholder ?? ''}</span>;
+  const segs = parseExprSegments(value, nodes);
+  return (
+    <>
+      {segs.map((seg, i) =>
+        seg.kind === 'text'
+          ? <span key={i} className="text-slate-200 text-xs">{seg.text}</span>
+          : <ExprToken key={i} nodeType={seg.nodeType} nodeName={seg.nodeName} field={seg.field} />
+      )}
+    </>
   );
 }
 
@@ -256,11 +319,21 @@ function ExpressionTextArea({
   testResults: Record<string, NodeTestResult>;
 }) {
   const [open, setOpen] = useState(false);
+  const [focused, setFocused] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
 
+  const showDisplay = !focused && !open && EXPR_RE.test(value);
+
   function handleInsert(expr: string) {
-    if (ref.current) insertAtCursor(ref.current, expr, value, onChange);
-    else onChange(value + expr);
+    setFocused(true);
+    requestAnimationFrame(() => {
+      if (ref.current) {
+        ref.current.focus();
+        insertAtCursor(ref.current, expr, value, onChange);
+      } else {
+        onChange(value + expr);
+      }
+    });
     setOpen(false);
   }
 
@@ -282,13 +355,28 @@ function ExpressionTextArea({
           </button>
         )}
       </div>
+
+      {/* Display mode: readable tokens when blurred */}
+      {showDisplay && (
+        <div
+          onClick={() => { setFocused(true); requestAnimationFrame(() => ref.current?.focus()); }}
+          className="w-full min-h-[56px] flex flex-wrap items-start gap-y-1 content-start bg-slate-800 border border-slate-600 hover:border-slate-500 rounded-md px-2.5 py-1.5 cursor-text"
+          title="Click to edit"
+        >
+          <DisplayValue value={value} nodes={nodes} placeholder={placeholder} />
+        </div>
+      )}
+
+      {/* Raw textarea — always mounted but visually hidden in display mode */}
       <textarea
         ref={ref}
         rows={rows}
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-slate-800 border border-slate-600 text-slate-200 rounded-md px-2.5 py-1.5 text-xs placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-none"
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        className={`w-full bg-slate-800 border border-slate-600 text-slate-200 rounded-md px-2.5 py-1.5 text-xs placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-none ${showDisplay ? 'sr-only' : ''}`}
       />
       {open && (
         <VariablePickerPanel nodes={nodes} testResults={testResults} onInsert={handleInsert} />
@@ -317,11 +405,21 @@ function ExpressionInput({
   hint?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [focused, setFocused] = useState(false);
   const ref = useRef<HTMLInputElement>(null);
 
+  const showDisplay = !focused && !open && EXPR_RE.test(value);
+
   function handleInsert(expr: string) {
-    if (ref.current) insertAtCursor(ref.current, expr, value, onChange);
-    else onChange(value + expr);
+    setFocused(true);
+    requestAnimationFrame(() => {
+      if (ref.current) {
+        ref.current.focus();
+        insertAtCursor(ref.current, expr, value, onChange);
+      } else {
+        onChange(value + expr);
+      }
+    });
     setOpen(false);
   }
 
@@ -345,13 +443,28 @@ function ExpressionInput({
           )}
         </div>
       )}
+
+      {/* Display mode: readable tokens when blurred */}
+      {showDisplay && (
+        <div
+          onClick={() => { setFocused(true); requestAnimationFrame(() => ref.current?.focus()); }}
+          className="w-full min-h-[30px] flex flex-wrap items-center gap-y-0.5 bg-slate-800 border border-slate-600 hover:border-slate-500 rounded-md px-2.5 py-1.5 cursor-text"
+          title="Click to edit"
+        >
+          <DisplayValue value={value} nodes={nodes} placeholder={placeholder} />
+        </div>
+      )}
+
+      {/* Raw input — always mounted but visually hidden in display mode */}
       <input
         ref={ref}
         type="text"
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-slate-800 border border-slate-600 text-slate-200 rounded-md px-2.5 py-1.5 text-xs placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        className={`w-full bg-slate-800 border border-slate-600 text-slate-200 rounded-md px-2.5 py-1.5 text-xs placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${showDisplay ? 'sr-only' : ''}`}
       />
       {hint && <p className="text-slate-500 text-[10px]">{hint}</p>}
       {open && (
@@ -772,11 +885,132 @@ function NodeTestPanel({
   );
 }
 
+// ── Dependency scanner ────────────────────────────────────────────────────────
+
+/** Recursively search any config value for {{nodes.<targetId>. expressions. */
+function configReferencesNode(obj: unknown, targetId: string): boolean {
+  if (typeof obj === 'string') {
+    return new RegExp(`\\{\\{\\s*nodes\\.${targetId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.`).test(obj);
+  }
+  if (Array.isArray(obj)) return obj.some(v => configReferencesNode(v, targetId));
+  if (obj !== null && typeof obj === 'object') {
+    return Object.values(obj as Record<string, unknown>).some(v => configReferencesNode(v, targetId));
+  }
+  return false;
+}
+
+/** Returns all nodes (excluding the target itself) whose config references the target node's output. */
+function findDependentsOf(targetId: string, allNodes: CanvasNode[]): CanvasNode[] {
+  return allNodes.filter(n => n.id !== targetId && configReferencesNode(n.data.config, targetId));
+}
+
+// ── Disable confirmation modal ────────────────────────────────────────────────
+
+function DisableNodeWarningModal({
+  open,
+  nodeName,
+  dependents,
+  isLoading,
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean;
+  nodeName: string;
+  dependents: CanvasNode[];
+  isLoading: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [open, onCancel]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-[1px]" onClick={onCancel} />
+
+      {/* Dialog */}
+      <div className="relative bg-slate-800 border border-slate-700 rounded-xl shadow-2xl w-full max-w-sm mx-4 p-5">
+        <button
+          onClick={onCancel}
+          className="absolute top-3 right-3 text-slate-500 hover:text-slate-300 transition-colors"
+        >
+          <X className="w-4 h-4" />
+        </button>
+
+        {/* Header */}
+        <div className="flex items-start gap-3 pr-5">
+          <div className="w-8 h-8 rounded-full bg-amber-500/15 flex items-center justify-center shrink-0">
+            <AlertTriangle className="w-4 h-4 text-amber-400" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-white">Node output is in use</h3>
+            <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+              <span className="font-medium text-slate-200">"{nodeName}"</span> is referenced by{' '}
+              <span className="font-medium text-amber-300">{dependents.length} node{dependents.length !== 1 ? 's' : ''}</span>.
+              Disabling it will cause those nodes to fail with an error when the workflow runs.
+            </p>
+          </div>
+        </div>
+
+        {/* Dependent node list */}
+        <div className="mt-3.5 space-y-1.5 max-h-44 overflow-y-auto">
+          {dependents.map(dep => (
+            <div
+              key={dep.id}
+              className="flex items-center gap-2 px-2.5 py-1.5 bg-slate-900/70 rounded-md border border-slate-700/50"
+            >
+              <span className="shrink-0 opacity-70">
+                <NodeIcon type={dep.data.nodeType} size={12} />
+              </span>
+              <span className="text-xs font-medium text-slate-200 truncate flex-1">{dep.data.label}</span>
+              <span className="text-[10px] text-slate-500 shrink-0 uppercase tracking-wide">{dep.data.nodeType}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Actions */}
+        <div className="flex justify-end gap-2 mt-4">
+          <button
+            onClick={onCancel}
+            disabled={isLoading}
+            className="px-3.5 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={isLoading}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium rounded-lg bg-amber-600 hover:bg-amber-500 text-white transition-colors disabled:opacity-50"
+          >
+            {isLoading && <Loader2 className="w-3 h-3 animate-spin" />}
+            Disable anyway
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main panel ────────────────────────────────────────────────────────────────
 
 export function NodeConfigPanel() {
   const { nodes, selectedNodeId, setNodes, activeWorkflow, setActiveWorkflow } =
     useWorkflowStore();
+
+  const { save: saveWorkflow, isSaving: isSavingDisabled } = useSaveWorkflow();
+
+  // State for the disable-confirmation modal (must be before any early return)
+  const [disableModal, setDisableModal] = useState<{ open: boolean; dependents: CanvasNode[] }>({
+    open: false,
+    dependents: [],
+  });
 
   const isUnsaved = !activeWorkflow?.id || activeWorkflow.id.startsWith('__new__');
   const { data: testResults = {} } = useNodeTestResults(
@@ -813,6 +1047,39 @@ export function NodeConfigPanel() {
     setNodes(updated);
   }
 
+  async function doDisable() {
+    updateData({ disabled: true });
+    if (!isUnsaved) {
+      try { await saveWorkflow(); } catch { /* silent */ }
+    }
+  }
+
+  async function toggleDisabled() {
+    if (data.disabled) {
+      // Re-enabling: no confirmation needed
+      updateData({ disabled: false });
+      if (!isUnsaved) {
+        try { await saveWorkflow(); } catch { /* silent */ }
+      }
+      return;
+    }
+
+    // Disabling: check whether any other node's config references this node's output
+    const dependents = findDependentsOf(selectedNodeId!, nodes);
+    if (dependents.length === 0) {
+      // No downstream references — disable immediately
+      await doDisable();
+    } else {
+      // Prompt the user with the list of affected nodes
+      setDisableModal({ open: true, dependents });
+    }
+  }
+
+  async function confirmDisable() {
+    setDisableModal(prev => ({ ...prev, open: false }));
+    await doDisable();
+  }
+
   function toggleEntry() {
     const willBeEntry = !data.isEntry;
     // First pass: flip isEntry for the selected node
@@ -844,18 +1111,51 @@ export function NodeConfigPanel() {
     <div className="p-4 space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
+        <div className="min-w-0 flex-1 mr-2">
           <p className="text-[10px] text-slate-500 uppercase tracking-wider">{nodeType}</p>
-          <p className="text-sm font-semibold text-white truncate">{data.label}</p>
+          <p className={`text-sm font-semibold truncate ${data.disabled ? 'text-slate-500 line-through' : 'text-white'}`}>
+            {data.label}
+          </p>
         </div>
-        <button
-          onClick={toggleEntry}
-          title={data.isEntry ? 'Remove as start node' : 'Mark as start node (⭐ = runs on trigger)'}
-          className={`transition-colors ${data.isEntry ? 'text-amber-400' : 'text-slate-500 hover:text-amber-400'}`}
-        >
-          <Star className={`w-4 h-4 ${data.isEntry ? 'fill-amber-400' : ''}`} />
-        </button>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Disable / Enable toggle — auto-saves on click */}
+          <button
+            onClick={toggleDisabled}
+            disabled={isSavingDisabled}
+            title={
+              isSavingDisabled ? 'Saving…' :
+              data.disabled ? 'Node is disabled — click to enable' :
+              'Disable this node (it will be skipped during execution)'
+            }
+            className={`transition-colors disabled:opacity-50 disabled:cursor-wait ${
+              data.disabled ? 'text-red-400 hover:text-red-300' : 'text-slate-500 hover:text-red-400'
+            }`}
+          >
+            {isSavingDisabled
+              ? <Loader2 className="w-4 h-4 animate-spin" />
+              : <Power className="w-4 h-4" />
+            }
+          </button>
+          {/* Star / entry toggle */}
+          <button
+            onClick={toggleEntry}
+            title={data.isEntry ? 'Remove as start node' : 'Mark as start node (⭐ = runs on trigger)'}
+            className={`transition-colors ${data.isEntry ? 'text-amber-400' : 'text-slate-500 hover:text-amber-400'}`}
+          >
+            <Star className={`w-4 h-4 ${data.isEntry ? 'fill-amber-400' : ''}`} />
+          </button>
+        </div>
       </div>
+
+      {/* Disabled banner */}
+      {data.disabled && (
+        <div className="flex items-center gap-2 px-2.5 py-2 bg-slate-700/40 border border-dashed border-slate-500/50 rounded-md">
+          <Power className="w-3 h-3 text-slate-400 shrink-0" />
+          <p className="text-[10px] text-slate-400">
+            This node is <span className="font-semibold text-slate-300">disabled</span> — it will be skipped when the workflow runs. Any downstream node that uses its output will fail.
+          </p>
+        </div>
+      )}
 
       {/* Multi-entry hint */}
       {entryCount > 1 && data.isEntry && (
@@ -954,6 +1254,17 @@ export function NodeConfigPanel() {
           />
         </div>
       ))}
+
+      {/* Disable-confirmation modal — rendered inside the panel so it inherits
+          the correct stacking context but portals to the viewport via fixed positioning */}
+      <DisableNodeWarningModal
+        open={disableModal.open}
+        nodeName={data.label}
+        dependents={disableModal.dependents}
+        isLoading={isSavingDisabled}
+        onConfirm={confirmDisable}
+        onCancel={() => setDisableModal({ open: false, dependents: [] })}
+      />
     </div>
   );
 }
@@ -1129,11 +1440,23 @@ function LLMConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
   );
 }
 
+const NO_VALUE_OPERATORS = new Set(['isNull', 'isNotNull']);
+
 function ConditionConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
   const condition = (cfg.condition as Record<string, unknown>) ?? {};
+  const operator = String(condition.operator ?? 'eq');
+  const needsValue = !NO_VALUE_OPERATORS.has(operator);
+
   function updateCond(patch: Record<string, unknown>) {
     onChange({ condition: { ...condition, ...patch } });
   }
+
+  function handleOperatorChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const op = e.target.value;
+    // Clear the right-side value when switching to a no-value operator
+    updateCond({ operator: op, ...(NO_VALUE_OPERATORS.has(op) ? { right: '' } : {}) });
+  }
+
   return (
     <>
       <p className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Condition</p>
@@ -1147,8 +1470,8 @@ function ConditionConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps
       />
       <Select
         label="Operator"
-        value={String(condition.operator ?? 'eq')}
-        onChange={(e) => updateCond({ operator: e.target.value })}
+        value={operator}
+        onChange={handleOperatorChange}
         options={[
           { value: 'eq', label: 'equals (=)' },
           { value: 'neq', label: 'not equals (≠)' },
@@ -1163,14 +1486,20 @@ function ConditionConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps
           { value: 'isNotNull', label: 'is not empty / null' },
         ]}
       />
-      <ExpressionInput
-        label="Right side (value to compare)"
-        value={String(condition.right ?? '')}
-        onChange={(v) => updateCond({ right: v })}
-        placeholder="200"
-        nodes={otherNodes}
-        testResults={testResults}
-      />
+      {needsValue ? (
+        <ExpressionInput
+          label="Right side (value to compare)"
+          value={String(condition.right ?? '')}
+          onChange={(v) => updateCond({ right: v })}
+          placeholder="200"
+          nodes={otherNodes}
+          testResults={testResults}
+        />
+      ) : (
+        <div className="flex items-center gap-2 px-2 py-1.5 bg-slate-800/50 border border-slate-700/40 rounded text-[11px] text-slate-500 italic">
+          No comparison value needed for this operator.
+        </div>
+      )}
       <p className="text-[10px] text-slate-500 mt-1">
         Connect the <strong className="text-amber-400">true</strong> and{' '}
         <strong className="text-amber-400">false</strong> handles on the canvas to set routing.
@@ -1220,24 +1549,37 @@ function SwitchConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
             <Select
               label="Operator"
               value={String(cond.operator ?? 'eq')}
-              onChange={(e) => updateCase(i, { condition: { ...cond, operator: e.target.value } })}
+              onChange={(e) => {
+                const op = e.target.value;
+                updateCase(i, {
+                  condition: { ...cond, operator: op, ...(NO_VALUE_OPERATORS.has(op) ? { right: '' } : {}) },
+                });
+              }}
               options={[
                 { value: 'eq', label: 'equals (=)' },
                 { value: 'neq', label: 'not equals (≠)' },
                 { value: 'gt', label: 'greater than (>)' },
                 { value: 'lt', label: 'less than (<)' },
                 { value: 'contains', label: 'contains' },
+                { value: 'isNull', label: 'is empty / null' },
+                { value: 'isNotNull', label: 'is not empty / null' },
               ]}
             />
-            <div className="space-y-1">
-              <label className="block text-xs font-medium text-slate-400">Compare to</label>
-              <input
-                className="w-full bg-slate-700 border border-slate-600 text-slate-200 rounded px-2 py-1 text-xs placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                value={String(cond.right ?? '')}
-                onChange={(e) => updateCase(i, { condition: { ...cond, right: e.target.value } })}
-                placeholder="e.g. 200"
-              />
-            </div>
+            {!NO_VALUE_OPERATORS.has(String(cond.operator ?? 'eq')) ? (
+              <div className="space-y-1">
+                <label className="block text-xs font-medium text-slate-400">Compare to</label>
+                <input
+                  className="w-full bg-slate-700 border border-slate-600 text-slate-200 rounded px-2 py-1 text-xs placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  value={String(cond.right ?? '')}
+                  onChange={(e) => updateCase(i, { condition: { ...cond, right: e.target.value } })}
+                  placeholder="e.g. 200"
+                />
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 px-2 py-1.5 bg-slate-800/50 border border-slate-700/40 rounded text-[11px] text-slate-500 italic">
+                No comparison value needed.
+              </div>
+            )}
           </div>
         );
       })}

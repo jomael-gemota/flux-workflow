@@ -9,6 +9,7 @@ export const WorkflowNodeSchema = z.object({
     retries: z.number().int().min(0).max(5).optional(),
     retryDelayMs: z.number().int().min(0).optional(),
     timeoutMs: z.number().int().min(100).optional(),
+    disabled: z.boolean().optional(),
     position: z.object({ x: z.number(), y: z.number() }).optional(),
 });
 
@@ -46,7 +47,8 @@ export const UpdateWorkflowSchema = z.object({
     name: z.string().min(1).optional(),
     nodes: z.array(WorkflowNodeSchema).min(1).optional(),
     entryNodeId: z.string().min(1).optional(),
-    entryNodeIds: z.array(z.string().min(1)).min(1).optional(),
+    // min(1) removed: a single-entry workflow sends a one-item array
+    entryNodeIds: z.array(z.string().min(1)).optional(),
 });
 
 export const CursorPaginationSchema = z.object({

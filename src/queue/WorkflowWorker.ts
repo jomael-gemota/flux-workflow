@@ -4,6 +4,7 @@ import { getRedisConnection } from './redisConnection';
 import { WorkflowRunner } from '../engine/WorkflowRunner';
 import { WorkflowRepository } from '../repositories/WorkflowRepository';
 import { ExecutionRepository } from '../repositories/ExecutionRepository';
+import { NodeResult } from '../types/workflow.types';
 
 export function createWorkflowWorker(
     runner: WorkflowRunner,
@@ -38,7 +39,14 @@ export function createWorkflowWorker(
 
     worker.on('failed', async (job, err) => {
         if (job) {
-            await executionRepo.complete(job.data.executionId, 'failure', []).catch(() => {});
+            const syntheticResult: NodeResult = {
+                nodeId: '__runner__',
+                status: 'failure',
+                output: null,
+                error: err.message,
+                durationMs: 0,
+            };
+            await executionRepo.complete(job.data.executionId, 'failure', [syntheticResult]).catch(() => {});
         }
         console.error(`[Worker] Job ${job?.id} failed:`, err.message);
     });

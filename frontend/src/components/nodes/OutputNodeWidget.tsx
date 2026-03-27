@@ -14,6 +14,7 @@ export function OutputNodeWidget({ id, data, selected }: NodeProps<OutputNode>) 
       isEntry={data.isEntry}
       isParallelEntry={data.isParallelEntry}
       isSelected={selected}
+      isDisabled={data.disabled}
       handles={{ outputs: [] }}
     >
       {cfg.value && (

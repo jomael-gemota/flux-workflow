@@ -12,6 +12,8 @@ const SCOPES = [
     'https://www.googleapis.com/auth/userinfo.profile',
 ];
 
+const DEFAULT_REDIRECT_URI = 'http://localhost:3000/oauth/google/callback';
+
 export class GoogleAuthService {
     private credentialRepo: CredentialRepository;
 
@@ -19,11 +21,31 @@ export class GoogleAuthService {
         this.credentialRepo = credentialRepo;
     }
 
+    private isConfigured(): boolean {
+        return !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+    }
+
+    private assertConfigured(): void {
+        if (!process.env.GOOGLE_CLIENT_ID) {
+            throw new Error(
+                'GOOGLE_CLIENT_ID is not set. Add it to your .env file. ' +
+                'Get it from https://console.cloud.google.com → APIs & Services → Credentials.'
+            );
+        }
+        if (!process.env.GOOGLE_CLIENT_SECRET) {
+            throw new Error(
+                'GOOGLE_CLIENT_SECRET is not set. Add it to your .env file. ' +
+                'Get it from https://console.cloud.google.com → APIs & Services → Credentials.'
+            );
+        }
+    }
+
     private createOAuth2Client(): OAuth2Client {
+        this.assertConfigured();
         return new google.auth.OAuth2(
             process.env.GOOGLE_CLIENT_ID,
             process.env.GOOGLE_CLIENT_SECRET,
-            process.env.GOOGLE_REDIRECT_URI
+            process.env.GOOGLE_REDIRECT_URI ?? DEFAULT_REDIRECT_URI
         );
     }
 

@@ -3,6 +3,7 @@ import { WorkflowRunner } from '../engine/WorkflowRunner';
 import { WorkflowRepository } from '../repositories/WorkflowRepository';
 import { ExecutionRepository } from '../repositories/ExecutionRepository';
 import { ExecutionSummary } from '../types/api.types';
+import { NodeResult } from '../types/workflow.types';
 import { getWorkflowQueue } from '../queue/WorkflowQueue';
 
 export class WorkflowService {
@@ -54,24 +55,45 @@ export class WorkflowService {
 
         // Synchronous fallback
         await this.executionRepo.markRunning(executionId);
-        const result = await this.runner.run(workflow, input);
-        const completedAt = new Date();
 
-        const hasFailure = result.results.some(r => r.status === 'failure');
-        const hasSuccess = result.results.some(r => r.status === 'success');
-        const finalStatus: 'success' | 'partial' | 'failure' =
-            hasFailure && hasSuccess ? 'partial' : hasFailure ? 'failure' : 'success';
+        try {
+            const result = await this.runner.run(workflow, input);
+            const completedAt = new Date();
 
-        await this.executionRepo.complete(executionId, finalStatus, result.results);
+            const hasFailure = result.results.some(r => r.status === 'failure');
+            const hasSuccess = result.results.some(r => r.status === 'success');
+            const finalStatus: 'success' | 'partial' | 'failure' =
+                hasFailure && hasSuccess ? 'partial' : hasFailure ? 'failure' : 'success';
 
-        return {
-            executionId,
-            workflowId,
-            status: finalStatus,
-            startedAt,
-            completedAt,
-            results: result.results,
-        };
+            await this.executionRepo.complete(executionId, finalStatus, result.results);
+
+            return {
+                executionId,
+                workflowId,
+                status: finalStatus,
+                startedAt,
+                completedAt,
+                results: result.results,
+            };
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            const syntheticResult: NodeResult = {
+                nodeId: '__runner__',
+                status: 'failure',
+                output: null,
+                error: message,
+                durationMs: Date.now() - startedAt.getTime(),
+            };
+            await this.executionRepo.complete(executionId, 'failure', [syntheticResult]);
+            return {
+                executionId,
+                workflowId,
+                status: 'failure',
+                startedAt,
+                completedAt: new Date(),
+                results: [syntheticResult],
+            };
+        }
     }
 
     async replay(executionId: string): Promise<ExecutionSummary> {

@@ -148,3 +148,8 @@ export function deleteCredential(id: string) {
 export function startGoogleOAuth() {
   window.location.href = `${BASE}/oauth/google/authorize`;
 }
+
+/** Check whether Google OAuth is configured on the backend */
+export function checkGoogleConfig() {
+  return request<{ configured: boolean; redirectUri: string }>('/oauth/google/status');
+}

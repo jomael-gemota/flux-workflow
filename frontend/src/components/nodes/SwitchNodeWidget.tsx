@@ -22,6 +22,7 @@ export function SwitchNodeWidget({ id, data, selected }: NodeProps<SwitchNode>) 
       isEntry={data.isEntry}
       isParallelEntry={data.isParallelEntry}
       isSelected={selected}
+      isDisabled={data.disabled}
       handles={{ outputs }}
     >
       <p className="text-[10px] text-slate-400">

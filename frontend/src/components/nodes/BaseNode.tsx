@@ -27,6 +27,7 @@ interface BaseNodeProps {
   isEntry?: boolean;
   isParallelEntry?: boolean;
   isSelected?: boolean;
+  isDisabled?: boolean;
   children?: ReactNode;
   handles?: {
     inputs?: Array<{ id?: string; label?: string }>;
@@ -41,6 +42,7 @@ export function BaseNode({
   isEntry,
   isParallelEntry,
   isSelected,
+  isDisabled,
   children,
   handles,
 }: BaseNodeProps) {
@@ -57,8 +59,9 @@ export function BaseNode({
   return (
     <div
       className={`relative rounded-lg shadow-md bg-white border-2 min-w-[180px] transition-all duration-300 ${ringCls} ${
-        isSelected ? 'border-blue-500 shadow-blue-200 shadow-lg'
-        : isEntry   ? 'border-amber-400'
+        isDisabled  ? 'border-dashed border-slate-300 opacity-50'
+        : isSelected ? 'border-blue-500 shadow-blue-200 shadow-lg'
+        : isEntry    ? 'border-amber-400'
         : 'border-slate-200'
       }`}
     >
@@ -68,7 +71,7 @@ export function BaseNode({
       )}
 
       {/* Status badge (top-right corner) */}
-      {badge && (
+      {badge && !isDisabled && (
         <span
           className={`absolute -top-2 -right-2 z-10 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shadow ${badge.cls}`}
         >
@@ -76,8 +79,15 @@ export function BaseNode({
         </span>
       )}
 
+      {/* Disabled badge (top-right corner) — always visible when disabled */}
+      {isDisabled && (
+        <span className="absolute -top-2 -right-2 z-10 px-1.5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold shadow bg-slate-400 text-white whitespace-nowrap">
+          OFF
+        </span>
+      )}
+
       {/* Header */}
-      <div className={`${headerBg} rounded-t-md px-2.5 py-1.5 flex items-center gap-2`}>
+      <div className={`${headerBg} rounded-t-md px-2.5 py-1.5 flex items-center gap-2 ${isDisabled ? 'opacity-60' : ''}`}>
         {/* Icon */}
         <span className="shrink-0 w-4 h-4 flex items-center justify-center opacity-90">
           <NodeIcon type={nodeType} size={13} />
@@ -103,8 +113,10 @@ export function BaseNode({
 
       {/* Body */}
       <div className="px-3 py-2">
-        <p className="text-sm font-medium text-slate-700 truncate">{label}</p>
-        {children && <div className="mt-1">{children}</div>}
+        <p className={`text-sm font-medium truncate ${isDisabled ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
+          {label}
+        </p>
+        {children && !isDisabled && <div className="mt-1">{children}</div>}
       </div>
 
       {/* Input handles */}

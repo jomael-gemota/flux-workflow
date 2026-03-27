@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { X, Plus, Trash2, Loader2, CheckCircle2, AlertCircle, ExternalLink } from 'lucide-react';
+import { X, Plus, Trash2, Loader2, CheckCircle2, AlertCircle, ExternalLink, Settings } from 'lucide-react';
 import { useCredentialList, useDeleteCredential } from '../../hooks/useCredentials';
-import { startGoogleOAuth } from '../../api/client';
+import { startGoogleOAuth, checkGoogleConfig } from '../../api/client';
 import { ConfirmModal } from './ConfirmModal';
 import type { CredentialSummary } from '../../types/workflow';
+import { useQuery } from '@tanstack/react-query';
 
 interface CredentialsModalProps {
   open: boolean;
@@ -21,6 +22,14 @@ const GOOGLE_SERVICE_LABELS: Record<string, string> = {
 export function CredentialsModal({ open, onClose }: CredentialsModalProps) {
   const { data: credentials = [], isLoading, refetch } = useCredentialList();
   const deleteCredential = useDeleteCredential();
+  const { data: googleConfig } = useQuery({
+    queryKey: ['google-config'],
+    queryFn: checkGoogleConfig,
+    enabled: open,
+    staleTime: 30_000,
+  });
+
+  const isGoogleConfigured = googleConfig?.configured ?? true; // optimistic until loaded
 
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [oauthStatus, setOAuthStatus] = useState<'success' | 'error' | null>(null);
@@ -124,25 +133,55 @@ export function CredentialsModal({ open, onClose }: CredentialsModalProps) {
           ))}
         </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-between px-5 py-4 border-t border-slate-700 shrink-0">
-          <a
-            href="https://console.cloud.google.com"
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-1 text-[11px] text-slate-500 hover:text-slate-300 transition-colors"
-          >
-            <ExternalLink className="w-3 h-3" />
-            Google Cloud Console
-          </a>
-          <button
-            onClick={startGoogleOAuth}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium rounded-lg transition-colors"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            Connect Google Account
-          </button>
-        </div>
+        {/* Footer — setup guide if not configured, connect button if ready */}
+        {!isGoogleConfigured ? (
+          <div className="border-t border-slate-700 shrink-0 px-5 py-4 space-y-3">
+            <div className="flex items-start gap-2.5 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+              <Settings className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <div className="space-y-1 min-w-0">
+                <p className="text-xs font-semibold text-amber-300">Google OAuth not configured</p>
+                <p className="text-[11px] text-amber-400/80 leading-relaxed">
+                  Add these to your <code className="bg-amber-900/40 px-1 rounded">.env</code> file and restart the backend:
+                </p>
+                <pre className="text-[10px] text-amber-300/90 bg-slate-900 rounded p-2 mt-1.5 leading-relaxed overflow-x-auto">
+{`GOOGLE_CLIENT_ID=your-client-id
+GOOGLE_CLIENT_SECRET=your-secret
+GOOGLE_REDIRECT_URI=http://localhost:3000/oauth/google/callback`}
+                </pre>
+              </div>
+            </div>
+            <div className="flex items-center justify-between">
+              <a
+                href="https://console.cloud.google.com/apis/credentials"
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1.5 text-[11px] text-blue-400 hover:text-blue-300 transition-colors"
+              >
+                <ExternalLink className="w-3 h-3" />
+                Get credentials from Google Cloud Console
+              </a>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between px-5 py-4 border-t border-slate-700 shrink-0">
+            <a
+              href="https://console.cloud.google.com/apis/credentials"
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1 text-[11px] text-slate-500 hover:text-slate-300 transition-colors"
+            >
+              <ExternalLink className="w-3 h-3" />
+              Google Cloud Console
+            </a>
+            <button
+              onClick={startGoogleOAuth}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium rounded-lg transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Connect Google Account
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Delete confirmation */}

@@ -13,6 +13,7 @@ export function ConditionNodeWidget({ id, data, selected }: NodeProps<ConditionN
       isEntry={data.isEntry}
       isParallelEntry={data.isParallelEntry}
       isSelected={selected}
+      isDisabled={data.disabled}
       handles={{
         outputs: [
           { id: 'true', label: 'true' },

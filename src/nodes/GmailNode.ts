@@ -49,17 +49,30 @@ export class GmailNode implements NodeExecutor {
             const bcc     = config.bcc ? this.resolver.resolveTemplate(config.bcc, context) : undefined;
 
             const contentType = config.isHtml ? 'text/html' : 'text/plain';
-            const headers = [
+
+            // Normalise line endings inside the body to CRLF so every paragraph
+            // boundary survives the MIME encode/decode cycle intact.
+            const normalisedBody = body.replace(/\r?\n/g, '\r\n');
+
+            // IMPORTANT: filter only null/undefined, NOT the empty string ''.
+            // The empty string is the mandatory blank line that separates MIME
+            // headers from the body.  filter(Boolean) would remove it, causing
+            // the first paragraph to be parsed as a malformed header and only
+            // the text after the first \n\n to appear as the email body.
+            const messageParts = [
                 `To: ${to}`,
                 cc  ? `Cc: ${cc}`  : null,
                 bcc ? `Bcc: ${bcc}` : null,
                 `Subject: ${subject}`,
                 `Content-Type: ${contentType}; charset=utf-8`,
-                '',
-                body,
-            ].filter(Boolean).join('\r\n');
+                '',              // ← blank line — MIME header/body separator
+                normalisedBody,
+            ];
+            const rawMessage = messageParts
+                .filter((line): line is string => line !== null)
+                .join('\r\n');
 
-            const encoded = Buffer.from(headers).toString('base64url');
+            const encoded = Buffer.from(rawMessage).toString('base64url');
             const res = await gmail.users.messages.send({
                 userId: 'me',
                 requestBody: { raw: encoded },

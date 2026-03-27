@@ -15,6 +15,7 @@ export function TransformNodeWidget({ id, data, selected }: NodeProps<TransformN
       isEntry={data.isEntry}
       isParallelEntry={data.isParallelEntry}
       isSelected={selected}
+      isDisabled={data.disabled}
     >
       <p className="text-[10px] text-slate-400">
         {count} mapping{count !== 1 ? 's' : ''}

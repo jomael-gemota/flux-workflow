@@ -8,8 +8,22 @@ export async function oauthRoutes(
 ): Promise<void> {
     const { googleAuth, credentialRepo } = options;
 
+    /** Check whether Google OAuth is configured */
+    fastify.get('/oauth/google/status', async (_request, reply) => {
+        const configured = !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+        const redirectUri  = process.env.GOOGLE_REDIRECT_URI ?? 'http://localhost:3000/oauth/google/callback';
+        return reply.code(200).send({ configured, redirectUri });
+    });
+
     /** Redirect browser to Google consent page */
     fastify.get('/oauth/google/authorize', async (_request, reply) => {
+        if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+            const msg = encodeURIComponent(
+                'Google OAuth is not configured. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to your .env file.'
+            );
+            const frontendBase = process.env.CORS_ORIGIN ?? 'http://localhost:5173';
+            return reply.redirect(`${frontendBase}?oauth_error=${msg}`);
+        }
         const url = googleAuth.getAuthUrl();
         return reply.redirect(url);
     });

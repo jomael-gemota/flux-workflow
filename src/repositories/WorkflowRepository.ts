@@ -39,12 +39,22 @@ export class WorkflowRepository {
             definition: existingDef,
         });
 
-        const updated: WorkflowDefinition = {
+        const merged: WorkflowDefinition = {
             ...existingDef,
             ...updates,
             id,
             version: existing.version + 1,
         };
+
+        // If the update provides entryNodeId but no entryNodeIds, the stale
+        // entryNodeIds from existingDef would silently survive the spread and
+        // cause the runner to start from a deleted node.  Explicitly clear it
+        // so the runner always falls back to the fresh entryNodeId.
+        if (updates.entryNodeId && !updates.entryNodeIds) {
+            delete merged.entryNodeIds;
+        }
+
+        const updated = merged;
 
         await WorkflowModel.updateOne(
             { workflowId: id },

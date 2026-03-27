@@ -104,11 +104,19 @@ export function Layout({ canvas, configPanel, executionLog }: LayoutProps) {
               <div className="absolute inset-0 bg-slate-700 group-hover:bg-blue-500 transition-colors duration-150" />
               <div className="absolute inset-y-0 -inset-x-1" />
             </div>
+            {/*
+              Outer shell: shrink-0 fixes the width, overflow-hidden clips any
+              content that tries to escape the flex-row boundary.
+              Inner layer: flex-1 + min-h-0 + overflow-y-auto gives us a true
+              scrollable area that is bounded by the panel's available height.
+            */}
             <div
-              className="bg-slate-900 border-l border-slate-700 overflow-y-auto shrink-0"
+              className="flex flex-col bg-slate-900 border-l border-slate-700 shrink-0 overflow-hidden"
               style={{ width: configWidth }}
             >
-              {configPanel}
+              <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
+                {configPanel}
+              </div>
             </div>
           </>
         )}

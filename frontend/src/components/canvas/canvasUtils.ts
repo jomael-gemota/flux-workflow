@@ -38,6 +38,7 @@ export function deserialize(workflow: WorkflowDefinition): {
       retries: wn.retries,
       retryDelayMs: wn.retryDelayMs,
       timeoutMs: wn.timeoutMs,
+      disabled: wn.disabled,
     },
   }));
 
@@ -116,6 +117,7 @@ export function serialize(
         retries: d.retries,
         retryDelayMs: d.retryDelayMs,
         timeoutMs: d.timeoutMs,
+        disabled: d.disabled || undefined,
         position,
       };
     }
@@ -147,6 +149,7 @@ export function serialize(
         retries: d.retries,
         retryDelayMs: d.retryDelayMs,
         timeoutMs: d.timeoutMs,
+        disabled: d.disabled || undefined,
         position,
       };
     }
@@ -164,14 +167,44 @@ export function serialize(
       retries: d.retries,
       retryDelayMs: d.retryDelayMs,
       timeoutMs: d.timeoutMs,
+      disabled: d.disabled || undefined,
       position,
     };
   });
 
-  // Collect all canvas nodes marked as entry
-  const allEntryIds = rfNodes.filter(n => n.data.isEntry).map(n => n.id);
-  const resolvedEntryIds = allEntryIds.length > 0 ? allEntryIds : [entryNodeId];
-  const resolvedEntryNodeId = resolvedEntryIds[0];
+  // Build a set of IDs that actually exist after this serialization pass
+  const validNodeIds = new Set(nodes.map(n => n.id));
+
+  // Clean up dangling references inside each node's config/next arrays
+  for (const node of nodes) {
+    // Filter out deleted targets from next[]
+    node.next = node.next.filter(id => validNodeIds.has(id));
+
+    if (node.type === 'condition') {
+      const cfg = node.config as { trueNext?: string; falseNext?: string };
+      if (cfg.trueNext && !validNodeIds.has(cfg.trueNext)) cfg.trueNext = '';
+      if (cfg.falseNext && !validNodeIds.has(cfg.falseNext)) cfg.falseNext = '';
+    } else if (node.type === 'switch') {
+      const cfg = node.config as {
+        cases?: Array<{ next?: string }>;
+        defaultNext?: string;
+      };
+      for (const c of cfg.cases ?? []) {
+        if (c.next && !validNodeIds.has(c.next)) c.next = '';
+      }
+      if (cfg.defaultNext && !validNodeIds.has(cfg.defaultNext)) cfg.defaultNext = '';
+    }
+  }
+
+  // Collect all canvas nodes marked as entry, filtered to those that still exist
+  const allEntryIds = rfNodes
+    .filter(n => n.data.isEntry && validNodeIds.has(n.id))
+    .map(n => n.id);
+
+  // Fall back to the passed-in entryNodeId only if it still exists in the current nodes
+  const fallbackId = validNodeIds.has(entryNodeId) ? entryNodeId : (nodes[0]?.id ?? '');
+  const resolvedEntryIds = allEntryIds.length > 0 ? allEntryIds : [fallbackId].filter(Boolean);
+  const resolvedEntryNodeId = resolvedEntryIds[0] ?? '';
 
   return {
     id: workflowId,
@@ -179,7 +212,9 @@ export function serialize(
     version: 1,
     nodes,
     entryNodeId: resolvedEntryNodeId,
-    entryNodeIds: resolvedEntryIds.length > 1 ? resolvedEntryIds : undefined,
+    // Always include entryNodeIds so saves always overwrite the stale DB value.
+    // Use undefined only when there are no entries at all (empty workflow edge case).
+    entryNodeIds: resolvedEntryIds.length > 0 ? resolvedEntryIds : undefined,
     schedule,
   };
 }

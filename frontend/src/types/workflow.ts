@@ -20,6 +20,8 @@ export interface WorkflowNode {
   retries?: number;
   retryDelayMs?: number;
   timeoutMs?: number;
+  /** When true the node is bypassed during execution */
+  disabled?: boolean;
   /** Canvas position saved by the visual builder */
   position?: { x: number; y: number };
 }

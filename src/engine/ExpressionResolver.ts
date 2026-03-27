@@ -36,6 +36,18 @@ export class ExpressionResolver {
             throw new Error(`Node "${nodeId}" has no output in context. Make sure it runs before this condition.`);
         }
 
+        // Disabled-node sentinel set by WorkflowRunner when the node is bypassed
+        if (
+            nodeOutput !== null &&
+            typeof nodeOutput === 'object' &&
+            (nodeOutput as Record<string, unknown>).__disabled === true
+        ) {
+            throw new Error(
+                `Node "${nodeId}" is disabled and produced no output. ` +
+                `Enable the node or remove references to its output from downstream nodes.`
+            );
+        }
+
         const remainingPath = parts.slice(2);
         return this.walkPath(nodeOutput, remainingPath, expression);
     }

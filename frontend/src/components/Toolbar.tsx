@@ -1,19 +1,18 @@
 import { Save, Play, Loader2, GitBranch, LogOut, PanelRight, KeyRound } from 'lucide-react';
 import { Button } from './ui/Button';
 import { useWorkflowStore } from '../store/workflowStore';
-import { useUpdateWorkflow, useTriggerWorkflow, useCreateWorkflow } from '../hooks/useWorkflows';
-import { serialize } from './canvas/canvasUtils';
+import { useTriggerWorkflow } from '../hooks/useWorkflows';
+import { useSaveWorkflow } from '../hooks/useSaveWorkflow';
 import { useState } from 'react';
 import { CredentialsModal } from './ui/CredentialsModal';
 
 export function Toolbar() {
   const {
     activeWorkflow,
+    setActiveWorkflow,
     nodes,
-    edges,
     isDirty,
     setDirty,
-    setActiveWorkflow,
     setLogOpen,
     setLastExecutionId,
     beginExecution,
@@ -21,8 +20,7 @@ export function Toolbar() {
     setConfigOpen,
   } = useWorkflowStore();
 
-  const update = useUpdateWorkflow();
-  const create = useCreateWorkflow();
+  const { save, isSaving } = useSaveWorkflow();
   const trigger = useTriggerWorkflow();
   const [nameEdit, setNameEdit] = useState(false);
   const [nameValue, setNameValue] = useState('');
@@ -34,37 +32,8 @@ export function Toolbar() {
       alert('Add at least one node to the canvas before saving.');
       return;
     }
-    const entryNodes = nodes.filter((n) => n.data.isEntry);
-    const entryNodeId = entryNodes[0]?.id ?? activeWorkflow.entryNodeId;
-    const entryNodeIds = entryNodes.map((n) => n.id);
-    const def = serialize(
-      activeWorkflow.id,
-      activeWorkflow.name,
-      nodes,
-      edges,
-      entryNodeId,
-      activeWorkflow.schedule,
-      entryNodeIds.length > 0 ? entryNodeIds : undefined
-    );
-
     try {
-      if (!activeWorkflow.id || activeWorkflow.id.startsWith('__new__')) {
-        const { id: _discarded, ...defWithoutId } = def;
-        const created = await create.mutateAsync(defWithoutId);
-        if (created?.id) {
-          setActiveWorkflow({ ...created, version: created.version ?? 1 });
-        }
-      } else {
-        const updated = await update.mutateAsync({
-          id: activeWorkflow.id,
-          body: { name: def.name, nodes: def.nodes, entryNodeId: def.entryNodeId, entryNodeIds: def.entryNodeIds },
-        });
-        // Keep activeWorkflow in sync with what the server returned (e.g. new version number)
-        if (updated) {
-          setActiveWorkflow({ ...updated, version: updated.version ?? activeWorkflow.version + 1 });
-        }
-      }
-      setDirty(false);
+      await save();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
       alert(`Save failed: ${msg}`);
@@ -97,7 +66,7 @@ export function Toolbar() {
     window.location.reload();
   }
 
-  const saving = update.isPending || create.isPending;
+  const saving = isSaving;
   const triggering = trigger.isPending;
   const isNew = activeWorkflow?.id?.startsWith('__new__') ?? false;
 

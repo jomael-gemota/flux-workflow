@@ -14,6 +14,7 @@ export function GmailNodeWidget({ id, data, selected }: NodeProps<GmailNode>) {
       isEntry={data.isEntry}
       isParallelEntry={data.isParallelEntry}
       isSelected={selected}
+      isDisabled={data.disabled}
     >
       {cfg.action && (
         <p className="text-[10px] text-slate-400 truncate">

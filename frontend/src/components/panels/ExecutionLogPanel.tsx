@@ -66,20 +66,23 @@ function fmtDate(iso: string): string {
 // ── Output viewer ──────────────────────────────────────────────────────────
 
 function OutputViewer({ result, nodeName }: { result: NodeResult; nodeName: string | undefined }) {
+  const isRunnerError = result.nodeId === '__runner__';
   const output = result.output;
   const items: unknown[] = Array.isArray(output) ? output : [output];
-  const itemCount = items.length;
+  const itemCount = items.filter(i => i !== null && i !== undefined).length;
 
   return (
     <div className="flex flex-col h-full">
       {/* OUTPUT header */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-slate-700/60 shrink-0">
         <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-          Output
+          {isRunnerError ? 'Execution Error' : 'Output'}
         </span>
-        <span className="text-[11px] text-slate-500">
-          {itemCount} {itemCount === 1 ? 'item' : 'items'}
-        </span>
+        {!isRunnerError && (
+          <span className="text-[11px] text-slate-500">
+            {itemCount} {itemCount === 1 ? 'item' : 'items'}
+          </span>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto min-h-0 p-3 space-y-2">
@@ -455,12 +458,13 @@ function NodeList({
       <div className="flex-1 overflow-y-auto min-h-0">
         {results.length === 0 ? (
           <p className="text-[11px] text-slate-600 text-center py-6 px-3">
-            No node results yet.
+            No node results recorded.
           </p>
         ) : (
           results.map((r) => {
             const name = nodeNameMap[r.nodeId] ?? r.nodeId;
             const isSelected = r.nodeId === selectedNodeId;
+            const isRunnerError = r.nodeId === '__runner__';
             return (
               <button
                 key={r.nodeId}
@@ -468,13 +472,22 @@ function NodeList({
                 className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left border-b border-slate-800/60 transition-colors ${
                   isSelected
                     ? 'bg-blue-600/15 border-l-2 border-l-blue-500'
-                    : 'hover:bg-slate-800/50'
+                    : isRunnerError
+                      ? 'bg-red-500/5 hover:bg-red-500/10'
+                      : 'hover:bg-slate-800/50'
                 }`}
               >
                 <NodeStatusIcon status={r.status} />
                 <div className="flex-1 min-w-0">
-                  <p className="text-[11px] text-slate-300 font-medium truncate">{name}</p>
-                  <p className="text-[10px] text-slate-600">{fmtDuration(r.durationMs)}</p>
+                  <p className={`text-[11px] font-medium truncate ${isRunnerError ? 'text-red-300' : 'text-slate-300'}`}>
+                    {name}
+                  </p>
+                  {r.durationMs > 0 && (
+                    <p className="text-[10px] text-slate-600">{fmtDuration(r.durationMs)}</p>
+                  )}
+                  {isRunnerError && r.error && (
+                    <p className="text-[10px] text-red-400/80 truncate mt-0.5">{r.error}</p>
+                  )}
                 </div>
               </button>
             );
@@ -524,9 +537,9 @@ export function ExecutionLogPanel() {
     lastExecutionId,
   } = useWorkflowStore();
 
-  // Node-ID → name map
+  // Node-ID → name map (includes synthetic __runner__ error entry)
   const nodeNameMap = useMemo<Record<string, string>>(() => {
-    const map: Record<string, string> = {};
+    const map: Record<string, string> = { '__runner__': 'Workflow Error' };
     for (const n of activeWorkflow?.nodes ?? []) {
       map[n.id] = n.name;
     }
@@ -538,6 +551,9 @@ export function ExecutionLogPanel() {
   // Which node is selected within that execution
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
+  // Fetch the selected execution's full details (for node list + output)
+  const { data: selectedExec, isLoading: execLoading } = useExecution(selectedExecId);
+
   // Auto-select the latest execution when a new trigger fires
   useEffect(() => {
     if (lastExecutionId) {
@@ -546,8 +562,16 @@ export function ExecutionLogPanel() {
     }
   }, [lastExecutionId]);
 
-  // Fetch the selected execution's full details (for node list + output)
-  const { data: selectedExec, isLoading: execLoading } = useExecution(selectedExecId);
+  // When execution details load, auto-select the first node result
+  // (especially useful for __runner__ errors which are the only result)
+  useEffect(() => {
+    if (selectedExec && !selectedNodeId) {
+      const firstResult = selectedExec.results[0];
+      if (firstResult) {
+        setSelectedNodeId(firstResult.nodeId);
+      }
+    }
+  }, [selectedExec?.executionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [sidebarWidth, startSidebarDrag] = useResizablePanel(
     LS_LOG_SIDEBAR_W, SIDEBAR_DEFAULT, SIDEBAR_MIN, SIDEBAR_MAX,

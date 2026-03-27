@@ -14,6 +14,7 @@ export function HttpNodeWidget({ id, data, selected }: NodeProps<HttpNode>) {
       isEntry={data.isEntry}
       isParallelEntry={data.isParallelEntry}
       isSelected={selected}
+      isDisabled={data.disabled}
     >
       {cfg.url && (
         <p className="text-[10px] text-slate-400 truncate">
