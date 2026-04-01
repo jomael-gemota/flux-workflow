@@ -38,9 +38,9 @@ export function TriggerNodeWidget({ id, data, selected }: NodeProps<TriggerNode>
       isSelected={selected}
       isDisabled={data.disabled}
     >
-      <p className="text-[10px] text-slate-400 truncate">
-        <span className="font-semibold text-purple-400">{typeLabel}</span>
-        {detail && <span className="text-slate-500 ml-1">({detail})</span>}
+      <p className="text-[10px] text-slate-500 dark:text-slate-400">
+        <span className="font-semibold text-purple-500 dark:text-purple-400">{typeLabel}</span>
+        {detail && <span className="ml-1">({detail})</span>}
       </p>
     </BaseNode>
   );

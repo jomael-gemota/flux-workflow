@@ -25,8 +25,8 @@ export function SlackNodeWidget({ id, data, selected }: NodeProps<SlackNode>) {
       isDisabled={data.disabled}
     >
       {actionLabel && (
-        <p className="text-[10px] text-slate-400 truncate">
-          <span className="font-semibold text-violet-400">{actionLabel}</span>
+        <p className="text-[10px] text-slate-500 dark:text-slate-400">
+          <span className="font-semibold text-violet-600 dark:text-violet-400">{actionLabel}</span>
           {cfg.action === 'send_message' && cfg.channel && ` → #${cfg.channel}`}
           {cfg.action === 'send_dm'      && cfg.userId  && ` → @${cfg.userId}`}
           {cfg.action === 'read_messages' && cfg.channel && ` from #${cfg.channel}`}

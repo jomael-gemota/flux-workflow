@@ -21,7 +21,7 @@ export function ConditionNodeWidget({ id, data, selected }: NodeProps<ConditionN
         ],
       }}
     >
-      <p className="text-[10px] text-slate-400">if / else branch</p>
+      <p className="text-[10px] text-slate-500 dark:text-slate-400">if / else branch</p>
     </BaseNode>
   );
 }

@@ -41,11 +41,11 @@ function NodeStatusIcon({ status }: { status: string }) {
 }
 
 const STATUS_BADGE: Record<string, string> = {
-  success: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30',
-  failure: 'bg-red-500/20 text-red-300 border border-red-500/30',
-  partial: 'bg-amber-500/20 text-amber-300 border border-amber-500/30',
-  pending: 'bg-slate-600/40 text-slate-400 border border-slate-600/40',
-  running: 'bg-blue-500/20 text-blue-300 border border-blue-500/30',
+  success: 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-500/30',
+  failure: 'bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-300 border border-red-300 dark:border-red-500/30',
+  partial: 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-500/30',
+  pending: 'bg-slate-100 dark:bg-slate-600/40 text-slate-500 dark:text-slate-400 border border-slate-300 dark:border-slate-600/40',
+  running: 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-500/30',
 };
 
 function fmtDuration(ms: number): string {
@@ -74,12 +74,12 @@ function OutputViewer({ result, nodeName }: { result: NodeResult; nodeName: stri
   return (
     <div className="flex flex-col h-full">
       {/* OUTPUT header */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-slate-700/60 shrink-0">
-        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-slate-200/80 dark:border-slate-700/60 shrink-0">
+        <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
           {isRunnerError ? 'Execution Error' : 'Output'}
         </span>
         {!isRunnerError && (
-          <span className="text-[11px] text-slate-500">
+          <span className="text-[11px] text-slate-400 dark:text-slate-500">
             {itemCount} {itemCount === 1 ? 'item' : 'items'}
           </span>
         )}
@@ -88,18 +88,18 @@ function OutputViewer({ result, nodeName }: { result: NodeResult; nodeName: stri
       <div className="flex-1 overflow-y-auto min-h-0 p-3 space-y-2">
         {/* Error banner */}
         {result.status === 'failure' && result.error && (
-          <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/30 rounded-md px-3 py-2">
+          <div className="flex items-start gap-2 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 rounded-md px-3 py-2">
             <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
-            <p className="text-xs text-red-300 break-all">{result.error}</p>
+            <p className="text-xs text-red-600 dark:text-red-300 break-all">{result.error}</p>
           </div>
         )}
 
         {/* Skipped notice */}
         {result.status === 'skipped' && (
-          <div className="flex items-center gap-2 bg-slate-700/40 border border-slate-600/40 rounded-md px-3 py-2">
+          <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-700/40 border border-slate-200 dark:border-slate-600/40 rounded-md px-3 py-2">
             <SkipForward className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-            <p className="text-xs text-slate-400">
-              Node <span className="font-medium text-slate-300">{nodeName ?? result.nodeId}</span> was skipped — it was not on the active branch.
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Node <span className="font-medium text-slate-600 dark:text-slate-300">{nodeName ?? result.nodeId}</span> was skipped — it was not on the active branch.
             </p>
           </div>
         )}
@@ -116,11 +116,11 @@ function OutputViewer({ result, nodeName }: { result: NodeResult; nodeName: stri
 function DataItem({ index, total, data }: { index: number; total: number; data: unknown }) {
   if (data === null || data === undefined) {
     return (
-      <div className="bg-slate-800/50 border border-slate-700/50 rounded-md px-3 py-2">
+      <div className="bg-slate-100/80 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/50 rounded-md px-3 py-2">
         {total > 1 && (
-          <p className="text-[10px] text-slate-600 font-mono mb-1">Item {index + 1}</p>
+          <p className="text-[10px] text-slate-400 dark:text-slate-600 font-mono mb-1">Item {index + 1}</p>
         )}
-        <p className="text-xs text-slate-500 italic">Empty (no data)</p>
+        <p className="text-xs text-slate-400 dark:text-slate-500 italic">Empty (no data)</p>
       </div>
     );
   }
@@ -128,23 +128,23 @@ function DataItem({ index, total, data }: { index: number; total: number; data: 
   if (typeof data === 'object') {
     const entries = Object.entries(data as Record<string, unknown>);
     return (
-      <div className="bg-slate-800/50 border border-slate-700/50 rounded-md overflow-hidden">
+      <div className="bg-slate-100/80 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/50 rounded-md overflow-hidden">
         {total > 1 && (
-          <div className="px-3 py-1.5 border-b border-slate-700/40 bg-slate-800/80">
-            <p className="text-[10px] text-slate-500 font-mono">Item {index + 1}</p>
+          <div className="px-3 py-1.5 border-b border-slate-200 dark:border-slate-700/40 bg-slate-100 dark:bg-slate-800/80">
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">Item {index + 1}</p>
           </div>
         )}
         {entries.length === 0 ? (
-          <p className="px-3 py-2 text-xs text-slate-500 italic">Empty object</p>
+          <p className="px-3 py-2 text-xs text-slate-400 dark:text-slate-500 italic">Empty object</p>
         ) : (
           <table className="w-full text-xs">
             <tbody>
               {entries.map(([key, val]) => (
-                <tr key={key} className="border-b border-slate-700/30 last:border-0">
-                  <td className="px-3 py-1.5 text-slate-400 font-mono align-top whitespace-nowrap pr-4 w-1/3">
+                <tr key={key} className="border-b border-slate-200/60 dark:border-slate-700/30 last:border-0">
+                  <td className="px-3 py-1.5 text-slate-500 dark:text-slate-400 font-mono align-top whitespace-nowrap pr-4 w-1/3">
                     {key}
                   </td>
-                  <td className="px-3 py-1.5 text-slate-200 break-all">
+                  <td className="px-3 py-1.5 text-gray-800 dark:text-slate-200 break-all">
                     <DataValue value={val} />
                   </td>
                 </tr>
@@ -157,11 +157,11 @@ function DataItem({ index, total, data }: { index: number; total: number; data: 
   }
 
   return (
-    <div className="bg-slate-800/50 border border-slate-700/50 rounded-md px-3 py-2">
+      <div className="bg-slate-100/80 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/50 rounded-md px-3 py-2">
       {total > 1 && (
-        <p className="text-[10px] text-slate-600 font-mono mb-1">Item {index + 1}</p>
+        <p className="text-[10px] text-slate-400 dark:text-slate-600 font-mono mb-1">Item {index + 1}</p>
       )}
-      <span className="text-xs text-slate-200 break-all">{String(data)}</span>
+      <span className="text-xs text-gray-800 dark:text-slate-200 break-all">{String(data)}</span>
     </div>
   );
 }
@@ -196,7 +196,7 @@ function DataValue({ value }: { value: unknown }) {
 function EmptyRight({ message }: { message: string }) {
   return (
     <div className="flex flex-1 items-center justify-center">
-      <p className="text-xs text-slate-600 text-center px-6">{message}</p>
+      <p className="text-xs text-slate-400 dark:text-slate-600 text-center px-6">{message}</p>
     </div>
   );
 }
@@ -275,7 +275,7 @@ function ExecutionList({
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* List header */}
-      <div className="flex items-center gap-2 px-2 py-1.5 border-b border-slate-700/60 shrink-0">
+      <div className="flex items-center gap-2 px-2 py-1.5 border-b border-slate-200/80 dark:border-slate-700/60 shrink-0">
         {/* Select-all checkbox */}
         <input
           type="checkbox"
@@ -286,7 +286,7 @@ function ExecutionList({
           className="w-3 h-3 rounded accent-blue-500 shrink-0 cursor-pointer"
           title="Select all"
         />
-        <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider flex-1">
+        <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex-1">
           Runs {executions.length > 0 && `· ${executions.length}${hasMore ? '+' : ''}`}
         </span>
         {/* Delete all */}
@@ -295,7 +295,7 @@ function ExecutionList({
             onClick={() => setPendingDelete({ type: 'all' })}
             disabled={isBusy}
             title="Delete all runs"
-            className="text-slate-600 hover:text-red-400 transition-colors p-0.5 rounded"
+            className="text-slate-400 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 transition-colors p-0.5 rounded"
           >
             <Trash2 className="w-3 h-3" />
           </button>
@@ -304,14 +304,14 @@ function ExecutionList({
 
       {/* Selection action bar */}
       {checked.size > 0 && (
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-600/10 border-b border-blue-500/20 shrink-0">
-          <span className="text-[11px] text-blue-300 flex-1">
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 dark:bg-blue-600/10 border-b border-blue-200 dark:border-blue-500/20 shrink-0">
+          <span className="text-[11px] text-blue-600 dark:text-blue-300 flex-1">
             {checked.size} selected
           </span>
           <button
             onClick={() => setPendingDelete({ type: 'selected', ids: [...checked] })}
             disabled={isBusy}
-            className="flex items-center gap-1 text-[11px] text-red-400 hover:text-red-300 transition-colors font-medium"
+            className="flex items-center gap-1 text-[11px] text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 transition-colors font-medium"
           >
             {isBusy
               ? <Loader2 className="w-3 h-3 animate-spin" />
@@ -321,7 +321,7 @@ function ExecutionList({
           </button>
           <button
             onClick={() => setChecked(new Set())}
-            className="text-[11px] text-slate-500 hover:text-slate-300 transition-colors"
+            className="text-[11px] text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
           >
             Cancel
           </button>
@@ -335,8 +335,8 @@ function ExecutionList({
           </div>
         )}
         {!isLoading && executions.length === 0 && (
-          <p className="text-[11px] text-slate-600 text-center py-8 px-3">
-            No executions yet.<br />Click <span className="text-slate-400">Trigger</span> to run the workflow.
+          <p className="text-[11px] text-slate-400 dark:text-slate-600 text-center py-8 px-3">
+            No executions yet.<br />Click <span className="text-slate-500 dark:text-slate-400">Trigger</span> to run the workflow.
           </p>
         )}
 
@@ -350,12 +350,12 @@ function ExecutionList({
           return (
             <div
               key={exec.executionId}
-              className={`group flex items-start gap-2 px-2 py-2 border-b border-slate-800/60 transition-colors cursor-pointer ${
+              className={`group flex items-start gap-2 px-2 py-2 border-b border-slate-200/60 dark:border-slate-800/60 transition-colors cursor-pointer ${
                 isViewSelected
-                  ? 'bg-blue-600/15 border-l-2 border-l-blue-500'
+                  ? 'bg-blue-50 dark:bg-blue-600/15 border-l-2 border-l-blue-500'
                   : isChecked
-                    ? 'bg-slate-800/60'
-                    : 'hover:bg-slate-800/50'
+                    ? 'bg-slate-100 dark:bg-slate-800/60'
+                    : 'hover:bg-slate-100/80 dark:hover:bg-slate-800/50'
               }`}
               onClick={() => onSelect(exec.executionId)}
             >
@@ -373,13 +373,13 @@ function ExecutionList({
               </div>
 
               <div className="flex-1 min-w-0">
-                <p className="text-[11px] text-slate-300 font-medium truncate">
+                <p className="text-[11px] text-slate-600 dark:text-slate-300 font-medium truncate">
                   {fmtDate(exec.startedAt)} · {fmtTime(exec.startedAt)}
                 </p>
-                <p className="text-[10px] text-slate-600 font-mono">
+                  <p className="text-[10px] text-slate-400 dark:text-slate-600 font-mono">
                   {exec.executionId.slice(0, 8)}
                   {duration != null && (
-                    <span className="text-slate-500 ml-1">· {fmtDuration(duration)}</span>
+                    <span className="text-slate-400 dark:text-slate-500 ml-1">· {fmtDuration(duration)}</span>
                   )}
                 </p>
               </div>
@@ -396,7 +396,7 @@ function ExecutionList({
                 }}
                 disabled={isBusy}
                 title="Delete this run"
-                className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all shrink-0 mt-0.5 p-0.5"
+                className="opacity-0 group-hover:opacity-100 text-slate-400 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 transition-all shrink-0 mt-0.5 p-0.5"
               >
                 <Trash2 className="w-3 h-3" />
               </button>
@@ -406,7 +406,7 @@ function ExecutionList({
 
         {hasMore && (
           <button
-            className="w-full py-2 text-[11px] text-slate-500 hover:text-blue-400 hover:bg-slate-800/50 transition-colors"
+            className="w-full py-2 text-[11px] text-slate-400 dark:text-slate-500 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-slate-100/80 dark:hover:bg-slate-800/50 transition-colors"
             onClick={() => setFetchLimit((prev) => prev + PAGE_SIZE)}
             disabled={isLoading}
           >
@@ -449,7 +449,7 @@ function NodeList({
     <div className="flex flex-col h-full overflow-hidden">
       <button
         onClick={onBack}
-        className="flex items-center gap-1.5 px-3 py-2 border-b border-slate-700/60 text-[11px] text-slate-400 hover:text-slate-200 transition-colors shrink-0"
+        className="flex items-center gap-1.5 px-3 py-2 border-b border-slate-200/80 dark:border-slate-700/60 text-[11px] text-slate-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-200 transition-colors shrink-0"
       >
         <ChevronLeft className="w-3 h-3" />
         All runs
@@ -457,7 +457,7 @@ function NodeList({
 
       <div className="flex-1 overflow-y-auto min-h-0">
         {results.length === 0 ? (
-          <p className="text-[11px] text-slate-600 text-center py-6 px-3">
+          <p className="text-[11px] text-slate-400 dark:text-slate-600 text-center py-6 px-3">
             No node results recorded.
           </p>
         ) : (
@@ -469,24 +469,24 @@ function NodeList({
               <button
                 key={r.nodeId}
                 onClick={() => onSelectNode(r.nodeId)}
-                className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left border-b border-slate-800/60 transition-colors ${
+                className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left border-b border-slate-200/60 dark:border-slate-800/60 transition-colors ${
                   isSelected
-                    ? 'bg-blue-600/15 border-l-2 border-l-blue-500'
+                    ? 'bg-blue-50 dark:bg-blue-600/15 border-l-2 border-l-blue-500'
                     : isRunnerError
-                      ? 'bg-red-500/5 hover:bg-red-500/10'
-                      : 'hover:bg-slate-800/50'
+                      ? 'bg-red-50/80 dark:bg-red-500/5 hover:bg-red-50 dark:hover:bg-red-500/10'
+                      : 'hover:bg-slate-100/80 dark:hover:bg-slate-800/50'
                 }`}
               >
                 <NodeStatusIcon status={r.status} />
                 <div className="flex-1 min-w-0">
-                  <p className={`text-[11px] font-medium truncate ${isRunnerError ? 'text-red-300' : 'text-slate-300'}`}>
+                  <p className={`text-[11px] font-medium truncate ${isRunnerError ? 'text-red-600 dark:text-red-300' : 'text-slate-600 dark:text-slate-300'}`}>
                     {name}
                   </p>
                   {r.durationMs > 0 && (
-                    <p className="text-[10px] text-slate-600">{fmtDuration(r.durationMs)}</p>
+                    <p className="text-[10px] text-slate-400 dark:text-slate-600">{fmtDuration(r.durationMs)}</p>
                   )}
                   {isRunnerError && r.error && (
-                    <p className="text-[10px] text-red-400/80 truncate mt-0.5">{r.error}</p>
+                    <p className="text-[10px] text-red-500/80 dark:text-red-400/80 truncate mt-0.5">{r.error}</p>
                   )}
                 </div>
               </button>
@@ -519,10 +519,10 @@ function ExecDetailHeader({
   return (
     <div className="flex items-center gap-2 min-w-0">
       <ExecStatusIcon status={exec.status} />
-      <span className="text-[11px] text-slate-300 truncate">
-        <span className="font-medium">{workflowName}</span>
-        <span className="text-slate-500 ml-1">·</span>
-        <span className="text-slate-400 ml-1">{statusLabel}</span>
+          <span className="text-[11px] text-slate-600 dark:text-slate-300 truncate">
+          <span className="font-medium">{workflowName}</span>
+          <span className="text-slate-400 dark:text-slate-500 ml-1">·</span>
+          <span className="text-slate-500 dark:text-slate-400 ml-1">{statusLabel}</span>
       </span>
     </div>
   );
@@ -585,16 +585,16 @@ export function ExecutionLogPanel() {
     selectedExec?.results.find((r) => r.nodeId === selectedNodeId) ?? null;
 
   if (!workflowId || workflowId.startsWith('__new__')) {
-    return (
-      <div className="flex flex-col h-full glass-surface">
-        <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 shrink-0">
-          <span className="text-xs font-semibold text-slate-300">Logs</span>
-          <button onClick={() => setLogOpen(false)} className="text-slate-500 hover:text-white transition-colors">
+  return (
+    <div className="flex flex-col h-full glass-surface">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-black/[0.07] dark:border-white/10 shrink-0">
+          <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Logs</span>
+          <button onClick={() => setLogOpen(false)} className="text-slate-400 dark:text-slate-500 hover:text-gray-900 dark:hover:text-white transition-colors">
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
         <div className="flex flex-1 items-center justify-center">
-          <p className="text-xs text-slate-600 text-center px-6">
+          <p className="text-xs text-slate-400 dark:text-slate-600 text-center px-6">
             Save the workflow first to view execution logs.
           </p>
         </div>
@@ -605,8 +605,8 @@ export function ExecutionLogPanel() {
   return (
     <div className="flex flex-col h-full glass-surface">
       {/* ── Header ──────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 px-3 py-1.5 border-b border-white/10 shrink-0">
-        <span className="text-xs font-semibold text-slate-300 shrink-0">Logs</span>
+      <div className="flex items-center gap-3 px-3 py-1.5 border-b border-black/[0.07] dark:border-white/10 shrink-0">
+        <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 shrink-0">Logs</span>
 
         {selectedExec ? (
           <>
@@ -621,7 +621,7 @@ export function ExecutionLogPanel() {
 
         <button
           onClick={() => setLogOpen(false)}
-          className="text-slate-500 hover:text-white transition-colors shrink-0 ml-auto"
+          className="text-slate-400 dark:text-slate-500 hover:text-gray-900 dark:hover:text-white transition-colors shrink-0 ml-auto"
           title="Close"
         >
           <X className="w-3.5 h-3.5" />
@@ -678,7 +678,7 @@ export function ExecutionLogPanel() {
           onMouseDown={startSidebarDrag}
           title="Drag to resize"
         >
-          <div className="absolute inset-0 bg-slate-700/60 group-hover:bg-blue-500 transition-colors duration-150" />
+          <div className="absolute inset-0 bg-slate-200/60 dark:bg-slate-700/60 group-hover:bg-blue-500 transition-colors duration-150" />
           <div className="absolute inset-y-0 -inset-x-1" />
         </div>
 

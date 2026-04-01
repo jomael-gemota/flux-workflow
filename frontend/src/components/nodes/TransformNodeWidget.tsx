@@ -17,7 +17,7 @@ export function TransformNodeWidget({ id, data, selected }: NodeProps<TransformN
       isSelected={selected}
       isDisabled={data.disabled}
     >
-      <p className="text-[10px] text-slate-400">
+      <p className="text-[10px] text-slate-500 dark:text-slate-400">
         {count} mapping{count !== 1 ? 's' : ''}
       </p>
     </BaseNode>

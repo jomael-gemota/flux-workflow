@@ -28,8 +28,8 @@ export function BasecampNodeWidget({ id, data, selected }: NodeProps<BasecampNod
       isDisabled={data.disabled}
     >
       {actionLabel && (
-        <p className="text-[10px] text-slate-400 truncate">
-          <span className="font-semibold text-green-400">{actionLabel}</span>
+        <p className="text-[10px] text-slate-500 dark:text-slate-400">
+          <span className="font-semibold text-green-600 dark:text-green-400">{actionLabel}</span>
           {cfg.projectId && ` → project`}
         </p>
       )}

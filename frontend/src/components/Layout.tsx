@@ -40,7 +40,7 @@ export function Layout({ canvas, configPanel, executionLog }: LayoutProps) {
   );
 
   return (
-    <div className="flex flex-col h-screen bg-slate-950 text-white overflow-hidden">
+    <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-950 text-gray-900 dark:text-white overflow-hidden">
       <Toolbar />
 
       {/* ── Main row: sidebar | middle column | config panel ── */}
@@ -61,7 +61,7 @@ export function Layout({ canvas, configPanel, executionLog }: LayoutProps) {
                 onMouseDown={startLogDrag}
                 title="Drag to resize"
               >
-                <div className="absolute inset-0 bg-slate-700 group-hover:bg-blue-500 transition-colors duration-150" />
+                <div className="absolute inset-0 bg-slate-200 dark:bg-slate-700 group-hover:bg-blue-500 transition-colors duration-150" />
                 <div className="absolute inset-x-0 -inset-y-1" />
               </div>
               <div className="shrink-0 overflow-hidden glass-surface" style={{ height: logHeight }}>
@@ -71,13 +71,13 @@ export function Layout({ canvas, configPanel, executionLog }: LayoutProps) {
           )}
 
           {/* Bottom bar — always visible */}
-          <div className="h-8 shrink-0 glass-surface-soft border-t border-white/10 flex items-stretch">
+          <div className="h-8 shrink-0 glass-surface-soft border-t border-black/[0.07] dark:border-white/10 flex items-stretch">
             <button
               onClick={() => setLogOpen(!logOpen)}
-              className={`flex items-center gap-1.5 px-4 text-xs font-medium border-r border-white/10 transition-colors ${
+              className={`flex items-center gap-1.5 px-4 text-xs font-medium border-r border-black/[0.07] dark:border-white/10 transition-colors ${
                 logOpen
-                  ? 'bg-white/10 text-white'
-                  : 'text-slate-400 hover:text-white hover:bg-white/10'
+                  ? 'bg-black/5 dark:bg-white/10 text-gray-900 dark:text-white'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10'
               }`}
               title={logOpen ? 'Collapse execution log' : 'Open execution log'}
             >
@@ -101,17 +101,11 @@ export function Layout({ canvas, configPanel, executionLog }: LayoutProps) {
               onMouseDown={startConfigDrag}
               title="Drag to resize"
             >
-              <div className="absolute inset-0 bg-slate-700/70 group-hover:bg-blue-500 transition-colors duration-150" />
+              <div className="absolute inset-0 bg-slate-200/70 dark:bg-slate-700/70 group-hover:bg-blue-500 transition-colors duration-150" />
               <div className="absolute inset-y-0 -inset-x-1" />
             </div>
-            {/*
-              Outer shell: shrink-0 fixes the width, overflow-hidden clips any
-              content that tries to escape the flex-row boundary.
-              Inner layer: flex-1 + min-h-0 + overflow-y-auto gives us a true
-              scrollable area that is bounded by the panel's available height.
-            */}
             <div
-              className="flex flex-col glass-surface border-l border-white/10 shrink-0 overflow-hidden"
+              className="flex flex-col glass-surface border-l border-black/[0.07] dark:border-white/10 shrink-0 overflow-hidden"
               style={{ width: configWidth }}
             >
               <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">

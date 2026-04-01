@@ -18,7 +18,7 @@ export function OutputNodeWidget({ id, data, selected }: NodeProps<OutputNode>) 
       handles={{ outputs: [] }}
     >
       {cfg.value && (
-        <p className="text-[10px] text-slate-400 truncate">{cfg.value}</p>
+        <p className="text-[10px] text-slate-500 dark:text-slate-400">{cfg.value}</p>
       )}
     </BaseNode>
   );

@@ -17,8 +17,8 @@ export function GmailNodeWidget({ id, data, selected }: NodeProps<GmailNode>) {
       isDisabled={data.disabled}
     >
       {cfg.action && (
-        <p className="text-[10px] text-slate-400 truncate">
-          <span className="font-semibold text-red-400">{cfg.action}</span>
+        <p className="text-[10px] text-slate-500 dark:text-slate-400">
+          <span className="font-semibold text-red-600 dark:text-red-400">{cfg.action}</span>
           {cfg.action === 'send' && cfg.to && ` → ${cfg.to}`}
           {cfg.action === 'list' && cfg.query && ` "${cfg.query}"`}
         </p>

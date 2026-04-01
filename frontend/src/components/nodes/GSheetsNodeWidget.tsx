@@ -17,8 +17,8 @@ export function GSheetsNodeWidget({ id, data, selected }: NodeProps<GSheetsNode>
       isDisabled={data.disabled}
     >
       {cfg.action && (
-        <p className="text-[10px] text-slate-400 truncate">
-          <span className="font-semibold text-green-400">{cfg.action}</span>
+        <p className="text-[10px] text-slate-500 dark:text-slate-400">
+          <span className="font-semibold text-green-600 dark:text-green-400">{cfg.action}</span>
           {cfg.range && ` ${cfg.range}`}
         </p>
       )}

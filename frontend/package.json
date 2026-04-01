@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@fontsource-variable/inter": "^5.2.8",
     "@tanstack/react-query": "^5.74.4",
     "@xyflow/react": "^12.6.4",
     "lucide-react": "^0.513.0",

@@ -36,16 +36,16 @@ export function ConfirmModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-[1px]"
+        className="absolute inset-0 bg-black/40 dark:bg-black/60 backdrop-blur-[1px]"
         onClick={onCancel}
       />
 
       {/* Dialog */}
-      <div className="relative bg-slate-800 border border-slate-700 rounded-xl shadow-2xl w-full max-w-sm mx-4 p-5">
+      <div className="relative bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl w-full max-w-sm mx-4 p-5">
         {/* Close button */}
         <button
           onClick={onCancel}
-          className="absolute top-3 right-3 text-slate-500 hover:text-slate-300 transition-colors"
+          className="absolute top-3 right-3 text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
         >
           <X className="w-4 h-4" />
         </button>
@@ -54,12 +54,12 @@ export function ConfirmModal({
         <div className="flex items-start gap-3 pr-5">
           {danger && (
             <div className="w-8 h-8 rounded-full bg-red-500/15 flex items-center justify-center shrink-0">
-              <AlertTriangle className="w-4 h-4 text-red-400" />
+              <AlertTriangle className="w-4 h-4 text-red-500 dark:text-red-400" />
             </div>
           )}
           <div>
-            <h3 className="text-sm font-semibold text-white">{title}</h3>
-            <p className="text-xs text-slate-400 mt-1 leading-relaxed">{message}</p>
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">{title}</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">{message}</p>
           </div>
         </div>
 
@@ -68,7 +68,7 @@ export function ConfirmModal({
           <button
             onClick={onCancel}
             disabled={isLoading}
-            className="px-3.5 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors disabled:opacity-50"
+            className="px-3.5 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition-colors disabled:opacity-50"
           >
             Cancel
           </button>

@@ -20,6 +20,7 @@ import '@xyflow/react/dist/style.css';
 import { useWorkflowStore, type CanvasNode, type CanvasEdge, type CanvasNodeData } from '../../store/workflowStore';
 import { ExecutionEdge, type EdgeExecutionStatus } from '../edges/ExecutionEdge';
 import { NodePickerPopup } from './NodePickerPopup';
+import { nodeAccentColor } from '../nodes/NodeIcons';
 import { HttpNodeWidget } from '../nodes/HttpNodeWidget';
 import { LLMNodeWidget } from '../nodes/LLMNodeWidget';
 import { ConditionNodeWidget } from '../nodes/ConditionNodeWidget';
@@ -89,8 +90,6 @@ function resolveEdgeStatus(
   isExecuting: boolean
 ): EdgeExecutionStatus {
   // ── Pre-execution dim phase ───────────────────────────────────────
-  // When nodes are 'waiting' (just after Trigger click, before the first
-  // real poll result), dim the connector to match the greyed-out nodes.
   if (srcStatus === 'waiting' || tgtStatus === 'waiting') return 'waiting';
 
   // ── No execution data yet ─────────────────────────────────────────
@@ -101,8 +100,6 @@ function resolveEdgeStatus(
   if (srcStatus === 'success') {
     if (tgtStatus === 'skipped') return 'skipped';
     if (tgtStatus === 'failure') return 'failure';
-    // During the linger window keep the progress bar sweeping so it
-    // visually "completes its run" before settling into solid green.
     if (isExecuting) return 'flowing';
     return 'success';
   }
@@ -123,9 +120,11 @@ export function WorkflowCanvas() {
     setDirty,
     executionStatuses,
     isExecuting,
+    theme,
   } = useWorkflowStore();
 
   const rfInstance = useRef<ReactFlowInstance<CanvasNode> | null>(null);
+  const isDark = theme === 'dark';
 
   const onNodesChange = useCallback(
     (changes: NodeChange<CanvasNode>[]) => {
@@ -245,7 +244,7 @@ export function WorkflowCanvas() {
       return {
         ...edge,
         type: 'execution',
-        animated: false, // handled inside ExecutionEdge
+        animated: false,
         data: { ...(edge.data ?? {}), executionStatus: execStatus, label: edge.label },
       };
     });
@@ -253,9 +252,9 @@ export function WorkflowCanvas() {
 
   if (!activeWorkflow) {
     return (
-      <div className="h-full flex items-center justify-center bg-slate-950">
+      <div className="h-full flex items-center justify-center bg-slate-50 dark:bg-slate-950">
         <div className="text-center">
-          <p className="text-slate-500 text-sm">Select a workflow or create a new one</p>
+          <p className="text-slate-400 dark:text-slate-500 text-sm">Select a workflow or create a new one</p>
         </div>
       </div>
     );
@@ -280,14 +279,29 @@ export function WorkflowCanvas() {
         defaultEdgeOptions={{ type: 'execution' }}
         fitView
         deleteKeyCode="Delete"
-        className="bg-slate-950/90"
+        className={isDark ? 'bg-slate-950/90' : 'bg-slate-100/80'}
       >
-        <Background variant={BackgroundVariant.Dots} color="#475569" gap={20} size={1} />
-        <Controls className="!bg-slate-900/55 !backdrop-blur-md !border-white/15 !text-slate-300" />
+        <Background
+          variant={BackgroundVariant.Dots}
+          color={isDark ? '#475569' : '#94a3b8'}
+          gap={20}
+          size={1}
+        />
+        <Controls
+          className={
+            isDark
+              ? '!bg-slate-900/55 !backdrop-blur-md !border-white/15 !text-slate-300'
+              : '!bg-white/80 !backdrop-blur-md !border-slate-200 !text-slate-600'
+          }
+        />
         <MiniMap
-          className="!bg-slate-900/60 !backdrop-blur-md !border-white/15"
-          nodeColor="#3b82f6"
-          maskColor="rgba(15,23,42,0.7)"
+          className={
+            isDark
+              ? '!bg-slate-900/60 !backdrop-blur-md !border-white/15'
+              : '!bg-white/80 !backdrop-blur-md !border-slate-200'
+          }
+          nodeColor={(node) => nodeAccentColor((node.data as CanvasNodeData).nodeType)}
+          maskColor={isDark ? 'rgba(15,23,42,0.7)' : 'rgba(241,245,249,0.7)'}
         />
       </ReactFlow>
 

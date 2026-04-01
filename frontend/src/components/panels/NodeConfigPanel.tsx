@@ -88,7 +88,7 @@ const NODE_OUTPUT_FIELDS: Record<string, OutputField[]> = {
 
 function NoDataBadge() {
   return (
-    <span className="inline-flex items-center px-1 py-0.5 rounded text-[9px] font-semibold bg-amber-900/40 text-amber-400 border border-amber-700/40">
+    <span className="inline-flex items-center px-1 py-0.5 rounded text-[9px] font-semibold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-700/40">
       no data
     </span>
   );
@@ -100,13 +100,13 @@ function ValuePreview({ value }: { value: unknown }) {
   if (Array.isArray(value)) {
     if (value.length === 0) return <NoDataBadge />;
     return (
-      <span className="text-slate-400">[{value.length} item{value.length !== 1 ? 's' : ''}]</span>
+      <span className="text-slate-500 dark:text-slate-400">[{value.length} item{value.length !== 1 ? 's' : ''}]</span>
     );
   }
   if (typeof value === 'object') {
     const keys = Object.keys(value as object);
     if (keys.length === 0) return <NoDataBadge />;
-    return <span className="text-slate-400">{'{'}{keys.slice(0, 2).join(', ')}{keys.length > 2 ? ', …' : ''}{'}'}</span>;
+    return <span className="text-slate-500 dark:text-slate-400">{'{'}{keys.slice(0, 2).join(', ')}{keys.length > 2 ? ', …' : ''}{'}'}</span>;
   }
   const str = String(value);
   return (
@@ -154,24 +154,24 @@ const EXPR_RE = /\{\{nodes\.[^}]+\}\}/;
 
 function ExprToken({ nodeType, nodeName, field }: { nodeType: string; nodeName: string; field: string }) {
   return (
-    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-900/60 border border-blue-700/50 text-[10px] font-medium mx-0.5 align-middle whitespace-nowrap">
-      <span className="text-blue-400 font-bold uppercase text-[9px]">{nodeTypeLabel(nodeType)}</span>
-      <span className="text-slate-500">·</span>
-      <span className="text-slate-200">{nodeName}</span>
-      <span className="text-slate-500">·</span>
-      <span className="font-mono text-blue-300">{field}</span>
+    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/60 border border-blue-300 dark:border-blue-700/50 text-[10px] font-medium mx-0.5 align-middle whitespace-nowrap">
+      <span className="text-blue-600 dark:text-blue-400 font-bold uppercase text-[9px]">{nodeTypeLabel(nodeType)}</span>
+      <span className="text-slate-400 dark:text-slate-500">·</span>
+      <span className="text-gray-800 dark:text-slate-200">{nodeName}</span>
+      <span className="text-slate-400 dark:text-slate-500">·</span>
+      <span className="font-mono text-blue-600 dark:text-blue-300">{field}</span>
     </span>
   );
 }
 
 function DisplayValue({ value, nodes, placeholder }: { value: string; nodes: CanvasNode[]; placeholder?: string }) {
-  if (!value) return <span className="text-slate-500 text-xs italic">{placeholder ?? ''}</span>;
+  if (!value) return <span className="text-slate-400 dark:text-slate-500 text-xs italic">{placeholder ?? ''}</span>;
   const segs = parseExprSegments(value, nodes);
   return (
     <>
       {segs.map((seg, i) =>
         seg.kind === 'text'
-          ? <span key={i} className="text-slate-200 text-xs">{seg.text}</span>
+          ? <span key={i} className="text-gray-800 dark:text-slate-200 text-xs">{seg.text}</span>
           : <ExprToken key={i} nodeType={seg.nodeType} nodeName={seg.nodeName} field={seg.field} />
       )}
     </>
@@ -193,11 +193,11 @@ function VariablePickerPanel({
 
   return (
     <div className="mt-1 border border-blue-800/50 rounded-md overflow-hidden shadow-lg">
-      <div className="bg-slate-800 px-2.5 py-1.5 border-b border-slate-700">
+      <div className="bg-slate-100 dark:bg-slate-800 px-2.5 py-1.5 border-b border-slate-200 dark:border-slate-700">
         <p className="text-[10px] font-semibold text-blue-400 uppercase tracking-wider">
           Click a field to insert it
         </p>
-        <p className="text-[10px] text-slate-500 mt-0.5">
+        <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
           The expression will be placed at your cursor position.
         </p>
       </div>
@@ -237,8 +237,8 @@ function VariablePickerPanel({
                     'bg-rose-400'
                   }`}
                 />
-                <span className="text-[11px] font-semibold text-white truncate">{n.data.label}</span>
-                <span className="text-[9px] text-slate-500 shrink-0">{n.data.nodeType}</span>
+                <span className="text-[11px] font-semibold text-gray-900 dark:text-white truncate">{n.data.label}</span>
+                <span className="text-[9px] text-slate-400 dark:text-slate-500 shrink-0">{n.data.nodeType}</span>
                 {realOutput && (
                   <span className="text-[9px] text-emerald-500 shrink-0 ml-auto">● tested</span>
                 )}
@@ -253,18 +253,18 @@ function VariablePickerPanel({
                     <button
                       type="button"
                       onClick={() => onInsert(`{{nodes.${n.id}.YOUR_KEY}}`)}
-                      className="inline-flex items-center gap-1 text-[10px] bg-slate-700 hover:bg-blue-700 text-emerald-300 hover:text-white rounded px-1.5 py-0.5 font-mono transition-colors"
+                      className="inline-flex items-center gap-1 text-[10px] bg-slate-200 dark:bg-slate-700 hover:bg-blue-700 text-emerald-600 dark:text-emerald-300 hover:text-white rounded px-1.5 py-0.5 font-mono transition-colors"
                       title="Replace YOUR_KEY with your mapping key name"
                     >
                       .YOUR_KEY
                     </button>
-                    <span className="text-[10px] text-slate-500 self-center">← replace with your mapping key</span>
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500 self-center">← replace with your mapping key</span>
                   </>
                 ) : fields.length === 0 ? (
                   <button
                     type="button"
                     onClick={() => onInsert(`{{nodes.${n.id}}}`)}
-                    className="text-[10px] bg-slate-700 hover:bg-blue-700 text-emerald-300 hover:text-white rounded px-1.5 py-0.5 font-mono transition-colors"
+                    className="text-[10px] bg-slate-200 dark:bg-slate-700 hover:bg-blue-700 text-emerald-600 dark:text-emerald-300 hover:text-white rounded px-1.5 py-0.5 font-mono transition-colors"
                   >
                     {`{{nodes.${n.id}}}`}
                   </button>
@@ -276,15 +276,15 @@ function VariablePickerPanel({
                         type="button"
                         onClick={() => onInsert(`{{nodes.${n.id}.${f.key}}}`)}
                         title={`Inserts: {{nodes.${n.id}.${f.key}}}`}
-                        className="inline-flex items-center gap-1 text-[10px] bg-slate-700 hover:bg-blue-700 text-emerald-300 hover:text-white rounded px-1.5 py-0.5 transition-colors font-mono"
+                        className="inline-flex items-center gap-1 text-[10px] bg-slate-200 dark:bg-slate-700 hover:bg-blue-700 text-emerald-600 dark:text-emerald-300 hover:text-white rounded px-1.5 py-0.5 transition-colors font-mono"
                       >
                         <span>.{f.key}</span>
                         {f.hasReal ? (
-                          <span className="font-sans text-slate-400 group-hover:text-slate-200 ml-0.5">
+                          <span className="font-sans text-slate-500 dark:text-slate-400 group-hover:text-gray-800 dark:group-hover:text-slate-200 ml-0.5">
                             = <ValuePreview value={f.realValue} />
                           </span>
                         ) : (
-                          <span className="font-sans text-slate-500 ml-0.5">{f.label}</span>
+                          <span className="font-sans text-slate-400 dark:text-slate-500 ml-0.5">{f.label}</span>
                         )}
                       </button>
                     )
@@ -359,14 +359,14 @@ function ExpressionTextArea({
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between gap-1">
-        <label className="block text-xs font-medium text-slate-400">{label}</label>
+        <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">{label}</label>
         {nodes.length > 0 && (
           <button
             type="button"
             onClick={() => setOpen((p) => !p)}
             title="Insert a variable from another node"
             className={`flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded transition-colors shrink-0 ${
-              open ? 'bg-blue-600 text-white' : 'text-blue-400 hover:text-white hover:bg-slate-700'
+              open ? 'bg-blue-600 text-white' : 'text-blue-500 dark:text-blue-400 hover:text-gray-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700'
             }`}
           >
             <Braces className="w-2.5 h-2.5" />
@@ -379,7 +379,7 @@ function ExpressionTextArea({
       {showDisplay && (
         <div
           onClick={() => { setFocused(true); requestAnimationFrame(() => ref.current?.focus()); }}
-          className="w-full min-h-[56px] flex flex-wrap items-start gap-y-1 content-start bg-slate-800 border border-slate-600 hover:border-slate-500 rounded-md px-2.5 py-1.5 cursor-text"
+          className="w-full min-h-[56px] flex flex-wrap items-start gap-y-1 content-start bg-slate-100 dark:bg-slate-800 border border-slate-600 hover:border-slate-500 rounded-md px-2.5 py-1.5 cursor-text"
           title="Click to edit"
         >
           <DisplayValue value={value} nodes={nodes} placeholder={placeholder} />
@@ -395,7 +395,7 @@ function ExpressionTextArea({
         onChange={(e) => onChange(e.target.value)}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
-        className={`w-full bg-slate-800 border border-slate-600 text-slate-200 rounded-md px-2.5 py-1.5 text-xs placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-none ${showDisplay ? 'sr-only' : ''}`}
+        className={`w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-none ${showDisplay ? 'sr-only' : ''}`}
       />
       {open && (
         <VariablePickerPanel nodes={nodes} testResults={testResults} onInsert={handleInsert} />
@@ -446,14 +446,14 @@ function ExpressionInput({
     <div className="space-y-1">
       {(label || nodes.length > 0) && (
         <div className="flex items-center justify-between gap-1">
-          {label && <label className="block text-xs font-medium text-slate-400">{label}</label>}
+          {label && <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">{label}</label>}
           {nodes.length > 0 && (
             <button
               type="button"
               onClick={() => setOpen((p) => !p)}
               title="Insert a variable from another node"
               className={`flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded transition-colors shrink-0 ${
-                open ? 'bg-blue-600 text-white' : 'text-blue-400 hover:text-white hover:bg-slate-700'
+                open ? 'bg-blue-600 text-white' : 'text-blue-500 dark:text-blue-400 hover:text-gray-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700'
               }`}
             >
               <Braces className="w-2.5 h-2.5" />
@@ -467,7 +467,7 @@ function ExpressionInput({
       {showDisplay && (
         <div
           onClick={() => { setFocused(true); requestAnimationFrame(() => ref.current?.focus()); }}
-          className="w-full min-h-[30px] flex flex-wrap items-center gap-y-0.5 bg-slate-800 border border-slate-600 hover:border-slate-500 rounded-md px-2.5 py-1.5 cursor-text"
+          className="w-full min-h-[30px] flex flex-wrap items-center gap-y-0.5 bg-slate-100 dark:bg-slate-800 border border-slate-600 hover:border-slate-500 rounded-md px-2.5 py-1.5 cursor-text"
           title="Click to edit"
         >
           <DisplayValue value={value} nodes={nodes} placeholder={placeholder} />
@@ -483,9 +483,9 @@ function ExpressionInput({
         onChange={(e) => onChange(e.target.value)}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
-        className={`w-full bg-slate-800 border border-slate-600 text-slate-200 rounded-md px-2.5 py-1.5 text-xs placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${showDisplay ? 'sr-only' : ''}`}
+        className={`w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${showDisplay ? 'sr-only' : ''}`}
       />
-      {hint && <p className="text-slate-500 text-[10px]">{hint}</p>}
+      {hint && <p className="text-slate-400 dark:text-slate-500 text-[10px]">{hint}</p>}
       {open && (
         <VariablePickerPanel nodes={nodes} testResults={testResults} onInsert={handleInsert} />
       )}
@@ -507,7 +507,7 @@ function CopyButton({ text, className = '' }: { text: string; className?: string
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
       }}
-      className={`p-1 rounded hover:bg-slate-700 transition-colors text-slate-500 hover:text-slate-200 ${className}`}
+      className={`p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors text-slate-400 dark:text-slate-500 hover:text-gray-800 dark:hover:text-slate-200 ${className}`}
     >
       {copied
         ? <Check  className="w-3 h-3 text-emerald-400" />
@@ -521,7 +521,7 @@ function ResultHeader({ result }: { result: NodeTestResult }) {
   const ranAt = result.ranAt ? new Date(result.ranAt).toLocaleTimeString() : null;
   return (
     <div className={`flex items-center justify-between px-3 py-2 ${
-      result.status === 'success' ? 'bg-emerald-900/30' : 'bg-red-900/30'
+      result.status === 'success' ? 'bg-emerald-50 dark:bg-emerald-900/30' : 'bg-red-50 dark:bg-red-900/30'
     }`}>
       <div className="flex items-center gap-1.5">
         {result.status === 'success'
@@ -533,7 +533,7 @@ function ResultHeader({ result }: { result: NodeTestResult }) {
           {result.status === 'success' ? 'Test passed' : 'Test failed'}
         </span>
       </div>
-      <div className="flex items-center gap-2.5 text-[10px] text-slate-500">
+      <div className="flex items-center gap-2.5 text-[10px] text-slate-400 dark:text-slate-500">
         {ranAt && <span>{ranAt}</span>}
         <div className="flex items-center gap-0.5">
           <Clock className="w-2.5 h-2.5" />
@@ -563,10 +563,10 @@ function HttpResultDisplay({ result }: { result: NodeTestResult }) {
             {out.status}
           </span>
           <div>
-            <p className="text-xs font-medium text-slate-300">
+            <p className="text-xs font-medium text-slate-700 dark:text-slate-300">
               {httpOk ? 'Request succeeded' : 'Request failed'}
             </p>
-            <p className="text-[10px] text-slate-500">HTTP status code</p>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500">HTTP status code</p>
           </div>
         </div>
       )}
@@ -575,12 +575,12 @@ function HttpResultDisplay({ result }: { result: NodeTestResult }) {
       {bodyStr && (
         <div className="space-y-1">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+            <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
               Response data
             </span>
             <CopyButton text={bodyStr} />
           </div>
-          <pre className="bg-slate-800 rounded-md p-2.5 text-[10px] text-slate-300 font-mono overflow-auto max-h-44 leading-relaxed whitespace-pre-wrap break-all">
+          <pre className="bg-slate-100 dark:bg-slate-800 rounded-md p-2.5 text-[10px] text-slate-700 dark:text-slate-300 font-mono overflow-auto max-h-44 leading-relaxed whitespace-pre-wrap break-all">
             {bodyStr}
           </pre>
         </div>
@@ -592,7 +592,7 @@ function HttpResultDisplay({ result }: { result: NodeTestResult }) {
           <button
             type="button"
             onClick={() => setHeadersOpen((p) => !p)}
-            className="flex items-center gap-1 text-[10px] text-slate-500 hover:text-slate-300 transition-colors"
+            className="flex items-center gap-1 text-[10px] text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
           >
             {headersOpen
               ? <ChevronUp   className="w-3 h-3" />
@@ -600,11 +600,11 @@ function HttpResultDisplay({ result }: { result: NodeTestResult }) {
             Response headers ({Object.keys(out.headers).length})
           </button>
           {headersOpen && (
-            <div className="mt-1 space-y-0.5 bg-slate-800 rounded p-2">
+            <div className="mt-1 space-y-0.5 bg-slate-100 dark:bg-slate-800 rounded p-2">
               {Object.entries(out.headers).map(([k, v]) => (
                 <div key={k} className="flex gap-1 text-[10px]">
-                  <span className="text-slate-500 shrink-0 min-w-0">{k}:</span>
-                  <span className="text-slate-400 break-all">{v}</span>
+                  <span className="text-slate-400 dark:text-slate-500 shrink-0 min-w-0">{k}:</span>
+                  <span className="text-slate-500 dark:text-slate-400 break-all">{v}</span>
                 </div>
               ))}
             </div>
@@ -630,13 +630,13 @@ function LLMResultDisplay({ result }: { result: NodeTestResult }) {
       {out.content && (
         <div className="space-y-1">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+            <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
               AI Response
             </span>
             <CopyButton text={out.content} />
           </div>
-          <div className="bg-slate-800 rounded-md p-2.5 border-l-2 border-blue-500">
-            <p className="text-xs text-slate-200 leading-relaxed whitespace-pre-wrap">
+          <div className="bg-slate-100 dark:bg-slate-800 rounded-md p-2.5 border-l-2 border-blue-500">
+            <p className="text-xs text-gray-800 dark:text-slate-200 leading-relaxed whitespace-pre-wrap">
               {out.content}
             </p>
           </div>
@@ -644,16 +644,16 @@ function LLMResultDisplay({ result }: { result: NodeTestResult }) {
       )}
 
       {/* Stats strip */}
-      <div className="flex flex-wrap gap-3 text-[10px] text-slate-500 bg-slate-800/50 rounded px-2.5 py-2">
+      <div className="flex flex-wrap gap-3 text-[10px] text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800/50 rounded px-2.5 py-2">
         {out.model && (
           <span>
-            <span className="text-slate-400 font-medium">Model </span>
+            <span className="text-slate-500 dark:text-slate-400 font-medium">Model </span>
             {out.model}
           </span>
         )}
         {out.usage?.totalTokens != null && (
           <span>
-            <span className="text-slate-400 font-medium">Tokens </span>
+            <span className="text-slate-500 dark:text-slate-400 font-medium">Tokens </span>
             {out.usage.totalTokens}
             {out.usage.promptTokens != null && (
               <span className="text-slate-600 ml-1">
@@ -679,17 +679,17 @@ function ConditionResultDisplay({ result }: { result: NodeTestResult }) {
         <span className={`text-2xl font-bold ${passed ? 'text-emerald-400' : 'text-amber-400'}`}>
           {passed ? 'TRUE' : 'FALSE'}
         </span>
-        <p className="text-xs text-slate-300 leading-snug">
+        <p className="text-xs text-slate-700 dark:text-slate-300 leading-snug">
           {passed
             ? 'Condition was met — takes the true branch'
             : 'Condition was not met — takes the false branch'}
         </p>
       </div>
       {out.nextNodeId && (
-        <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
+        <div className="flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500">
           <ArrowRight className="w-3 h-3 shrink-0" />
           Routes to node{' '}
-          <span className="font-mono text-slate-400">{out.nextNodeId}</span>
+          <span className="font-mono text-slate-500 dark:text-slate-400">{out.nextNodeId}</span>
         </div>
       )}
     </div>
@@ -705,22 +705,22 @@ function SwitchResultDisplay({ result }: { result: NodeTestResult }) {
   return (
     <div className="p-3 space-y-2">
       <div>
-        <p className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold mb-1.5">
+        <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold mb-1.5">
           Matched case
         </p>
         <span className={`inline-block px-2.5 py-1 rounded text-xs font-semibold ${
           isDefault
-            ? 'bg-slate-700 text-slate-300'
-            : 'bg-blue-900/50 text-blue-300 border border-blue-700/40'
+            ? 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+            : 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-700/40'
         }`}>
           {out.matchedCase ?? 'default'}
         </span>
       </div>
       {out.nextNodeId && (
-        <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
+        <div className="flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500">
           <ArrowRight className="w-3 h-3 shrink-0" />
           Routes to{' '}
-          <span className="font-mono text-slate-400">{out.nextNodeId}</span>
+          <span className="font-mono text-slate-500 dark:text-slate-400">{out.nextNodeId}</span>
         </div>
       )}
     </div>
@@ -737,11 +737,11 @@ function GenericResultDisplay({ result }: { result: NodeTestResult }) {
     return (
       <div className="p-3 space-y-1">
         <div className="flex items-center justify-between">
-          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Output</span>
+          <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Output</span>
           <CopyButton text={out} />
         </div>
-        <div className="bg-slate-800 rounded-md p-2.5">
-          <p className="text-xs text-slate-200 whitespace-pre-wrap leading-relaxed">{out}</p>
+        <div className="bg-slate-100 dark:bg-slate-800 rounded-md p-2.5">
+          <p className="text-xs text-gray-800 dark:text-slate-200 whitespace-pre-wrap leading-relaxed">{out}</p>
         </div>
       </div>
     );
@@ -752,16 +752,16 @@ function GenericResultDisplay({ result }: { result: NodeTestResult }) {
     return (
       <div className="p-3 space-y-2">
         <div className="flex items-center justify-between">
-          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+          <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
             Output — {entries.length} field{entries.length !== 1 ? 's' : ''}
           </span>
           <CopyButton text={outStr} />
         </div>
         <div className="space-y-1">
           {entries.map(([k, v]) => (
-            <div key={k} className="flex items-start gap-2 bg-slate-800 rounded px-2.5 py-1.5">
+            <div key={k} className="flex items-start gap-2 bg-slate-100 dark:bg-slate-800 rounded px-2.5 py-1.5">
               <span className="text-[10px] font-mono text-blue-400 shrink-0 pt-0.5 min-w-[60px]">{k}</span>
-              <span className="text-[10px] text-slate-300 break-all min-w-0 flex-1">
+              <span className="text-[10px] text-slate-700 dark:text-slate-300 break-all min-w-0 flex-1">
                 {v == null
                   ? <span className="text-slate-600 italic">empty</span>
                   : typeof v === 'boolean'
@@ -769,7 +769,7 @@ function GenericResultDisplay({ result }: { result: NodeTestResult }) {
                         {v ? 'true' : 'false'}
                       </span>
                     : typeof v === 'object'
-                      ? <span className="text-slate-400 font-mono">{JSON.stringify(v)}</span>
+                      ? <span className="text-slate-500 dark:text-slate-400 font-mono">{JSON.stringify(v)}</span>
                       : <span>{String(v)}</span>
                 }
               </span>
@@ -784,10 +784,10 @@ function GenericResultDisplay({ result }: { result: NodeTestResult }) {
   return (
     <div className="p-3 space-y-1">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Output</span>
+        <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Output</span>
         {out != null && <CopyButton text={String(out)} />}
       </div>
-      <p className="text-xs text-slate-200 bg-slate-800 rounded px-2.5 py-2">
+      <p className="text-xs text-gray-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 rounded px-2.5 py-2">
         {out == null
           ? <span className="italic text-slate-600">No output</span>
           : String(out)}
@@ -807,15 +807,15 @@ function TestResultDisplay({ result, nodeType }: { result: NodeTestResult; nodeT
 
       {/* Error detail */}
       {result.status === 'failure' && result.error && (
-        <div className="p-3 bg-red-950/20 space-y-1">
-          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">What went wrong</p>
-          <p className="text-xs text-red-300 break-words leading-relaxed">{result.error}</p>
+        <div className="p-3 bg-red-50 dark:bg-red-950/20 space-y-1">
+          <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">What went wrong</p>
+          <p className="text-xs text-red-600 dark:text-red-300 break-words leading-relaxed">{result.error}</p>
         </div>
       )}
 
       {/* Success output — node-type-aware */}
       {result.status === 'success' && result.output != null && (
-        <div className="bg-slate-900/80">
+        <div className="bg-slate-50 dark:bg-slate-900/80">
           {nodeType === 'http'      && <HttpResultDisplay      result={result} />}
           {nodeType === 'llm'       && <LLMResultDisplay       result={result} />}
           {nodeType === 'condition' && <ConditionResultDisplay result={result} />}
@@ -859,15 +859,15 @@ function NodeTestPanel({
   }
 
   return (
-    <div className="rounded-md border border-slate-700 overflow-hidden">
+    <div className="rounded-md border border-slate-200 dark:border-slate-700 overflow-hidden">
       <button
         type="button"
         onClick={() => setOpen((p) => !p)}
-        className="w-full flex items-center justify-between px-2.5 py-1.5 bg-slate-800 hover:bg-slate-750 transition-colors"
+        className="w-full flex items-center justify-between px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-750 transition-colors"
       >
         <div className="flex items-center gap-1.5">
           <Play className="w-3 h-3 text-blue-400" />
-          <span className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider">
+          <span className="text-[10px] font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
             Test this node
           </span>
           {displayResult && (
@@ -876,17 +876,17 @@ function NodeTestPanel({
             }`} />
           )}
         </div>
-        {open ? <ChevronUp className="w-3 h-3 text-slate-500" /> : <ChevronDown className="w-3 h-3 text-slate-500" />}
+        {open ? <ChevronUp className="w-3 h-3 text-slate-400 dark:text-slate-500" /> : <ChevronDown className="w-3 h-3 text-slate-400 dark:text-slate-500" />}
       </button>
 
       {open && (
-        <div className="p-2.5 space-y-2.5 bg-slate-900/60">
+        <div className="p-2.5 space-y-2.5 bg-slate-50 dark:bg-slate-900/60">
           {/* Run button */}
           <button
             type="button"
             onClick={handleRun}
             disabled={testNode.isPending}
-            className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded text-xs font-medium transition-colors"
+            className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-gray-900 dark:text-white rounded text-xs font-medium transition-colors"
           >
             {testNode.isPending
               ? <><Loader2 className="w-3 h-3 animate-spin" /> Running…</>
@@ -959,10 +959,10 @@ function DisableNodeWarningModal({
       <div className="absolute inset-0 bg-black/60 backdrop-blur-[1px]" onClick={onCancel} />
 
       {/* Dialog */}
-      <div className="relative bg-slate-800 border border-slate-700 rounded-xl shadow-2xl w-full max-w-sm mx-4 p-5">
+      <div className="relative bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl w-full max-w-sm mx-4 p-5">
         <button
           onClick={onCancel}
-          className="absolute top-3 right-3 text-slate-500 hover:text-slate-300 transition-colors"
+          className="absolute top-3 right-3 text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
         >
           <X className="w-4 h-4" />
         </button>
@@ -973,10 +973,10 @@ function DisableNodeWarningModal({
             <AlertTriangle className="w-4 h-4 text-amber-400" />
           </div>
           <div>
-            <h3 className="text-sm font-semibold text-white">Node output is in use</h3>
-            <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-              <span className="font-medium text-slate-200">"{nodeName}"</span> is referenced by{' '}
-              <span className="font-medium text-amber-300">{dependents.length} node{dependents.length !== 1 ? 's' : ''}</span>.
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Node output is in use</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+              <span className="font-medium text-gray-800 dark:text-slate-200">"{nodeName}"</span> is referenced by{' '}
+              <span className="font-medium text-amber-600 dark:text-amber-300">{dependents.length} node{dependents.length !== 1 ? 's' : ''}</span>.
               Disabling it will cause those nodes to fail with an error when the workflow runs.
             </p>
           </div>
@@ -987,13 +987,13 @@ function DisableNodeWarningModal({
           {dependents.map(dep => (
             <div
               key={dep.id}
-              className="flex items-center gap-2 px-2.5 py-1.5 bg-slate-900/70 rounded-md border border-slate-700/50"
+              className="flex items-center gap-2 px-2.5 py-1.5 bg-slate-50 dark:bg-slate-900/70 rounded-md border border-slate-200 dark:border-slate-700/50"
             >
               <span className="shrink-0 opacity-70">
                 <NodeIcon type={dep.data.nodeType} size={12} />
               </span>
-              <span className="text-xs font-medium text-slate-200 truncate flex-1">{dep.data.label}</span>
-              <span className="text-[10px] text-slate-500 shrink-0 uppercase tracking-wide">{dep.data.nodeType}</span>
+              <span className="text-xs font-medium text-gray-800 dark:text-slate-200 truncate flex-1">{dep.data.label}</span>
+              <span className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0 uppercase tracking-wide">{dep.data.nodeType}</span>
             </div>
           ))}
         </div>
@@ -1003,7 +1003,7 @@ function DisableNodeWarningModal({
           <button
             onClick={onCancel}
             disabled={isLoading}
-            className="px-3.5 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors disabled:opacity-50"
+            className="px-3.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 rounded-lg transition-colors disabled:opacity-50"
           >
             Cancel
           </button>
@@ -1091,7 +1091,7 @@ export function NodeConfigPanel() {
 
   if (!selectedNode) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-slate-600 gap-2 px-4 text-center">
+      <div className="flex flex-col items-center justify-center h-full text-slate-400 dark:text-slate-600 gap-2 px-4 text-center">
         <Settings2 className="w-8 h-8" />
         <p className="text-xs">Click a node to edit its configuration</p>
       </div>
@@ -1225,15 +1225,15 @@ export function NodeConfigPanel() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="min-w-0 flex-1 mr-2">
-          <p className="text-[10px] text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+          <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
             {nodeType}
             {isDirtyLocal && (
-              <span className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[9px] font-semibold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+              <span className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[9px] font-semibold bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-500/30">
                 ● unsaved
               </span>
             )}
           </p>
-          <p className={`text-sm font-semibold truncate ${data.disabled ? 'text-slate-500 line-through' : 'text-white'}`}>
+          <p className={`text-sm font-semibold truncate ${data.disabled ? 'text-slate-400 dark:text-slate-500 line-through' : 'text-gray-900 dark:text-white'}`}>
             {draft?.label ?? data.label}
           </p>
         </div>
@@ -1248,7 +1248,7 @@ export function NodeConfigPanel() {
               'Disable this node (it will be skipped during execution)'
             }
             className={`transition-colors disabled:opacity-50 disabled:cursor-wait ${
-              data.disabled ? 'text-red-400 hover:text-red-300' : 'text-slate-500 hover:text-red-400'
+              data.disabled ? 'text-red-400 hover:text-red-300' : 'text-slate-400 dark:text-slate-500 hover:text-red-400'
             }`}
           >
             {isSavingDisabled
@@ -1260,7 +1260,7 @@ export function NodeConfigPanel() {
           <button
             onClick={toggleEntry}
             title={data.isEntry ? 'Remove as start node' : 'Mark as start node (⭐ = runs on trigger)'}
-            className={`transition-colors ${data.isEntry ? 'text-amber-400' : 'text-slate-500 hover:text-amber-400'}`}
+            className={`transition-colors ${data.isEntry ? 'text-amber-400' : 'text-slate-400 dark:text-slate-500 hover:text-amber-400'}`}
           >
             <Star className={`w-4 h-4 ${data.isEntry ? 'fill-amber-400' : ''}`} />
           </button>
@@ -1269,19 +1269,19 @@ export function NodeConfigPanel() {
 
       {/* Disabled banner */}
       {data.disabled && (
-        <div className="flex items-center gap-2 px-2.5 py-2 bg-slate-700/40 border border-dashed border-slate-500/50 rounded-md">
-          <Power className="w-3 h-3 text-slate-400 shrink-0" />
-          <p className="text-[10px] text-slate-400">
-            This node is <span className="font-semibold text-slate-300">disabled</span> — it will be skipped when the workflow runs. Any downstream node that uses its output will fail.
+        <div className="flex items-center gap-2 px-2.5 py-2 bg-slate-200 dark:bg-slate-700/40 border border-dashed border-slate-500/50 rounded-md">
+          <Power className="w-3 h-3 text-slate-500 dark:text-slate-400 shrink-0" />
+          <p className="text-[10px] text-slate-500 dark:text-slate-400">
+            This node is <span className="font-semibold text-slate-700 dark:text-slate-300">disabled</span> — it will be skipped when the workflow runs. Any downstream node that uses its output will fail.
           </p>
         </div>
       )}
 
       {/* Multi-entry hint */}
       {entryCount > 1 && data.isEntry && (
-        <div className="flex items-center gap-1.5 px-2 py-1.5 bg-amber-900/20 border border-amber-700/30 rounded-md">
-          <Star className="w-2.5 h-2.5 text-amber-400 fill-amber-400 shrink-0" />
-          <p className="text-[10px] text-amber-300">
+        <div className="flex items-center gap-1.5 px-2 py-1.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/30 rounded-md">
+          <Star className="w-2.5 h-2.5 text-amber-500 dark:text-amber-400 fill-amber-500 dark:fill-amber-400 shrink-0" />
+          <p className="text-[10px] text-amber-700 dark:text-amber-300">
             {entryCount} start nodes — they will run simultaneously when triggered.
           </p>
         </div>
@@ -1289,20 +1289,20 @@ export function NodeConfigPanel() {
 
       {/* Node name */}
       <div className="space-y-1">
-        <label className="block text-xs font-medium text-slate-400">Node name</label>
+        <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Node name</label>
         <input
           type="text"
           value={draft?.label ?? data.label}
           onChange={(e) => setDraft((prev) => prev ? { ...prev, label: e.target.value } : prev)}
-          className="w-full bg-slate-800 border border-slate-600 text-slate-200 rounded-md px-2.5 py-1.5 text-xs placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+          className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
         />
       </div>
 
       {/* Test panel */}
       {isUnsaved ? (
-        <div className="flex items-center gap-1.5 px-2.5 py-2 bg-slate-800/50 rounded-md border border-slate-700">
-          <AlertCircle className="w-3 h-3 text-slate-500 shrink-0" />
-          <p className="text-[10px] text-slate-500">Save the workflow first to enable node testing.</p>
+        <div className="flex items-center gap-1.5 px-2.5 py-2 bg-slate-100 dark:bg-slate-800/50 rounded-md border border-slate-200 dark:border-slate-700">
+          <AlertCircle className="w-3 h-3 text-slate-400 dark:text-slate-500 shrink-0" />
+          <p className="text-[10px] text-slate-400 dark:text-slate-500">Save the workflow first to enable node testing.</p>
         </div>
       ) : (
         <NodeTestPanel
@@ -1314,7 +1314,7 @@ export function NodeConfigPanel() {
         />
       )}
 
-      <div className="border-t border-slate-700" />
+      <div className="border-t border-slate-200 dark:border-slate-700" />
 
       {/* Type-specific config */}
       {nodeType === 'http' && (
@@ -1361,15 +1361,15 @@ export function NodeConfigPanel() {
       )}
 
       {/* Retry & Timeout */}
-      <div className="border-t border-slate-700" />
-      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Retry & Timeout</p>
+      <div className="border-t border-slate-200 dark:border-slate-700" />
+      <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold">Retry & Timeout</p>
       {[
         { label: 'Retries (0–5)', key: 'retries' as const, min: 0, max: 5, val: draft?.retries ?? 0 },
         { label: 'Retry delay (ms)', key: 'retryDelayMs' as const, min: 0, val: draft?.retryDelayMs ?? 0 },
         { label: 'Timeout (ms, 0 = none)', key: 'timeoutMs' as const, min: 0, val: draft?.timeoutMs ?? 0 },
       ].map(({ label, key, min, max, val }) => (
         <div key={key} className="space-y-1">
-          <label className="block text-xs font-medium text-slate-400">{label}</label>
+          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">{label}</label>
           <input
             type="number"
             min={min}
@@ -1383,7 +1383,7 @@ export function NodeConfigPanel() {
                   : Number(e.target.value),
               } : prev)
             }
-            className="w-full bg-slate-800 border border-slate-600 text-slate-200 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+            className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
           />
         </div>
       ))}
@@ -1401,17 +1401,17 @@ export function NodeConfigPanel() {
     </div>
 
     {/* ── Sticky Save / Cancel footer ─────────────────────────────────────── */}
-    <div className="sticky bottom-0 z-10 bg-slate-900/95 backdrop-blur-sm border-t border-slate-700/70 px-4 py-3 flex items-center gap-2 shrink-0">
+    <div className="sticky bottom-0 z-10 bg-slate-50 dark:bg-slate-900/95 backdrop-blur-sm border-t border-slate-200 dark:border-slate-700/70 px-4 py-3 flex items-center gap-2 shrink-0">
       <button
         onClick={handleNodeSave}
         disabled={!isDirtyLocal || isSavingNode}
         title={isDirtyLocal ? 'Save changes to this node' : 'No changes to save'}
         className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-md text-xs font-semibold transition-all duration-150 ${
           saveSuccess
-            ? 'bg-green-600/80 text-white cursor-default'
+            ? 'bg-green-600/80 text-gray-900 dark:text-white cursor-default'
             : isDirtyLocal && !isSavingNode
-            ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-sm shadow-blue-900/50'
-            : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+            ? 'bg-blue-600 hover:bg-blue-500 text-gray-900 dark:text-white shadow-sm shadow-blue-900/50'
+            : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed'
         }`}
       >
         {isSavingNode ? (
@@ -1426,7 +1426,7 @@ export function NodeConfigPanel() {
       <button
         onClick={handleNodeCancel}
         title={isDirtyLocal ? 'Discard changes and close' : 'Close config panel'}
-        className="flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-md text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-slate-700/60 transition-colors"
+        className="flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-md text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-gray-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/60 transition-colors"
       >
         <X className="w-3 h-3" />
         {isDirtyLocal ? 'Discard' : 'Close'}
@@ -1487,11 +1487,11 @@ function HttpConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
       {/* Headers */}
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
-          <label className="block text-xs font-medium text-slate-400">Headers</label>
+          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Headers</label>
           <button
             type="button"
             onClick={addHeader}
-            className="text-[10px] text-blue-400 hover:text-white hover:bg-slate-700 px-1.5 py-0.5 rounded transition-colors"
+            className="text-[10px] text-blue-500 dark:text-blue-400 hover:text-gray-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700 px-1.5 py-0.5 rounded transition-colors"
           >
             + Add header
           </button>
@@ -1504,14 +1504,14 @@ function HttpConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
         {headerEntries.map(([key, value], i) => (
           <div key={i} className="flex items-center gap-1">
             <input
-              className="flex-1 min-w-0 bg-slate-800 border border-slate-600 text-slate-200 rounded px-2 py-1 text-xs placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="flex-1 min-w-0 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded px-2 py-1 text-xs placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               value={key}
               onChange={(e) => updateHeader(key, e.target.value, value)}
               placeholder="Header name"
             />
             <span className="text-slate-600 text-xs shrink-0">:</span>
             <input
-              className="flex-1 min-w-0 bg-slate-800 border border-slate-600 text-slate-200 rounded px-2 py-1 text-xs placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="flex-1 min-w-0 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded px-2 py-1 text-xs placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               value={value}
               onChange={(e) => updateHeader(key, key, e.target.value)}
               placeholder="Value"
@@ -1519,7 +1519,7 @@ function HttpConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
             <button
               type="button"
               onClick={() => removeHeader(key)}
-              className="text-slate-500 hover:text-red-400 px-1 shrink-0 text-sm"
+              className="text-slate-400 dark:text-slate-500 hover:text-red-400 px-1 shrink-0 text-sm"
             >
               ×
             </button>
@@ -1568,22 +1568,22 @@ function LLMConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
         ]}
       />
       <div className="space-y-1">
-        <label className="block text-xs font-medium text-slate-400">Model</label>
+        <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Model</label>
         <input type="text" value={String(cfg.model ?? '')} onChange={(e) => onChange({ model: e.target.value })}
           placeholder="gpt-4o-mini"
-          className="w-full bg-slate-800 border border-slate-600 text-slate-200 rounded-md px-2.5 py-1.5 text-xs placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500" />
+          className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500" />
       </div>
       <div className="space-y-1">
-        <label className="block text-xs font-medium text-slate-400">Temperature (0–2)</label>
+        <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Temperature (0–2)</label>
         <input type="number" min={0} max={2} step={0.1} value={String(cfg.temperature ?? 0.7)}
           onChange={(e) => onChange({ temperature: parseFloat(e.target.value) })}
-          className="w-full bg-slate-800 border border-slate-600 text-slate-200 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500" />
+          className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500" />
       </div>
       <div className="space-y-1">
-        <label className="block text-xs font-medium text-slate-400">Max tokens</label>
+        <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Max tokens</label>
         <input type="number" min={1} value={String(cfg.maxTokens ?? 500)}
           onChange={(e) => onChange({ maxTokens: Number(e.target.value) })}
-          className="w-full bg-slate-800 border border-slate-600 text-slate-200 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500" />
+          className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500" />
       </div>
       <ExpressionTextArea
         label="System prompt"
@@ -1626,7 +1626,7 @@ function ConditionConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps
 
   return (
     <>
-      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Condition</p>
+      <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold">Condition</p>
       <ExpressionInput
         label="Left side (what to check)"
         value={String(condition.left ?? '')}
@@ -1663,11 +1663,11 @@ function ConditionConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps
           testResults={testResults}
         />
       ) : (
-        <div className="flex items-center gap-2 px-2 py-1.5 bg-slate-800/50 border border-slate-700/40 rounded text-[11px] text-slate-500 italic">
+        <div className="flex items-center gap-2 px-2 py-1.5 bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/40 rounded text-[11px] text-slate-400 dark:text-slate-500 italic">
           No comparison value needed for this operator.
         </div>
       )}
-      <p className="text-[10px] text-slate-500 mt-1">
+      <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
         Connect the <strong className="text-amber-400">true</strong> and{' '}
         <strong className="text-amber-400">false</strong> handles on the canvas to set routing.
       </p>
@@ -1695,15 +1695,15 @@ function SwitchConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
       {cases.map((c, i) => {
         const cond = (c.condition as Record<string, unknown>) ?? {};
         return (
-          <div key={i} className="bg-slate-800 rounded-md p-2 space-y-2">
+          <div key={i} className="bg-slate-100 dark:bg-slate-800 rounded-md p-2 space-y-2">
             <div className="flex items-center justify-between gap-1">
               <input
-                className="flex-1 min-w-0 bg-slate-700 border border-slate-600 text-slate-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="flex-1 min-w-0 bg-slate-200 dark:bg-slate-700 border border-slate-600 text-gray-800 dark:text-slate-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
                 value={String(c.label ?? `Case ${i + 1}`)}
                 onChange={(e) => updateCase(i, { label: e.target.value })}
                 placeholder="Case label"
               />
-              <button onClick={() => removeCase(i)} className="text-slate-500 hover:text-red-400 ml-1 shrink-0 text-sm">×</button>
+              <button onClick={() => removeCase(i)} className="text-slate-400 dark:text-slate-500 hover:text-red-400 ml-1 shrink-0 text-sm">×</button>
             </div>
             <ExpressionInput
               label="Check this value"
@@ -1734,16 +1734,16 @@ function SwitchConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
             />
             {!NO_VALUE_OPERATORS.has(String(cond.operator ?? 'eq')) ? (
               <div className="space-y-1">
-                <label className="block text-xs font-medium text-slate-400">Compare to</label>
+                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Compare to</label>
                 <input
-                  className="w-full bg-slate-700 border border-slate-600 text-slate-200 rounded px-2 py-1 text-xs placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="w-full bg-slate-200 dark:bg-slate-700 border border-slate-600 text-gray-800 dark:text-slate-200 rounded px-2 py-1 text-xs placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   value={String(cond.right ?? '')}
                   onChange={(e) => updateCase(i, { condition: { ...cond, right: e.target.value } })}
                   placeholder="e.g. 200"
                 />
               </div>
             ) : (
-              <div className="flex items-center gap-2 px-2 py-1.5 bg-slate-800/50 border border-slate-700/40 rounded text-[11px] text-slate-500 italic">
+              <div className="flex items-center gap-2 px-2 py-1.5 bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/40 rounded text-[11px] text-slate-400 dark:text-slate-500 italic">
                 No comparison value needed.
               </div>
             )}
@@ -1752,11 +1752,11 @@ function SwitchConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
       })}
       <button
         onClick={addCase}
-        className="w-full text-xs text-slate-400 hover:text-white border border-dashed border-slate-600 hover:border-slate-400 rounded-md py-1.5 transition-colors"
+        className="w-full text-xs text-slate-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white border border-dashed border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-400 rounded-md py-1.5 transition-colors"
       >
         + Add case
       </button>
-      <p className="text-[10px] text-slate-500">
+      <p className="text-[10px] text-slate-400 dark:text-slate-500">
         Connect each case handle on the canvas to route to the target node.
       </p>
     </>
@@ -1783,8 +1783,8 @@ function TransformConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps
 
   return (
     <>
-      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Mappings</p>
-      <p className="text-[10px] text-slate-500">
+      <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold">Mappings</p>
+      <p className="text-[10px] text-slate-400 dark:text-slate-500">
         Left = output key name. Right = where the value comes from (use{' '}
         <span className="text-blue-400">Insert variable</span> to pick from another node).
       </p>
@@ -1802,7 +1802,7 @@ function TransformConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps
       ))}
       <button
         onClick={addMapping}
-        className="w-full text-xs text-slate-400 hover:text-white border border-dashed border-slate-600 hover:border-slate-400 rounded-md py-1.5 transition-colors"
+        className="w-full text-xs text-slate-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white border border-dashed border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-400 rounded-md py-1.5 transition-colors"
       >
         + Add mapping
       </button>
@@ -1834,7 +1834,7 @@ function TransformMappingRow({
     <div className="space-y-1">
       <div className="flex items-center gap-1">
         <input
-          className="flex-1 min-w-0 bg-slate-800 border border-slate-600 text-slate-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+          className="flex-1 min-w-0 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
           value={outputKey}
           onChange={(e) => onKeyChange(e.target.value)}
           placeholder="outputKey"
@@ -1842,7 +1842,7 @@ function TransformMappingRow({
         <span className="text-slate-600 text-xs shrink-0">←</span>
         <input
           ref={valueRef}
-          className="flex-1 min-w-0 bg-slate-800 border border-slate-600 text-slate-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+          className="flex-1 min-w-0 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
           value={valueExpr}
           onChange={(e) => onValueChange(e.target.value)}
           placeholder="variable or static value"
@@ -1853,13 +1853,13 @@ function TransformMappingRow({
             onClick={() => setPickerOpen((p) => !p)}
             title="Insert variable"
             className={`shrink-0 p-1 rounded transition-colors ${
-              pickerOpen ? 'bg-blue-600 text-white' : 'text-blue-400 hover:text-white hover:bg-slate-700'
+              pickerOpen ? 'bg-blue-600 text-white' : 'text-blue-500 dark:text-blue-400 hover:text-gray-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700'
             }`}
           >
             <Braces className="w-3 h-3" />
           </button>
         )}
-        <button onClick={onRemove} className="text-slate-500 hover:text-red-400 px-1 shrink-0 text-sm">×</button>
+        <button onClick={onRemove} className="text-slate-400 dark:text-slate-500 hover:text-red-400 px-1 shrink-0 text-sm">×</button>
       </div>
       {pickerOpen && (
         <VariablePickerPanel nodes={nodes} testResults={testResults} onInsert={handleInsert} />
@@ -1894,9 +1894,9 @@ function CredentialSelect({
   const { data: credentials = [], isLoading } = useCredentialList();
   return (
     <div className="space-y-1">
-      <label className="block text-xs font-medium text-slate-400">Google Account</label>
+      <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Google Account</label>
       {isLoading ? (
-        <p className="text-[10px] text-slate-500">Loading accounts…</p>
+        <p className="text-[10px] text-slate-400 dark:text-slate-500">Loading accounts…</p>
       ) : credentials.length === 0 ? (
         <p className="text-[10px] text-amber-400">
           No Google accounts connected. Click <strong>Credentials</strong> in the toolbar to connect one.
@@ -1956,7 +1956,7 @@ function GmailConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
               onChange={(e) => onChange({ isHtml: e.target.checked })}
               className="w-3.5 h-3.5 rounded"
             />
-            <label htmlFor="gmail-html" className="text-xs text-slate-400">Send as HTML</label>
+            <label htmlFor="gmail-html" className="text-xs text-slate-500 dark:text-slate-400">Send as HTML</label>
           </div>
         </>
       )}
@@ -1967,10 +1967,10 @@ function GmailConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
             onChange={(v) => onChange({ query: v })} placeholder="from:example.com is:unread"
             nodes={otherNodes} testResults={testResults} />
           <div className="space-y-1">
-            <label className="block text-xs font-medium text-slate-400">Max results</label>
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Max results</label>
             <input type="number" min={1} max={500} value={String(cfg.maxResults ?? 10)}
               onChange={(e) => onChange({ maxResults: Number(e.target.value) })}
-              className="w-full bg-slate-800 border border-slate-600 text-slate-200 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+              className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
           </div>
         </>
       )}
@@ -2014,10 +2014,10 @@ function GDriveConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
             onChange={(v) => onChange({ folderId: v })} placeholder="Leave blank to search all"
             nodes={otherNodes} testResults={testResults} />
           <div className="space-y-1">
-            <label className="block text-xs font-medium text-slate-400">Max results</label>
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Max results</label>
             <input type="number" min={1} max={1000} value={String(cfg.maxResults ?? 20)}
               onChange={(e) => onChange({ maxResults: Number(e.target.value) })}
-              className="w-full bg-slate-800 border border-slate-600 text-slate-200 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+              className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
           </div>
         </>
       )}
@@ -2028,10 +2028,10 @@ function GDriveConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
             onChange={(v) => onChange({ fileName: v })} placeholder="report.csv"
             nodes={otherNodes} testResults={testResults} />
           <div className="space-y-1">
-            <label className="block text-xs font-medium text-slate-400">MIME type</label>
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">MIME type</label>
             <input type="text" value={String(cfg.mimeType ?? 'text/plain')}
               onChange={(e) => onChange({ mimeType: e.target.value })}
-              className="w-full bg-slate-800 border border-slate-600 text-slate-200 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+              className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
           </div>
           <ExpressionTextArea label="Content" value={String(cfg.content ?? '')}
             onChange={(v) => onChange({ content: v })} placeholder="File content or expression"
@@ -2111,9 +2111,9 @@ function SlackCredentialSelect({
   const slackCreds = credentials.filter((c) => c.provider === 'slack');
   return (
     <div className="space-y-1">
-      <label className="block text-xs font-medium text-slate-400">Slack Workspace</label>
+      <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Slack Workspace</label>
       {isLoading ? (
-        <p className="text-[10px] text-slate-500">Loading workspaces…</p>
+        <p className="text-[10px] text-slate-400 dark:text-slate-500">Loading workspaces…</p>
       ) : slackCreds.length === 0 ? (
         <p className="text-[10px] text-amber-400">
           No Slack workspaces connected. Click <strong>Credentials</strong> in the toolbar to connect one.
@@ -2183,7 +2183,7 @@ function SlackResourceSelect({
     return (
       <div className="space-y-1">
         <div className="flex items-center justify-between">
-          <span className="block text-xs font-medium text-slate-400">{label}</span>
+          <span className="block text-xs font-medium text-slate-500 dark:text-slate-400">{label}</span>
           {hasCredential && (
             <button
               type="button"
@@ -2209,18 +2209,18 @@ function SlackResourceSelect({
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between">
-        <span className="block text-xs font-medium text-slate-400">{label}</span>
+        <span className="block text-xs font-medium text-slate-500 dark:text-slate-400">{label}</span>
         <button
           type="button"
           onClick={() => setExpressionMode(true)}
-          className="text-[10px] text-slate-500 hover:text-slate-300 transition-colors"
+          className="text-[10px] text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
         >
           Use expression
         </button>
       </div>
 
       {isLoading && (
-        <div className="flex items-center gap-1.5 text-[10px] text-slate-500 py-1">
+        <div className="flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500 py-1">
           <Loader2 className="w-3 h-3 animate-spin" /> Loading…
         </div>
       )}
@@ -2239,12 +2239,12 @@ function SlackResourceSelect({
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             placeholder="Search…"
-            className="w-full bg-slate-800 border border-slate-600 text-slate-200 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-violet-500 placeholder-slate-500"
+            className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-violet-500 placeholder-slate-500"
           />
           {/* Scrollable list */}
-          <div className="max-h-36 overflow-y-auto rounded-md border border-slate-600 bg-slate-800 divide-y divide-slate-700">
+          <div className="max-h-36 overflow-y-auto rounded-md border border-slate-600 bg-slate-100 dark:bg-slate-800 divide-y divide-slate-700">
             {filtered.length === 0 && (
-              <p className="text-[10px] text-slate-500 px-2.5 py-2">No results.</p>
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 px-2.5 py-2">No results.</p>
             )}
             {filtered.map((item) => (
               <button
@@ -2254,7 +2254,7 @@ function SlackResourceSelect({
                 className={`w-full text-left px-2.5 py-1.5 text-xs transition-colors ${
                   item.id === value
                     ? 'bg-violet-600/30 text-violet-300'
-                    : 'text-slate-300 hover:bg-slate-700'
+                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                 }`}
               >
                 {renderItem(item)}
@@ -2263,8 +2263,8 @@ function SlackResourceSelect({
           </div>
           {/* Selected value badge */}
           {selected && (
-            <p className="text-[10px] text-slate-500 truncate">
-              Selected: <span className="text-slate-300">{renderItem(selected)}</span>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate">
+              Selected: <span className="text-slate-700 dark:text-slate-300">{renderItem(selected)}</span>
               <span className="ml-1 text-slate-600">({selected.id})</span>
             </p>
           )}
@@ -2310,11 +2310,11 @@ function SlackConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
 
       {/* Reconnect hint when the stored token is missing required scopes */}
       {credentialId && missingScopes.length > 0 && (
-        <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2">
+        <div className="flex items-start gap-2 rounded-md border border-amber-300 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 px-2.5 py-2">
           <AlertCircle className="w-3.5 h-3.5 text-amber-400 mt-0.5 shrink-0" />
-          <p className="text-[10px] text-amber-300 leading-relaxed">
+          <p className="text-[10px] text-amber-700 dark:text-amber-300 leading-relaxed">
             Private channels are hidden because your token is missing{' '}
-            <code className="font-mono bg-amber-500/20 px-0.5 rounded">
+            <code className="font-mono bg-amber-100 dark:bg-amber-500/20 px-0.5 rounded">
               {missingScopes.join(', ')}
             </code>
             . Add it in your Slack app under <strong>OAuth &amp; Permissions → User Token Scopes</strong>,
@@ -2403,14 +2403,14 @@ function SlackConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
 
       {action === 'read_messages' && (
         <div className="space-y-1">
-          <label className="block text-xs font-medium text-slate-400">Message limit</label>
+          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Message limit</label>
           <input
             type="number"
             min={1}
             max={200}
             value={String(cfg.limit ?? 10)}
             onChange={(e) => onChange({ limit: Number(e.target.value) })}
-            className="w-full bg-slate-800 border border-slate-600 text-slate-200 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
       )}
@@ -2486,9 +2486,9 @@ function TeamsCredentialSelect({
   const teamsCreds = credentials.filter((c) => c.provider === 'teams');
   return (
     <div className="space-y-1">
-      <label className="block text-xs font-medium text-slate-400">Microsoft Account</label>
+      <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Microsoft Account</label>
       {isLoading ? (
-        <p className="text-[10px] text-slate-500">Loading accounts…</p>
+        <p className="text-[10px] text-slate-400 dark:text-slate-500">Loading accounts…</p>
       ) : teamsCreds.length === 0 ? (
         <p className="text-[10px] text-amber-400">
           No Microsoft accounts connected. Click <strong>Credentials</strong> in the toolbar to connect one.
@@ -2556,20 +2556,20 @@ function TeamsConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
           {/* Team picker */}
           <div className="space-y-1">
             <div className="flex items-center justify-between">
-              <span className="block text-xs font-medium text-slate-400">Team</span>
+              <span className="block text-xs font-medium text-slate-500 dark:text-slate-400">Team</span>
             </div>
             {!credentialId ? (
-              <p className="text-[10px] text-slate-500">Select an account first.</p>
+              <p className="text-[10px] text-slate-400 dark:text-slate-500">Select an account first.</p>
             ) : loadingTeams ? (
-              <div className="flex items-center gap-1.5 text-[10px] text-slate-500 py-1">
+              <div className="flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500 py-1">
                 <Loader2 className="w-3 h-3 animate-spin" /> Loading teams…
               </div>
             ) : errorTeams ? (
               <p className="text-[10px] text-red-400">Failed to load teams.</p>
             ) : (
-              <div className="max-h-36 overflow-y-auto rounded-md border border-slate-600 bg-slate-800 divide-y divide-slate-700">
+              <div className="max-h-36 overflow-y-auto rounded-md border border-slate-600 bg-slate-100 dark:bg-slate-800 divide-y divide-slate-700">
                 {teamItems.length === 0 && (
-                  <p className="text-[10px] text-slate-500 px-2.5 py-2">No teams found.</p>
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 px-2.5 py-2">No teams found.</p>
                 )}
                 {teamItems.map((item) => (
                   <button
@@ -2578,8 +2578,8 @@ function TeamsConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
                     onClick={() => onChange({ teamId: item.id, channelId: '' })}
                     className={`w-full text-left px-2.5 py-1.5 text-xs transition-colors ${
                       item.id === teamId
-                        ? 'bg-blue-600/30 text-blue-300'
-                        : 'text-slate-300 hover:bg-slate-700'
+                        ? 'bg-blue-200 dark:bg-blue-600/30 text-blue-700 dark:text-blue-300'
+                        : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                     }`}
                   >
                     {item.display}
@@ -2588,8 +2588,8 @@ function TeamsConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
               </div>
             )}
             {teamId && teams.length > 0 && (
-              <p className="text-[10px] text-slate-500 truncate">
-                Selected: <span className="text-slate-300">{teams.find((t) => t.id === teamId)?.displayName ?? teamId}</span>
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate">
+                Selected: <span className="text-slate-700 dark:text-slate-300">{teams.find((t) => t.id === teamId)?.displayName ?? teamId}</span>
               </p>
             )}
           </div>
@@ -2597,17 +2597,17 @@ function TeamsConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
           {/* Channel picker — shown only once a team is selected */}
           {teamId && (
             <div className="space-y-1">
-              <span className="block text-xs font-medium text-slate-400">Channel</span>
+              <span className="block text-xs font-medium text-slate-500 dark:text-slate-400">Channel</span>
               {loadingChannels ? (
-                <div className="flex items-center gap-1.5 text-[10px] text-slate-500 py-1">
+                <div className="flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500 py-1">
                   <Loader2 className="w-3 h-3 animate-spin" /> Loading channels…
                 </div>
               ) : errorChannels ? (
                 <p className="text-[10px] text-red-400">Failed to load channels.</p>
               ) : (
-                <div className="max-h-36 overflow-y-auto rounded-md border border-slate-600 bg-slate-800 divide-y divide-slate-700">
+                <div className="max-h-36 overflow-y-auto rounded-md border border-slate-600 bg-slate-100 dark:bg-slate-800 divide-y divide-slate-700">
                   {channelItems.length === 0 && (
-                    <p className="text-[10px] text-slate-500 px-2.5 py-2">No channels found.</p>
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500 px-2.5 py-2">No channels found.</p>
                   )}
                   {channelItems.map((item) => (
                     <button
@@ -2616,8 +2616,8 @@ function TeamsConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
                       onClick={() => onChange({ channelId: item.id })}
                       className={`w-full text-left px-2.5 py-1.5 text-xs transition-colors ${
                         item.id === channelId
-                          ? 'bg-blue-600/30 text-blue-300'
-                          : 'text-slate-300 hover:bg-slate-700'
+                          ? 'bg-blue-200 dark:bg-blue-600/30 text-blue-700 dark:text-blue-300'
+                          : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                       }`}
                     >
                       {item.display}
@@ -2626,8 +2626,8 @@ function TeamsConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
                 </div>
               )}
               {channelId && channels.length > 0 && (
-                <p className="text-[10px] text-slate-500 truncate">
-                  Selected: <span className="text-slate-300">{channels.find((c) => c.id === channelId)?.displayName ?? channelId}</span>
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate">
+                  Selected: <span className="text-slate-700 dark:text-slate-300">{channels.find((c) => c.id === channelId)?.displayName ?? channelId}</span>
                 </p>
               )}
             </div>
@@ -2639,23 +2639,23 @@ function TeamsConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
         <div className="space-y-1">
           {!credentialId ? (
             <div className="space-y-1">
-              <label className="block text-xs font-medium text-slate-400">User</label>
-              <p className="text-[10px] text-slate-500">Select an account first.</p>
+              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">User</label>
+              <p className="text-[10px] text-slate-400 dark:text-slate-500">Select an account first.</p>
             </div>
           ) : loadingUsers ? (
             <div className="space-y-1">
-              <label className="block text-xs font-medium text-slate-400">User</label>
-              <div className="flex items-center gap-1.5 text-[10px] text-slate-500 py-1">
+              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">User</label>
+              <div className="flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500 py-1">
                 <Loader2 className="w-3 h-3 animate-spin" /> Loading users…
               </div>
             </div>
           ) : errorUsers ? (
             <div className="space-y-2">
-              <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2">
+              <div className="flex items-start gap-2 rounded-md border border-amber-300 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 px-2.5 py-2">
                 <AlertCircle className="w-3.5 h-3.5 text-amber-400 mt-0.5 shrink-0" />
-                <p className="text-[10px] text-amber-300 leading-relaxed">
+                <p className="text-[10px] text-amber-700 dark:text-amber-300 leading-relaxed">
                   Could not load users. This usually means your Microsoft account needs to be reconnected
-                  to grant the <code className="font-mono bg-amber-500/20 px-0.5 rounded">User.ReadBasic.All</code> permission.
+                  to grant the <code className="font-mono bg-amber-100 dark:bg-amber-500/20 px-0.5 rounded">User.ReadBasic.All</code> permission.
                   Go to <strong>Credentials</strong> and reconnect your Microsoft account, then try again.
                 </p>
               </div>
@@ -2696,14 +2696,14 @@ function TeamsConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
 
       {action === 'read_messages' && (
         <div className="space-y-1">
-          <label className="block text-xs font-medium text-slate-400">Message limit</label>
+          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Message limit</label>
           <input
             type="number"
             min={1}
             max={50}
             value={String(cfg.limit ?? 10)}
             onChange={(e) => onChange({ limit: Number(e.target.value) })}
-            className="w-full bg-slate-800 border border-slate-600 text-slate-200 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
       )}
@@ -2724,9 +2724,9 @@ function BasecampCredentialSelect({
   const basecampCreds = credentials.filter((c) => c.provider === 'basecamp');
   return (
     <div className="space-y-1">
-      <label className="block text-xs font-medium text-slate-400">Basecamp Account</label>
+      <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Basecamp Account</label>
       {isLoading ? (
-        <p className="text-[10px] text-slate-500">Loading accounts…</p>
+        <p className="text-[10px] text-slate-400 dark:text-slate-500">Loading accounts…</p>
       ) : basecampCreds.length === 0 ? (
         <p className="text-[10px] text-amber-400">
           No Basecamp accounts connected. Click <strong>Credentials</strong> in the toolbar to connect one.
@@ -2771,8 +2771,8 @@ function BasecampAssigneePicker({
   if (!hasProject) {
     return (
       <div className="space-y-1">
-        <label className="block text-xs font-medium text-slate-400">Assignees (optional)</label>
-        <p className="text-[10px] text-slate-500">Select a project first to see available people.</p>
+        <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Assignees (optional)</label>
+        <p className="text-[10px] text-slate-400 dark:text-slate-500">Select a project first to see available people.</p>
       </div>
     );
   }
@@ -2780,8 +2780,8 @@ function BasecampAssigneePicker({
   if (loading) {
     return (
       <div className="space-y-1">
-        <label className="block text-xs font-medium text-slate-400">Assignees (optional)</label>
-        <div className="flex items-center gap-1.5 text-[10px] text-slate-500 py-1">
+        <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Assignees (optional)</label>
+        <div className="flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500 py-1">
           <Loader2 className="w-3 h-3 animate-spin" /> Loading people…
         </div>
       </div>
@@ -2791,7 +2791,7 @@ function BasecampAssigneePicker({
   if (people.length === 0) {
     return (
       <div className="space-y-1">
-        <label className="block text-xs font-medium text-slate-400">Assignees (optional)</label>
+        <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Assignees (optional)</label>
         <ExpressionInput
           value={assigneeIds}
           onChange={onChange}
@@ -2819,8 +2819,8 @@ function BasecampAssigneePicker({
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between">
-        <label className="block text-xs font-medium text-slate-400">Assignees (optional)</label>
-        <span className="text-[10px] text-slate-500">{people.length} people</span>
+        <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Assignees (optional)</label>
+        <span className="text-[10px] text-slate-400 dark:text-slate-500">{people.length} people</span>
       </div>
 
       {selectedCount > 0 && (
@@ -2832,23 +2832,23 @@ function BasecampAssigneePicker({
         value={filter}
         onChange={(e) => setFilter(e.target.value)}
         placeholder="Search by name, email, or company…"
-        className="w-full bg-slate-800 border border-slate-600 text-slate-200 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-green-500 placeholder-slate-500"
+        className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-green-500 placeholder-slate-500"
       />
 
-      <div className="max-h-64 overflow-y-auto rounded-md border border-slate-600 bg-slate-800">
+      <div className="max-h-64 overflow-y-auto rounded-md border border-slate-600 bg-slate-100 dark:bg-slate-800">
         {filtered.length === 0 && (
-          <p className="text-[10px] text-slate-500 px-2.5 py-2">No people match "{filter}"</p>
+          <p className="text-[10px] text-slate-400 dark:text-slate-500 px-2.5 py-2">No people match "{filter}"</p>
         )}
         {companies.map((company) => {
           const group = filtered.filter((p) => (p.company ?? '') === company);
           return (
             <div key={company || '__none__'}>
               {companies.length > 1 && (
-                <div className="px-2.5 py-1 bg-slate-700/50 border-b border-slate-700 sticky top-0 z-[1]">
-                  <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                <div className="px-2.5 py-1 bg-slate-200 dark:bg-slate-700/50 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-[1]">
+                  <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     {company || 'No company'}
                   </span>
-                  <span className="text-[10px] text-slate-500 ml-1.5">({group.length})</span>
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500 ml-1.5">({group.length})</span>
                 </div>
               )}
               {group.map((p) => {
@@ -2863,17 +2863,17 @@ function BasecampAssigneePicker({
                         : [...currentIds, String(p.id)];
                       onChange(next.join(','));
                     }}
-                    className={`w-full text-left px-2.5 py-1.5 text-xs transition-colors flex items-center gap-2 border-b border-slate-700/50 last:border-0 ${
-                      isSelected ? 'bg-green-600/20 text-green-300' : 'text-slate-300 hover:bg-slate-700'
+                    className={`w-full text-left px-2.5 py-1.5 text-xs transition-colors flex items-center gap-2 border-b border-slate-200 dark:border-slate-700/50 last:border-0 ${
+                      isSelected ? 'bg-green-600/20 text-green-300' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                     }`}
                   >
                     <span className={`w-3 h-3 rounded border flex items-center justify-center shrink-0 ${
                       isSelected ? 'bg-green-600 border-green-500' : 'border-slate-500'
                     }`}>
-                      {isSelected && <Check className="w-2 h-2 text-white" />}
+                      {isSelected && <Check className="w-2 h-2 text-gray-900 dark:text-white" />}
                     </span>
                     <span className="truncate">{p.name}</span>
-                    {p.email && <span className="text-[10px] text-slate-500 truncate ml-auto">{p.email}</span>}
+                    {p.email && <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate ml-auto">{p.email}</span>}
                   </button>
                 );
               })}
@@ -2938,19 +2938,19 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
       {/* ── Project picker (cascading) ────────────────────────────────── */}
       {needsProject && (
         <div className="space-y-1">
-          <span className="block text-xs font-medium text-slate-400">Project</span>
+          <span className="block text-xs font-medium text-slate-500 dark:text-slate-400">Project</span>
           {!credentialId ? (
-            <p className="text-[10px] text-slate-500">Select an account first.</p>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500">Select an account first.</p>
           ) : loadingProjects ? (
-            <div className="flex items-center gap-1.5 text-[10px] text-slate-500 py-1">
+            <div className="flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500 py-1">
               <Loader2 className="w-3 h-3 animate-spin" /> Loading projects…
             </div>
           ) : errorProjects ? (
             <p className="text-[10px] text-red-400">Failed to load projects.</p>
           ) : (
-            <div className="max-h-36 overflow-y-auto rounded-md border border-slate-600 bg-slate-800 divide-y divide-slate-700">
+            <div className="max-h-36 overflow-y-auto rounded-md border border-slate-600 bg-slate-100 dark:bg-slate-800 divide-y divide-slate-700">
               {projects.length === 0 && (
-                <p className="text-[10px] text-slate-500 px-2.5 py-2">No projects found.</p>
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 px-2.5 py-2">No projects found.</p>
               )}
               {projects.map((p) => (
                 <button
@@ -2960,7 +2960,7 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
                   className={`w-full text-left px-2.5 py-1.5 text-xs transition-colors ${
                     String(p.id) === projectId
                       ? 'bg-green-600/30 text-green-300'
-                      : 'text-slate-300 hover:bg-slate-700'
+                      : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                   }`}
                 >
                   {p.name}
@@ -2969,8 +2969,8 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
             </div>
           )}
           {projectId && projects.length > 0 && (
-            <p className="text-[10px] text-slate-500 truncate">
-              Selected: <span className="text-slate-300">{projects.find((p) => String(p.id) === projectId)?.name ?? projectId}</span>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate">
+              Selected: <span className="text-slate-700 dark:text-slate-300">{projects.find((p) => String(p.id) === projectId)?.name ?? projectId}</span>
             </p>
           )}
         </div>
@@ -2979,17 +2979,17 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
       {/* ── To-do list picker (cascading from project) ────────────────── */}
       {needsTodolist && projectId && (
         <div className="space-y-1">
-          <span className="block text-xs font-medium text-slate-400">To-Do List</span>
+          <span className="block text-xs font-medium text-slate-500 dark:text-slate-400">To-Do List</span>
           {loadingTodolists ? (
-            <div className="flex items-center gap-1.5 text-[10px] text-slate-500 py-1">
+            <div className="flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500 py-1">
               <Loader2 className="w-3 h-3 animate-spin" /> Loading to-do lists…
             </div>
           ) : errorTodolists ? (
             <p className="text-[10px] text-red-400">Failed to load to-do lists.</p>
           ) : (
-            <div className="max-h-36 overflow-y-auto rounded-md border border-slate-600 bg-slate-800 divide-y divide-slate-700">
+            <div className="max-h-36 overflow-y-auto rounded-md border border-slate-600 bg-slate-100 dark:bg-slate-800 divide-y divide-slate-700">
               {todolists.length === 0 && (
-                <p className="text-[10px] text-slate-500 px-2.5 py-2">No to-do lists found.</p>
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 px-2.5 py-2">No to-do lists found.</p>
               )}
               {todolists.map((tl) => (
                 <button
@@ -2999,20 +2999,20 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
                   className={`w-full text-left px-2.5 py-1.5 text-xs transition-colors ${
                     String(tl.id) === todolistId
                       ? 'bg-green-600/30 text-green-300'
-                      : 'text-slate-300 hover:bg-slate-700'
+                      : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                   }`}
                 >
                   {tl.name}
                   {tl.todosRemaining > 0 && (
-                    <span className="ml-1.5 text-[10px] text-slate-500">({tl.todosRemaining} remaining)</span>
+                    <span className="ml-1.5 text-[10px] text-slate-400 dark:text-slate-500">({tl.todosRemaining} remaining)</span>
                   )}
                 </button>
               ))}
             </div>
           )}
           {todolistId && todolists.length > 0 && (
-            <p className="text-[10px] text-slate-500 truncate">
-              Selected: <span className="text-slate-300">{todolists.find((tl) => String(tl.id) === todolistId)?.name ?? todolistId}</span>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate">
+              Selected: <span className="text-slate-700 dark:text-slate-300">{todolists.find((tl) => String(tl.id) === todolistId)?.name ?? todolistId}</span>
             </p>
           )}
         </div>
@@ -3021,22 +3021,22 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
       {/* ── Group (section) picker (optional, cascading from todolist) ── */}
       {needsTodolist && todolistId && (
         <div className="space-y-1">
-          <label className="block text-xs font-medium text-slate-400">
+          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
             Group / Section <span className="text-slate-600">(optional)</span>
           </label>
-          {loadingGroups && <p className="text-xs text-slate-500 italic">Loading groups…</p>}
+          {loadingGroups && <p className="text-xs text-slate-400 dark:text-slate-500 italic">Loading groups…</p>}
           {!loadingGroups && todoGroups.length === 0 && (
             <p className="text-[10px] text-slate-600 italic">No groups in this to-do list (all to-dos are ungrouped)</p>
           )}
           {!loadingGroups && todoGroups.length > 0 && (
-            <div className="max-h-36 overflow-y-auto rounded-md border border-slate-600 bg-slate-800">
+            <div className="max-h-36 overflow-y-auto rounded-md border border-slate-600 bg-slate-100 dark:bg-slate-800">
               <button
                 type="button"
                 onClick={() => onChange({ groupId: '' })}
                 className={`w-full text-left px-2.5 py-1.5 text-xs transition-colors ${
                   !groupId
                     ? 'bg-green-600/30 text-green-300'
-                    : 'text-slate-300 hover:bg-slate-700'
+                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                 }`}
               >
                 (Ungrouped / Top-level)
@@ -3049,7 +3049,7 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
                   className={`w-full text-left px-2.5 py-1.5 text-xs transition-colors ${
                     String(g.id) === groupId
                       ? 'bg-green-600/30 text-green-300'
-                      : 'text-slate-300 hover:bg-slate-700'
+                      : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                   }`}
                 >
                   {g.name}
@@ -3058,8 +3058,8 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
             </div>
           )}
           {groupId && todoGroups.length > 0 && (
-            <p className="text-[10px] text-slate-500 truncate">
-              Selected: <span className="text-slate-300">{todoGroups.find((g) => String(g.id) === groupId)?.name ?? groupId}</span>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate">
+              Selected: <span className="text-slate-700 dark:text-slate-300">{todoGroups.find((g) => String(g.id) === groupId)?.name ?? groupId}</span>
             </p>
           )}
         </div>
@@ -3111,11 +3111,11 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
         <>
           {/* Optional: pick from a list if project + todolist are set */}
           <div className="space-y-1">
-            <span className="block text-xs font-medium text-slate-400">Project (optional, to browse to-dos)</span>
+            <span className="block text-xs font-medium text-slate-500 dark:text-slate-400">Project (optional, to browse to-dos)</span>
               {!credentialId ? (
-                <p className="text-[10px] text-slate-500">Select an account first.</p>
+                <p className="text-[10px] text-slate-400 dark:text-slate-500">Select an account first.</p>
               ) : loadingProjects ? (
-                <div className="flex items-center gap-1.5 text-[10px] text-slate-500 py-1">
+                <div className="flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500 py-1">
                   <Loader2 className="w-3 h-3 animate-spin" /> Loading…
                 </div>
               ) : (
@@ -3132,9 +3132,9 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
 
           {projectId && (
             <div className="space-y-1">
-              <span className="block text-xs font-medium text-slate-400">To-Do List (optional)</span>
+              <span className="block text-xs font-medium text-slate-500 dark:text-slate-400">To-Do List (optional)</span>
               {loadingTodolists ? (
-                <div className="flex items-center gap-1.5 text-[10px] text-slate-500 py-1">
+                <div className="flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500 py-1">
                   <Loader2 className="w-3 h-3 animate-spin" /> Loading…
                 </div>
               ) : (
@@ -3152,7 +3152,7 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
 
           {todolistId && (
             <div className="space-y-1">
-              <span className="block text-xs font-medium text-slate-400">
+              <span className="block text-xs font-medium text-slate-500 dark:text-slate-400">
                 To-Do {todos.length > 0 && (
                   <span className="text-slate-600 font-normal">
                     ({todos.length} {action === 'uncomplete_todo' ? 'completed' : 'active'})
@@ -3160,15 +3160,15 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
                 )}
               </span>
               {loadingTodos ? (
-                <div className="flex items-center gap-1.5 text-[10px] text-slate-500 py-1">
+                <div className="flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500 py-1">
                   <Loader2 className="w-3 h-3 animate-spin" /> Loading {action === 'uncomplete_todo' ? 'completed' : 'active'} to-dos…
                 </div>
               ) : errorTodos ? (
                 <p className="text-[10px] text-red-400">Failed to load to-dos.</p>
               ) : (
-                <div className="max-h-64 overflow-y-auto rounded-md border border-slate-600 bg-slate-800">
+                <div className="max-h-64 overflow-y-auto rounded-md border border-slate-600 bg-slate-100 dark:bg-slate-800">
                   {todos.length === 0 && (
-                    <p className="text-[10px] text-slate-500 px-2.5 py-2">No to-dos found.</p>
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500 px-2.5 py-2">No to-dos found.</p>
                   )}
                   {(() => {
                     const ungrouped = todos.filter((t) => !t.groupName);
@@ -3177,7 +3177,7 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
                     return (
                       <>
                         {ungrouped.length > 0 && groupNames.length > 0 && (
-                          <div className="px-2.5 py-1 text-[10px] font-semibold text-slate-500 bg-slate-900/50 uppercase tracking-wider">
+                          <div className="px-2.5 py-1 text-[10px] font-semibold text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-900/50 uppercase tracking-wider">
                             Ungrouped
                           </div>
                         )}
@@ -3189,7 +3189,7 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
                             className={`w-full text-left px-2.5 py-1.5 text-xs transition-colors flex items-center gap-1.5 ${
                               String(t.id) === String(cfg.todoId ?? '')
                                 ? 'bg-green-600/30 text-green-300'
-                                : t.completed ? 'text-slate-500 hover:bg-slate-700' : 'text-slate-300 hover:bg-slate-700'
+                                : t.completed ? 'text-slate-400 dark:text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                             }`}
                           >
                             <span className={`inline-block w-2.5 h-2.5 rounded-sm border flex-shrink-0 ${t.completed ? 'bg-green-600/60 border-green-600' : 'border-slate-500'}`} />
@@ -3198,7 +3198,7 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
                         ))}
                         {groupNames.map((gn) => (
                           <div key={gn}>
-                            <div className="px-2.5 py-1 text-[10px] font-semibold text-slate-500 bg-slate-900/50 uppercase tracking-wider">
+                            <div className="px-2.5 py-1 text-[10px] font-semibold text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-900/50 uppercase tracking-wider">
                               {gn}
                             </div>
                             {grouped.filter((t) => t.groupName === gn).map((t) => (
@@ -3209,7 +3209,7 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
                                 className={`w-full text-left px-2.5 py-1.5 text-xs transition-colors pl-4 flex items-center gap-1.5 ${
                                   String(t.id) === String(cfg.todoId ?? '')
                                     ? 'bg-green-600/30 text-green-300'
-                                    : t.completed ? 'text-slate-500 hover:bg-slate-700' : 'text-slate-300 hover:bg-slate-700'
+                                    : t.completed ? 'text-slate-400 dark:text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                                 }`}
                               >
                                 <span className={`inline-block w-2.5 h-2.5 rounded-sm border flex-shrink-0 ${t.completed ? 'bg-green-600/60 border-green-600' : 'border-slate-500'}`} />
@@ -3308,7 +3308,7 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
             onChange={(e) => onChange({ includeCompleted: e.target.checked })}
             className="w-3.5 h-3.5 rounded"
           />
-          <label htmlFor="basecamp-include-completed" className="text-xs text-slate-400">
+          <label htmlFor="basecamp-include-completed" className="text-xs text-slate-500 dark:text-slate-400">
             Include completed to-dos (including hidden)
           </label>
         </div>
@@ -3423,8 +3423,8 @@ function TriggerConfig({
 
       {/* ── Manual ── */}
       {triggerType === 'manual' && (
-        <div className="bg-slate-800/50 rounded-lg p-3 space-y-1">
-          <p className="text-xs text-slate-400">
+        <div className="bg-slate-100 dark:bg-slate-800/50 rounded-lg p-3 space-y-1">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
             Click <span className="font-semibold text-purple-400">Run</span> or use the{' '}
             <span className="font-semibold text-purple-400">Test This Node</span> button to trigger this workflow manually.
           </p>
@@ -3442,18 +3442,18 @@ function TriggerConfig({
           />
 
           <div className="space-y-1">
-            <label className="block text-xs font-medium text-slate-400">Webhook URL</label>
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Webhook URL</label>
             <div className="flex items-center gap-1.5">
               <input
                 type="text"
                 readOnly
                 value={webhookUrl || 'Save workflow first to generate URL'}
-                className="flex-1 rounded-md bg-slate-800 border border-slate-700 px-2 py-1.5 text-xs text-slate-300 font-mono select-all"
+                className="flex-1 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2 py-1.5 text-xs text-slate-700 dark:text-slate-300 font-mono select-all"
               />
               {webhookUrl && (
                 <button
                   type="button"
-                  className="p-1.5 rounded hover:bg-slate-700 text-slate-400"
+                  className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400"
                   onClick={() => {
                     navigator.clipboard.writeText(webhookUrl);
                     setCopiedWebhook(true);
@@ -3465,7 +3465,7 @@ function TriggerConfig({
               )}
             </div>
             {webhookUrl && (
-              <p className="text-[10px] text-slate-500">
+              <p className="text-[10px] text-slate-400 dark:text-slate-500">
                 Send a {(cfg.webhookMethod as string) || 'POST'} request to this URL to trigger the workflow.
               </p>
             )}
@@ -3484,29 +3484,29 @@ function TriggerConfig({
           />
 
           <div className="space-y-1">
-            <label className="block text-xs font-medium text-slate-400">Cron Expression</label>
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Cron Expression</label>
             <input
               type="text"
               value={(cfg.cronExpression as string) || ''}
               onChange={(e) => onChange({ cronExpression: e.target.value })}
               placeholder="* * * * *"
-              className="w-full rounded-md bg-slate-800 border border-slate-700 px-2 py-1.5 text-xs text-white font-mono placeholder-slate-600"
+              className="w-full rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2 py-1.5 text-xs text-gray-900 dark:text-white font-mono placeholder-slate-600"
             />
             {Boolean(cfg.cronExpression) && (
-              <p className="text-[10px] text-slate-500">
+              <p className="text-[10px] text-slate-400 dark:text-slate-500">
                 {describeCron(cfg.cronExpression as string) || 'Custom expression'}
               </p>
             )}
           </div>
 
           <div className="space-y-1">
-            <label className="block text-xs font-medium text-slate-400">Timezone (optional)</label>
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Timezone (optional)</label>
             <input
               type="text"
               value={(cfg.cronTimezone as string) || ''}
               onChange={(e) => onChange({ cronTimezone: e.target.value })}
               placeholder="e.g. America/New_York"
-              className="w-full rounded-md bg-slate-800 border border-slate-700 px-2 py-1.5 text-xs text-white placeholder-slate-600"
+              className="w-full rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2 py-1.5 text-xs text-gray-900 dark:text-white placeholder-slate-600"
             />
           </div>
         </div>
@@ -3539,7 +3539,7 @@ function TriggerConfig({
               />
 
               <div className="space-y-1">
-                <label className="block text-xs font-medium text-slate-400">
+                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
                   Poll Interval (minutes)
                 </label>
                 <input
@@ -3548,7 +3548,7 @@ function TriggerConfig({
                   max={1440}
                   value={(cfg.pollIntervalMinutes as number) || 5}
                   onChange={(e) => onChange({ pollIntervalMinutes: Number(e.target.value) })}
-                  className="w-full rounded-md bg-slate-800 border border-slate-700 px-2 py-1.5 text-xs text-white"
+                  className="w-full rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2 py-1.5 text-xs text-gray-900 dark:text-white"
                 />
               </div>
             </>
@@ -3574,7 +3574,7 @@ function TriggerConfig({
           />
 
           <div className="space-y-1">
-            <label className="block text-xs font-medium text-slate-400">
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
               Poll Interval (minutes)
             </label>
             <input
@@ -3583,7 +3583,7 @@ function TriggerConfig({
               max={1440}
               value={(cfg.pollIntervalMinutes as number) || 5}
               onChange={(e) => onChange({ pollIntervalMinutes: Number(e.target.value) })}
-              className="w-full rounded-md bg-slate-800 border border-slate-700 px-2 py-1.5 text-xs text-white"
+              className="w-full rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2 py-1.5 text-xs text-gray-900 dark:text-white"
             />
           </div>
         </div>

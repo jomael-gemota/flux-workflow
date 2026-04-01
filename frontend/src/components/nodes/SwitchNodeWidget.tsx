@@ -25,7 +25,7 @@ export function SwitchNodeWidget({ id, data, selected }: NodeProps<SwitchNode>) 
       isDisabled={data.disabled}
       handles={{ outputs }}
     >
-      <p className="text-[10px] text-slate-400">
+      <p className="text-[10px] text-slate-500 dark:text-slate-400">
         {caseOutputs.length} case{caseOutputs.length !== 1 ? 's' : ''} + default
       </p>
     </BaseNode>

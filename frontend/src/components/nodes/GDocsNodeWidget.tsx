@@ -17,8 +17,8 @@ export function GDocsNodeWidget({ id, data, selected }: NodeProps<GDocsNode>) {
       isDisabled={data.disabled}
     >
       {cfg.action && (
-        <p className="text-[10px] text-slate-400 truncate">
-          <span className="font-semibold text-indigo-400">{cfg.action}</span>
+        <p className="text-[10px] text-slate-500 dark:text-slate-400">
+          <span className="font-semibold text-indigo-600 dark:text-indigo-400">{cfg.action}</span>
           {cfg.action === 'create' && cfg.title && ` "${cfg.title}"`}
           {cfg.action !== 'create' && cfg.documentId && ` ${cfg.documentId}`}
         </p>

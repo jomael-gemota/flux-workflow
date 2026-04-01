@@ -17,8 +17,8 @@ export function GDriveNodeWidget({ id, data, selected }: NodeProps<GDriveNode>) 
       isDisabled={data.disabled}
     >
       {cfg.action && (
-        <p className="text-[10px] text-slate-400 truncate">
-          <span className="font-semibold text-blue-400">{cfg.action}</span>
+        <p className="text-[10px] text-slate-500 dark:text-slate-400">
+          <span className="font-semibold text-blue-600 dark:text-blue-400">{cfg.action}</span>
           {cfg.action === 'upload' && cfg.fileName && ` ${cfg.fileName}`}
           {cfg.action === 'download' && cfg.fileId && ` ${cfg.fileId}`}
         </p>

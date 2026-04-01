@@ -1,4 +1,4 @@
-import { Save, Play, Loader2, GitBranch, LogOut, PanelRight, KeyRound } from 'lucide-react';
+import { Save, Play, Loader2, GitBranch, LogOut, PanelRight, KeyRound, Sun, Moon } from 'lucide-react';
 import { Button } from './ui/Button';
 import { useWorkflowStore } from '../store/workflowStore';
 import { useTriggerWorkflow } from '../hooks/useWorkflows';
@@ -18,6 +18,8 @@ export function Toolbar() {
     beginExecution,
     configOpen,
     setConfigOpen,
+    theme,
+    setTheme,
   } = useWorkflowStore();
 
   const { save, isSaving } = useSaveWorkflow();
@@ -43,9 +45,6 @@ export function Toolbar() {
   async function handleTrigger() {
     if (!activeWorkflow || !activeWorkflow.id || activeWorkflow.id.startsWith('__new__')) return;
     try {
-      // Phase 1 — dim everything immediately so the user sees the canvas "preparing"
-      // before any animation starts.  All nodes get 'waiting'; the real statuses
-      // (running / pending / success …) are set once the first poll result arrives.
       const preStatuses: Record<string, import('../store/workflowStore').NodeExecutionStatus> = {};
       for (const n of nodes) {
         preStatuses[n.id] = 'waiting';
@@ -72,10 +71,10 @@ export function Toolbar() {
 
   return (
     <>
-    <header className="h-12 glass-surface border-b border-white/10 flex items-center px-4 gap-4 shrink-0">
-      <div className="flex items-center gap-2 text-white font-semibold text-sm">
-        <GitBranch className="w-4 h-4 text-blue-400" />
-        <span className="text-slate-300">Workflow Platform</span>
+    <header className="h-12 glass-surface border-b border-black/[0.07] dark:border-white/10 flex items-center px-4 gap-4 shrink-0">
+      <div className="flex items-center gap-2 font-semibold text-sm">
+        <GitBranch className="w-4 h-4 text-blue-500 dark:text-blue-400" />
+        <span className="text-slate-600 dark:text-slate-300">Workflow Platform</span>
       </div>
 
       <div className="w-px h-6 glass-divider" />
@@ -84,7 +83,7 @@ export function Toolbar() {
         nameEdit ? (
           <input
             autoFocus
-            className="bg-white/8 border border-white/15 text-white text-sm rounded px-2 py-0.5 w-56 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="bg-black/5 dark:bg-white/8 border border-black/10 dark:border-white/15 text-gray-900 dark:text-white text-sm rounded px-2 py-0.5 w-56 focus:outline-none focus:ring-1 focus:ring-blue-500"
             value={nameValue}
             onChange={(e) => setNameValue(e.target.value)}
             onBlur={() => {
@@ -101,20 +100,20 @@ export function Toolbar() {
           />
         ) : (
           <button
-            className="text-white text-sm font-medium hover:text-blue-300 transition-colors"
+            className="text-gray-900 dark:text-white text-sm font-medium hover:text-blue-600 dark:hover:text-blue-300 transition-colors"
             onClick={() => { setNameValue(activeWorkflow.name); setNameEdit(true); }}
           >
             {activeWorkflow.name}
             {!isNew && (
-              <span className="ml-1.5 text-slate-500 text-xs font-normal">
+              <span className="ml-1.5 text-slate-400 dark:text-slate-500 text-xs font-normal">
                 v{activeWorkflow.version}
               </span>
             )}
-            {isDirty && <span className="ml-1 text-amber-400 text-xs">●</span>}
+            {isDirty && <span className="ml-1 text-amber-500 dark:text-amber-400 text-xs">●</span>}
           </button>
         )
       ) : (
-        <span className="text-slate-500 text-sm">No workflow selected</span>
+        <span className="text-slate-400 dark:text-slate-500 text-sm">No workflow selected</span>
       )}
 
       <div className="ml-auto flex items-center gap-2">
@@ -148,7 +147,7 @@ export function Toolbar() {
         <button
           onClick={() => setCredentialsOpen(true)}
           title="Manage Google Workspace credentials"
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-white/10 transition-colors"
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
         >
           <KeyRound className="w-3.5 h-3.5" />
           Credentials
@@ -161,17 +160,31 @@ export function Toolbar() {
           title={configOpen ? 'Hide configuration panel' : 'Show configuration panel'}
           className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors ${
             configOpen
-              ? 'bg-white/10 text-slate-200'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-white/10'
+              ? 'bg-black/8 dark:bg-white/10 text-slate-700 dark:text-slate-200'
+              : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-black/5 dark:hover:bg-white/10'
           }`}
         >
           <PanelRight className="w-3.5 h-3.5" />
           Config
         </button>
 
+        <div className="w-px h-5 glass-divider" />
+
+        {/* ── Theme toggle ─────────────────────────────────────────────── */}
+        <button
+          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          className="flex items-center justify-center w-7 h-7 rounded text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+        >
+          {theme === 'dark'
+            ? <Sun className="w-3.5 h-3.5" />
+            : <Moon className="w-3.5 h-3.5" />
+          }
+        </button>
+
         <button
           onClick={handleLogout}
-          className="text-slate-500 hover:text-slate-300 transition-colors p-1"
+          className="text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors p-1"
           title="Change API key"
         >
           <LogOut className="w-3.5 h-3.5" />

@@ -26,6 +26,10 @@ export type NodeExecutionStatus =
   | 'skipped';
 
 interface WorkflowStore {
+  // Theme
+  theme: 'dark' | 'light';
+  setTheme: (theme: 'dark' | 'light') => void;
+
   // Active workflow
   activeWorkflow: WorkflowDefinition | null;
   setActiveWorkflow: (wf: WorkflowDefinition | null) => void;
@@ -65,6 +69,14 @@ interface WorkflowStore {
 }
 
 export const useWorkflowStore = create<WorkflowStore>((set) => ({
+  theme: (() => {
+    try { return (localStorage.getItem('wap_theme') as 'dark' | 'light') ?? 'dark'; } catch { return 'dark'; }
+  })(),
+  setTheme: (theme) => {
+    try { localStorage.setItem('wap_theme', theme); } catch { /* ignore */ }
+    set({ theme });
+  },
+
   activeWorkflow: null,
   setActiveWorkflow: (wf) => set({ activeWorkflow: wf }),
 

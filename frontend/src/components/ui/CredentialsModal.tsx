@@ -101,18 +101,18 @@ export function CredentialsModal({ open, onClose }: CredentialsModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-[1px]" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/40 dark:bg-black/60 backdrop-blur-[1px]" onClick={onClose} />
 
-      <div className="relative bg-slate-800 border border-slate-700 rounded-xl shadow-2xl w-full max-w-lg mx-4 flex flex-col max-h-[85vh]">
+      <div className="relative bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl w-full max-w-lg mx-4 flex flex-col max-h-[85vh]">
         {/* Header */}
-        <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-700 shrink-0">
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-200 dark:border-slate-700 shrink-0">
           <div className="flex-1 min-w-0">
-            <h2 className="text-sm font-semibold text-white">Connected Accounts</h2>
-            <p className="text-[11px] text-slate-500 mt-0.5">
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Connected Accounts</h2>
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
               Manage credentials for Google Workspace, Slack, Microsoft Teams, and Basecamp integrations.
             </p>
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-white transition-colors">
+          <button onClick={onClose} className="text-slate-400 dark:text-slate-500 hover:text-gray-900 dark:hover:text-white transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -122,8 +122,8 @@ export function CredentialsModal({ open, onClose }: CredentialsModalProps) {
           <div
             className={`flex items-center gap-2 px-5 py-2.5 text-xs shrink-0 ${
               oauthStatus === 'success'
-                ? 'bg-emerald-500/15 border-b border-emerald-500/30 text-emerald-300'
-                : 'bg-red-500/15 border-b border-red-500/30 text-red-300'
+                ? 'bg-emerald-500/15 border-b border-emerald-500/30 text-emerald-600 dark:text-emerald-300'
+                : 'bg-red-500/15 border-b border-red-500/30 text-red-600 dark:text-red-300'
             }`}
           >
             {oauthStatus === 'success'
@@ -144,7 +144,7 @@ export function CredentialsModal({ open, onClose }: CredentialsModalProps) {
         <div className="flex-1 overflow-y-auto min-h-0 p-4 space-y-4">
           {isLoading && (
             <div className="flex justify-center py-6">
-              <Loader2 className="w-5 h-5 text-slate-500 animate-spin" />
+              <Loader2 className="w-5 h-5 text-slate-400 dark:text-slate-500 animate-spin" />
             </div>
           )}
 
@@ -153,7 +153,7 @@ export function CredentialsModal({ open, onClose }: CredentialsModalProps) {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <GoogleIcon className="w-4 h-4" />
-                <span className="text-xs font-semibold text-slate-300">Google Workspace</span>
+                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Google Workspace</span>
               </div>
               {isGoogleConfigured ? (
                 <button
@@ -164,7 +164,7 @@ export function CredentialsModal({ open, onClose }: CredentialsModalProps) {
                   Connect Account
                 </button>
               ) : (
-                <span className="text-[10px] text-amber-400 flex items-center gap-1">
+                <span className="text-[10px] text-amber-500 dark:text-amber-400 flex items-center gap-1">
                   <Settings className="w-3 h-3" />
                   Not configured
                 </span>
@@ -172,13 +172,13 @@ export function CredentialsModal({ open, onClose }: CredentialsModalProps) {
             </div>
 
             {!isGoogleConfigured && (
-              <div className="flex items-start gap-2.5 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
-                <Settings className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <div className="flex items-start gap-2.5 p-3 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-lg">
+                <Settings className="w-4 h-4 text-amber-500 dark:text-amber-400 shrink-0 mt-0.5" />
                 <div className="space-y-1 min-w-0">
-                  <p className="text-[11px] text-amber-400/80 leading-relaxed">
-                    Add these to your <code className="bg-amber-900/40 px-1 rounded">.env</code> file and restart the backend:
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400/80 leading-relaxed">
+                    Add these to your <code className="bg-amber-100 dark:bg-amber-900/40 px-1 rounded">.env</code> file and restart the backend:
                   </p>
-                  <pre className="text-[10px] text-amber-300/90 bg-slate-900 rounded p-2 mt-1.5 leading-relaxed overflow-x-auto">
+                  <pre className="text-[10px] text-amber-700 dark:text-amber-300/90 bg-slate-100 dark:bg-slate-900 rounded p-2 mt-1.5 leading-relaxed overflow-x-auto">
 {`GOOGLE_CLIENT_ID=your-client-id
 GOOGLE_CLIENT_SECRET=your-secret
 GOOGLE_REDIRECT_URI=http://localhost:3000/oauth/google/callback`}
@@ -187,7 +187,7 @@ GOOGLE_REDIRECT_URI=http://localhost:3000/oauth/google/callback`}
                     href="https://console.cloud.google.com/apis/credentials"
                     target="_blank"
                     rel="noreferrer"
-                    className="flex items-center gap-1 text-[11px] text-blue-400 hover:text-blue-300 transition-colors"
+                    className="flex items-center gap-1 text-[11px] text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:hover:text-blue-300 transition-colors"
                   >
                     <ExternalLink className="w-3 h-3" />
                     Get credentials from Google Cloud Console
@@ -197,7 +197,7 @@ GOOGLE_REDIRECT_URI=http://localhost:3000/oauth/google/callback`}
             )}
 
             {!isLoading && googleCreds.length === 0 && isGoogleConfigured && (
-              <p className="text-[11px] text-slate-500 pl-1">No Google accounts connected yet.</p>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 pl-1">No Google accounts connected yet.</p>
             )}
             {googleCreds.map((cred) => (
               <CredentialRow key={cred.id} cred={cred} onDelete={() => setPendingDeleteId(cred.id)} />
@@ -205,14 +205,14 @@ GOOGLE_REDIRECT_URI=http://localhost:3000/oauth/google/callback`}
           </div>
 
           {/* ── Divider ── */}
-          <div className="border-t border-slate-700" />
+          <div className="border-t border-slate-200 dark:border-slate-700" />
 
           {/* ── Slack section ── */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <MessageSquare className="w-4 h-4 text-violet-400" />
-                <span className="text-xs font-semibold text-slate-300">Slack</span>
+                <MessageSquare className="w-4 h-4 text-violet-500 dark:text-violet-400" />
+                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Slack</span>
               </div>
               {isSlackConfigured ? (
                 <button
@@ -223,7 +223,7 @@ GOOGLE_REDIRECT_URI=http://localhost:3000/oauth/google/callback`}
                   Connect Workspace
                 </button>
               ) : (
-                <span className="text-[10px] text-amber-400 flex items-center gap-1">
+                <span className="text-[10px] text-amber-500 dark:text-amber-400 flex items-center gap-1">
                   <Settings className="w-3 h-3" />
                   Not configured
                 </span>
@@ -231,13 +231,13 @@ GOOGLE_REDIRECT_URI=http://localhost:3000/oauth/google/callback`}
             </div>
 
             {!isSlackConfigured && (
-              <div className="flex items-start gap-2.5 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
-                <Settings className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <div className="flex items-start gap-2.5 p-3 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-lg">
+                <Settings className="w-4 h-4 text-amber-500 dark:text-amber-400 shrink-0 mt-0.5" />
                 <div className="space-y-1 min-w-0">
-                  <p className="text-[11px] text-amber-400/80 leading-relaxed">
-                    Add these to your <code className="bg-amber-900/40 px-1 rounded">.env</code> file and restart the backend:
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400/80 leading-relaxed">
+                    Add these to your <code className="bg-amber-100 dark:bg-amber-900/40 px-1 rounded">.env</code> file and restart the backend:
                   </p>
-                  <pre className="text-[10px] text-amber-300/90 bg-slate-900 rounded p-2 mt-1.5 leading-relaxed overflow-x-auto">
+                  <pre className="text-[10px] text-amber-700 dark:text-amber-300/90 bg-slate-100 dark:bg-slate-900 rounded p-2 mt-1.5 leading-relaxed overflow-x-auto">
 {`SLACK_CLIENT_ID=your-client-id
 SLACK_CLIENT_SECRET=your-secret
 SLACK_REDIRECT_URI=http://localhost:3000/oauth/slack/callback`}
@@ -246,7 +246,7 @@ SLACK_REDIRECT_URI=http://localhost:3000/oauth/slack/callback`}
                     href="https://api.slack.com/apps"
                     target="_blank"
                     rel="noreferrer"
-                    className="flex items-center gap-1 text-[11px] text-blue-400 hover:text-blue-300 transition-colors"
+                    className="flex items-center gap-1 text-[11px] text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:hover:text-blue-300 transition-colors"
                   >
                     <ExternalLink className="w-3 h-3" />
                     Create a Slack app at api.slack.com/apps
@@ -256,7 +256,7 @@ SLACK_REDIRECT_URI=http://localhost:3000/oauth/slack/callback`}
             )}
 
             {!isLoading && slackCreds.length === 0 && isSlackConfigured && (
-              <p className="text-[11px] text-slate-500 pl-1">No Slack workspaces connected yet.</p>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 pl-1">No Slack workspaces connected yet.</p>
             )}
             {slackCreds.map((cred) => (
               <CredentialRow key={cred.id} cred={cred} onDelete={() => setPendingDeleteId(cred.id)} />
@@ -264,14 +264,14 @@ SLACK_REDIRECT_URI=http://localhost:3000/oauth/slack/callback`}
           </div>
 
           {/* ── Divider ── */}
-          <div className="border-t border-slate-700" />
+          <div className="border-t border-slate-200 dark:border-slate-700" />
 
           {/* ── Microsoft Teams section ── */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Users className="w-4 h-4 text-blue-400" />
-                <span className="text-xs font-semibold text-slate-300">Microsoft Teams</span>
+                <Users className="w-4 h-4 text-blue-500 dark:text-blue-400" />
+                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Microsoft Teams</span>
               </div>
               {isTeamsConfigured ? (
                 <button
@@ -282,7 +282,7 @@ SLACK_REDIRECT_URI=http://localhost:3000/oauth/slack/callback`}
                   Connect Account
                 </button>
               ) : (
-                <span className="text-[10px] text-amber-400 flex items-center gap-1">
+                <span className="text-[10px] text-amber-500 dark:text-amber-400 flex items-center gap-1">
                   <Settings className="w-3 h-3" />
                   Not configured
                 </span>
@@ -290,13 +290,13 @@ SLACK_REDIRECT_URI=http://localhost:3000/oauth/slack/callback`}
             </div>
 
             {!isTeamsConfigured && (
-              <div className="flex items-start gap-2.5 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
-                <Settings className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <div className="flex items-start gap-2.5 p-3 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-lg">
+                <Settings className="w-4 h-4 text-amber-500 dark:text-amber-400 shrink-0 mt-0.5" />
                 <div className="space-y-1 min-w-0">
-                  <p className="text-[11px] text-amber-400/80 leading-relaxed">
-                    Add these to your <code className="bg-amber-900/40 px-1 rounded">.env</code> file and restart the backend:
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400/80 leading-relaxed">
+                    Add these to your <code className="bg-amber-100 dark:bg-amber-900/40 px-1 rounded">.env</code> file and restart the backend:
                   </p>
-                  <pre className="text-[10px] text-amber-300/90 bg-slate-900 rounded p-2 mt-1.5 leading-relaxed overflow-x-auto">
+                  <pre className="text-[10px] text-amber-700 dark:text-amber-300/90 bg-slate-100 dark:bg-slate-900 rounded p-2 mt-1.5 leading-relaxed overflow-x-auto">
 {`TEAMS_CLIENT_ID=your-client-id
 TEAMS_CLIENT_SECRET=your-secret
 TEAMS_TENANT_ID=common
@@ -306,7 +306,7 @@ TEAMS_REDIRECT_URI=http://localhost:3000/api/oauth/teams/callback`}
                     href="https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade"
                     target="_blank"
                     rel="noreferrer"
-                    className="flex items-center gap-1 text-[11px] text-blue-400 hover:text-blue-300 transition-colors"
+                    className="flex items-center gap-1 text-[11px] text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:hover:text-blue-300 transition-colors"
                   >
                     <ExternalLink className="w-3 h-3" />
                     Register an app in Azure portal
@@ -316,7 +316,7 @@ TEAMS_REDIRECT_URI=http://localhost:3000/api/oauth/teams/callback`}
             )}
 
             {!isLoading && teamsCreds.length === 0 && isTeamsConfigured && (
-              <p className="text-[11px] text-slate-500 pl-1">No Microsoft accounts connected yet.</p>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 pl-1">No Microsoft accounts connected yet.</p>
             )}
             {teamsCreds.map((cred) => (
               <CredentialRow key={cred.id} cred={cred} onDelete={() => setPendingDeleteId(cred.id)} />
@@ -324,14 +324,14 @@ TEAMS_REDIRECT_URI=http://localhost:3000/api/oauth/teams/callback`}
           </div>
 
           {/* ── Divider ── */}
-          <div className="border-t border-slate-700" />
+          <div className="border-t border-slate-200 dark:border-slate-700" />
 
           {/* ── Basecamp section ── */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Tent className="w-4 h-4 text-green-400" />
-                <span className="text-xs font-semibold text-slate-300">Basecamp</span>
+                <Tent className="w-4 h-4 text-green-500 dark:text-green-400" />
+                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Basecamp</span>
               </div>
               {isBasecampConfigured ? (
                 <button
@@ -342,7 +342,7 @@ TEAMS_REDIRECT_URI=http://localhost:3000/api/oauth/teams/callback`}
                   Connect Account
                 </button>
               ) : (
-                <span className="text-[10px] text-amber-400 flex items-center gap-1">
+                <span className="text-[10px] text-amber-500 dark:text-amber-400 flex items-center gap-1">
                   <Settings className="w-3 h-3" />
                   Not configured
                 </span>
@@ -350,13 +350,13 @@ TEAMS_REDIRECT_URI=http://localhost:3000/api/oauth/teams/callback`}
             </div>
 
             {!isBasecampConfigured && (
-              <div className="flex items-start gap-2.5 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
-                <Settings className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <div className="flex items-start gap-2.5 p-3 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-lg">
+                <Settings className="w-4 h-4 text-amber-500 dark:text-amber-400 shrink-0 mt-0.5" />
                 <div className="space-y-1 min-w-0">
-                  <p className="text-[11px] text-amber-400/80 leading-relaxed">
-                    Add these to your <code className="bg-amber-900/40 px-1 rounded">.env</code> file and restart the backend:
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400/80 leading-relaxed">
+                    Add these to your <code className="bg-amber-100 dark:bg-amber-900/40 px-1 rounded">.env</code> file and restart the backend:
                   </p>
-                  <pre className="text-[10px] text-amber-300/90 bg-slate-900 rounded p-2 mt-1.5 leading-relaxed overflow-x-auto">
+                  <pre className="text-[10px] text-amber-700 dark:text-amber-300/90 bg-slate-100 dark:bg-slate-900 rounded p-2 mt-1.5 leading-relaxed overflow-x-auto">
 {`BASECAMP_CLIENT_ID=your-client-id
 BASECAMP_CLIENT_SECRET=your-secret`}
                   </pre>
@@ -364,7 +364,7 @@ BASECAMP_CLIENT_SECRET=your-secret`}
                     href="https://launchpad.37signals.com/integrations"
                     target="_blank"
                     rel="noreferrer"
-                    className="flex items-center gap-1 text-[11px] text-blue-400 hover:text-blue-300 transition-colors"
+                    className="flex items-center gap-1 text-[11px] text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:hover:text-blue-300 transition-colors"
                   >
                     <ExternalLink className="w-3 h-3" />
                     Register your app at launchpad.37signals.com
@@ -374,7 +374,7 @@ BASECAMP_CLIENT_SECRET=your-secret`}
             )}
 
             {!isLoading && basecampCreds.length === 0 && isBasecampConfigured && (
-              <p className="text-[11px] text-slate-500 pl-1">No Basecamp accounts connected yet.</p>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 pl-1">No Basecamp accounts connected yet.</p>
             )}
             {basecampCreds.map((cred) => (
               <CredentialRow key={cred.id} cred={cred} onDelete={() => setPendingDeleteId(cred.id)} />
@@ -413,25 +413,25 @@ function CredentialRow({ cred, onDelete }: { cred: CredentialSummary; onDelete: 
   const displayName = isGoogle ? cred.email : cred.label;
 
   return (
-    <div className="flex items-start gap-3 bg-slate-700/40 border border-slate-600/40 rounded-lg px-3.5 py-3">
+    <div className="flex items-start gap-3 bg-slate-50 dark:bg-slate-700/40 border border-slate-200 dark:border-slate-600/40 rounded-lg px-3.5 py-3">
       {isSlack
-        ? <MessageSquare className="w-5 h-5 text-violet-400 shrink-0 mt-0.5" />
+        ? <MessageSquare className="w-5 h-5 text-violet-500 dark:text-violet-400 shrink-0 mt-0.5" />
         : isTeams
-        ? <Users className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
+        ? <Users className="w-5 h-5 text-blue-500 dark:text-blue-400 shrink-0 mt-0.5" />
         : isBasecamp
-        ? <Tent className="w-5 h-5 text-green-400 shrink-0 mt-0.5" />
+        ? <Tent className="w-5 h-5 text-green-500 dark:text-green-400 shrink-0 mt-0.5" />
         : <GoogleIcon className="w-5 h-5 shrink-0 mt-0.5" />
       }
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-white truncate">{displayName}</p>
-        <p className="text-[11px] text-slate-500 mt-0.5">
+        <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{displayName}</p>
+        <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
           {isGoogle && cred.label !== cred.email ? `Label: ${cred.label} · ` : ''}
           Connected {new Date(cred.createdAt).toLocaleDateString()}
         </p>
         {serviceLabels.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-1.5">
             {serviceLabels.map((label) => (
-              <span key={label} className="text-[10px] px-1.5 py-0.5 bg-slate-700 text-slate-400 rounded">
+              <span key={label} className="text-[10px] px-1.5 py-0.5 bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 rounded">
                 {label}
               </span>
             ))}
@@ -440,7 +440,7 @@ function CredentialRow({ cred, onDelete }: { cred: CredentialSummary; onDelete: 
       </div>
       <button
         onClick={onDelete}
-        className="text-slate-500 hover:text-red-400 transition-colors shrink-0 p-0.5"
+        className="text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 transition-colors shrink-0 p-0.5"
         title="Disconnect"
       >
         <Trash2 className="w-3.5 h-3.5" />

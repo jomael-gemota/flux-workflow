@@ -24,8 +24,8 @@ export function TeamsNodeWidget({ id, data, selected }: NodeProps<TeamsNode>) {
       isDisabled={data.disabled}
     >
       {actionLabel && (
-        <p className="text-[10px] text-slate-400 truncate">
-          <span className="font-semibold text-blue-400">{actionLabel}</span>
+        <p className="text-[10px] text-slate-500 dark:text-slate-400">
+          <span className="font-semibold text-blue-600 dark:text-blue-400">{actionLabel}</span>
           {(cfg.action === 'send_message' || cfg.action === 'read_messages') && cfg.channelId && (
             ` → channel`
           )}

@@ -17,8 +17,8 @@ export function HttpNodeWidget({ id, data, selected }: NodeProps<HttpNode>) {
       isDisabled={data.disabled}
     >
       {cfg.url && (
-        <p className="text-[10px] text-slate-400 truncate">
-          <span className="font-semibold text-blue-500">{cfg.method ?? 'GET'}</span>{' '}
+        <p className="text-[10px] text-slate-500 dark:text-slate-400">
+          <span className="font-semibold text-blue-600 dark:text-blue-400">{cfg.method ?? 'GET'}</span>{' '}
           {cfg.url}
         </p>
       )}
