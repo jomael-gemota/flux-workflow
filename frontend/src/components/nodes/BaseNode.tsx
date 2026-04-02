@@ -94,10 +94,11 @@ export function BaseNode({
       <div
         className={[
           'w-full h-full rounded-2xl flex items-center justify-center transition-all duration-300',
+          'border border-slate-200 dark:border-slate-600',
           squareBg,
           squareRingCls,
           isSelected
-            ? 'shadow-2xl ring-[4px] ring-white/80 ring-offset-[4px] ring-offset-transparent'
+            ? 'shadow-2xl ring-[4px] ring-blue-500 dark:ring-white/80 ring-offset-[4px] ring-offset-transparent'
             : 'shadow-xl hover:shadow-2xl hover:scale-105',
           isDisabled ? 'opacity-50 saturate-50' : '',
         ].join(' ')}
@@ -107,8 +108,8 @@ export function BaseNode({
           <div className="absolute inset-0 rounded-2xl border-2 border-blue-400 animate-ping opacity-30 pointer-events-none" />
         )}
 
-        {/* Centred icon — text-white ensures currentColor SVG paths render white */}
-        <span className="flex items-center justify-center text-white">
+        {/* Centred icon */}
+        <span className="flex items-center justify-center">
           <NodeIcon type={nodeIconType ?? nodeType} size={42} />
         </span>
       </div>

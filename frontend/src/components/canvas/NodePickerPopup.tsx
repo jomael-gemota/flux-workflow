@@ -96,8 +96,8 @@ function NodeRow({
       {/* Drag handle hint */}
       <GripVertical className="w-3 h-3 text-slate-300 dark:text-white/20 group-hover:text-slate-400 dark:group-hover:text-white/40 shrink-0 -mr-1 transition-colors" />
 
-      {/* Icon — uses the node's brand color, matching canvas squares */}
-      <span className={`shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-white shadow-sm ${nodeHeaderColor(node.type)}`}>
+      {/* Icon — matches canvas node squares */}
+      <span className={`shrink-0 w-8 h-8 rounded-lg flex items-center justify-center shadow-sm border border-slate-200 dark:border-slate-600 ${nodeHeaderColor(node.type)}`}>
         <NodeIcon type={node.type} size={16} />
       </span>
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { X, Plus, Trash2, Loader2, CheckCircle2, AlertCircle, ExternalLink, Settings, MessageSquare, Users, Tent } from 'lucide-react';
+import { X, Plus, Trash2, Loader2, CheckCircle2, AlertCircle, ExternalLink, Settings, MessageSquare } from 'lucide-react';
 import { useCredentialList, useDeleteCredential } from '../../hooks/useCredentials';
 import { startGoogleOAuth, checkGoogleConfig, startSlackOAuth, checkSlackConfig, startTeamsOAuth, checkTeamsConfig, startBasecampOAuth, checkBasecampConfig } from '../../api/client';
 import { ConfirmModal } from './ConfirmModal';
@@ -270,7 +270,7 @@ SLACK_REDIRECT_URI=http://localhost:3000/oauth/slack/callback`}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Users className="w-4 h-4 text-blue-500 dark:text-blue-400" />
+                <img src="/logos/ms-teams.png" alt="Microsoft Teams" className="w-4 h-4 object-contain" />
                 <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Microsoft Teams</span>
               </div>
               {isTeamsConfigured ? (
@@ -330,7 +330,7 @@ TEAMS_REDIRECT_URI=http://localhost:3000/api/oauth/teams/callback`}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Tent className="w-4 h-4 text-green-500 dark:text-green-400" />
+                <img src="/logos/basecamp.png" alt="Basecamp" className="w-4 h-4 object-contain" />
                 <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Basecamp</span>
               </div>
               {isBasecampConfigured ? (
@@ -417,9 +417,9 @@ function CredentialRow({ cred, onDelete }: { cred: CredentialSummary; onDelete: 
       {isSlack
         ? <MessageSquare className="w-5 h-5 text-violet-500 dark:text-violet-400 shrink-0 mt-0.5" />
         : isTeams
-        ? <Users className="w-5 h-5 text-blue-500 dark:text-blue-400 shrink-0 mt-0.5" />
+        ? <img src="/logos/ms-teams.png" alt="Microsoft Teams" className="w-5 h-5 object-contain shrink-0 mt-0.5" />
         : isBasecamp
-        ? <Tent className="w-5 h-5 text-green-500 dark:text-green-400 shrink-0 mt-0.5" />
+        ? <img src="/logos/basecamp.png" alt="Basecamp" className="w-5 h-5 object-contain shrink-0 mt-0.5" />
         : <GoogleIcon className="w-5 h-5 shrink-0 mt-0.5" />
       }
       <div className="flex-1 min-w-0">

@@ -252,7 +252,7 @@ export function WorkflowCanvas() {
 
   if (!activeWorkflow) {
     return (
-      <div className="h-full flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+      <div className="h-full flex items-center justify-center bg-[#E9EEF6] dark:bg-[#171717]">
         <div className="text-center">
           <p className="text-slate-400 dark:text-slate-500 text-sm">Select a workflow or create a new one</p>
         </div>
@@ -279,11 +279,11 @@ export function WorkflowCanvas() {
         defaultEdgeOptions={{ type: 'execution' }}
         fitView
         deleteKeyCode="Delete"
-        className={isDark ? 'bg-slate-950/90' : 'bg-slate-100/80'}
+        className={isDark ? '!bg-[#171717]' : '!bg-[#E9EEF6]'}
       >
         <Background
           variant={BackgroundVariant.Dots}
-          color={isDark ? '#475569' : '#94a3b8'}
+          color={isDark ? '#2e2e2e' : '#c5cfe0'}
           gap={20}
           size={1}
         />
