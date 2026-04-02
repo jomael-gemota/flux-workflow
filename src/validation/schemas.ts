@@ -13,6 +13,12 @@ export const WorkflowNodeSchema = z.object({
     position: z.object({ x: z.number(), y: z.number() }).optional(),
 });
 
+const ViewportSchema = z.object({
+    x: z.number(),
+    y: z.number(),
+    zoom: z.number().positive(),
+});
+
 export const WorkflowDefinitionSchema = z.object({
     id: z.string().min(1),
     name: z.string().min(1),
@@ -21,6 +27,7 @@ export const WorkflowDefinitionSchema = z.object({
     entryNodeIds: z.array(z.string().min(1)).min(1).optional(),
     nodes: z.array(WorkflowNodeSchema).min(1, 'Workflow must have at least one node'),
     schedule: z.string().optional(),
+    viewport: ViewportSchema.optional(),
 });
 
 export const TriggerWorkflowSchema = z.object({
@@ -49,6 +56,7 @@ export const UpdateWorkflowSchema = z.object({
     entryNodeId: z.string().min(1).optional(),
     // min(1) removed: a single-entry workflow sends a one-item array
     entryNodeIds: z.array(z.string().min(1)).optional(),
+    viewport: ViewportSchema.optional(),
 });
 
 export const CursorPaginationSchema = z.object({

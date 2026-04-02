@@ -6,7 +6,9 @@ type LLMNode = Node<CanvasNodeData, 'workflowNode'>;
 
 export function LLMNodeWidget({ id, data, selected }: NodeProps<LLMNode>) {
   const cfg = data.config as { provider?: string; model?: string };
-  const iconType = cfg.provider === 'anthropic' ? 'anthropic' : 'llm';
+  const iconType =
+    cfg.provider === 'anthropic' ? 'anthropic' :
+    cfg.provider === 'gemini'    ? 'gemini'    : 'llm';
   return (
     <BaseNode
       nodeId={id}

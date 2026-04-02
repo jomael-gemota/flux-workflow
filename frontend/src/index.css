@@ -24,8 +24,8 @@ body,
 }
 
 .dark {
-  --glass-bg: linear-gradient(135deg, rgba(15,23,42,0.72) 0%, rgba(15,23,42,0.52) 100%);
-  --glass-bg-soft: rgba(15,23,42,0.48);
+  --glass-bg: #1E293B;
+  --glass-bg-soft: #1E293B;
   --glass-border: rgba(148,163,184,0.16);
   --glass-shadow-inner: rgba(255,255,255,0.05);
   --glass-shadow-outer: rgba(2,6,23,0.35);
@@ -35,7 +35,7 @@ body,
 
 body {
   margin: 0;
-  font-family: InterVariable, sans-serif;
+  font-family: 'Poppins', sans-serif;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
   background: var(--body-bg);

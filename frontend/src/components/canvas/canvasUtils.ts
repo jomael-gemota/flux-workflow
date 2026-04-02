@@ -85,7 +85,8 @@ export function serialize(
   rfEdges: CanvasEdge[],
   entryNodeId: string,
   schedule?: string,
-  _entryNodeIds?: string[]
+  _entryNodeIds?: string[],
+  viewport?: { x: number; y: number; zoom: number } | null,
 ): WorkflowDefinition {
   const nodes: WorkflowNode[] = rfNodes.map((rfn) => {
     const d = rfn.data;
@@ -227,6 +228,7 @@ export function serialize(
     // Use undefined only when there are no entries at all (empty workflow edge case).
     entryNodeIds: resolvedEntryIds.length > 0 ? resolvedEntryIds : undefined,
     schedule,
+    viewport: viewport ?? undefined,
   };
 }
 

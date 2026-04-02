@@ -6,6 +6,7 @@ import { Select } from '../ui/Input';
 import { useTestNode, useNodeTestResults } from '../../hooks/useNodeTest';
 import type { NodeTestResult } from '../../types/workflow';
 import { useCredentialList } from '../../hooks/useCredentials';
+import { ConfirmModal } from '../ui/ConfirmModal';
 import { useSaveWorkflow } from '../../hooks/useSaveWorkflow';
 import { useSlackChannels, useSlackUsers } from '../../hooks/useSlackData';
 import { useTeamsTeams, useTeamsChannels, useTeamsUsers } from '../../hooks/useTeamsData';
@@ -1044,6 +1045,9 @@ export function NodeConfigPanel() {
   const [originalSnapshot, setOriginalSnapshot] = useState<NodeDraft | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isSavingNode, setIsSavingNode] = useState(false);
+  const [alertModal, setAlertModal] = useState<{ open: boolean; title: string; message: string }>({
+    open: false, title: '', message: '',
+  });
 
   // Reset draft whenever a different node is selected
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1200,7 +1204,7 @@ export function NodeConfigPanel() {
       setTimeout(() => setSaveSuccess(false), 2500);
     } catch (err) {
       setIsSavingNode(false);
-      alert(`Save failed: ${err instanceof Error ? err.message : String(err)}`);
+      setAlertModal({ open: true, title: 'Save failed', message: err instanceof Error ? err.message : String(err) });
     }
   }
 
@@ -1219,6 +1223,15 @@ export function NodeConfigPanel() {
   const savedTestResult = selectedNodeId ? (testResults[selectedNodeId] ?? null) : null;
 
   return (
+    <>
+    <ConfirmModal
+      alertOnly
+      open={alertModal.open}
+      title={alertModal.title}
+      message={alertModal.message}
+      onConfirm={() => setAlertModal(a => ({ ...a, open: false }))}
+      onCancel={() => setAlertModal(a => ({ ...a, open: false }))}
+    />
     <div className="flex flex-col min-h-full">
     {/* Scrollable config body */}
     <div className="p-4 space-y-4 flex-1">
@@ -1433,6 +1446,7 @@ export function NodeConfigPanel() {
       </button>
     </div>
     </div>
+    </>
   );
 }
 
@@ -1555,24 +1569,63 @@ function HttpConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
   );
 }
 
+const LLM_MODELS: Record<string, { value: string; label: string }[]> = {
+  openai: [
+    { value: 'gpt-4o',           label: 'GPT-4o' },
+    { value: 'gpt-4o-mini',      label: 'GPT-4o Mini' },
+    { value: 'gpt-4-turbo',      label: 'GPT-4 Turbo' },
+    { value: 'gpt-4',            label: 'GPT-4' },
+    { value: 'gpt-3.5-turbo',    label: 'GPT-3.5 Turbo' },
+    { value: 'o1',               label: 'o1' },
+    { value: 'o1-mini',          label: 'o1-mini' },
+    { value: 'o3-mini',          label: 'o3-mini' },
+  ],
+  anthropic: [
+    { value: 'claude-3-7-sonnet-20250219', label: 'Claude 3.7 Sonnet' },
+    { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet' },
+    { value: 'claude-3-5-haiku-20241022',  label: 'Claude 3.5 Haiku' },
+    { value: 'claude-3-opus-20240229',     label: 'Claude 3 Opus' },
+    { value: 'claude-3-haiku-20240307',    label: 'Claude 3 Haiku' },
+  ],
+  gemini: [
+    { value: 'gemini-2.0-flash',      label: 'Gemini 2.0 Flash' },
+    { value: 'gemini-2.0-flash-lite', label: 'Gemini 2.0 Flash Lite' },
+    { value: 'gemini-1.5-pro',        label: 'Gemini 1.5 Pro' },
+    { value: 'gemini-1.5-flash',      label: 'Gemini 1.5 Flash' },
+    { value: 'gemini-1.5-flash-8b',   label: 'Gemini 1.5 Flash 8B' },
+  ],
+};
+
 function LLMConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
+  const provider = String(cfg.provider ?? 'openai');
+  const models = LLM_MODELS[provider] ?? LLM_MODELS.openai;
+  const currentModel = String(cfg.model ?? models[0].value);
+  // Ensure current model value is valid for the provider; if not, fall back to first
+  const modelValue = models.some(m => m.value === currentModel) ? currentModel : models[0].value;
+
+  function handleProviderChange(newProvider: string) {
+    const firstModel = (LLM_MODELS[newProvider] ?? LLM_MODELS.openai)[0].value;
+    onChange({ provider: newProvider, model: firstModel });
+  }
+
   return (
     <>
       <Select
         label="Provider"
-        value={String(cfg.provider ?? 'openai')}
-        onChange={(e) => onChange({ provider: e.target.value })}
+        value={provider}
+        onChange={(e) => handleProviderChange(e.target.value)}
         options={[
-          { value: 'openai', label: 'OpenAI' },
+          { value: 'openai',    label: 'OpenAI' },
           { value: 'anthropic', label: 'Anthropic' },
+          { value: 'gemini',    label: 'Google Gemini' },
         ]}
       />
-      <div className="space-y-1">
-        <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Model</label>
-        <input type="text" value={String(cfg.model ?? '')} onChange={(e) => onChange({ model: e.target.value })}
-          placeholder="gpt-4o-mini"
-          className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500" />
-      </div>
+      <Select
+        label="Model"
+        value={modelValue}
+        onChange={(e) => onChange({ model: e.target.value })}
+        options={models}
+      />
       <div className="space-y-1">
         <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Temperature (0–2)</label>
         <input type="number" min={0} max={2} step={0.1} value={String(cfg.temperature ?? 0.7)}

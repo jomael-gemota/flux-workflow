@@ -48,6 +48,10 @@ interface WorkflowStore {
   isDirty: boolean;
   setDirty: (dirty: boolean) => void;
 
+  // Current canvas viewport (pan + zoom) — updated on every move, saved on demand
+  canvasViewport: { x: number; y: number; zoom: number } | null;
+  setCanvasViewport: (vp: { x: number; y: number; zoom: number }) => void;
+
   // Panel visibility
   logOpen: boolean;
   setLogOpen: (open: boolean) => void;
@@ -90,6 +94,9 @@ export const useWorkflowStore = create<WorkflowStore>((set) => ({
 
   isDirty: false,
   setDirty: (dirty) => set({ isDirty: dirty }),
+
+  canvasViewport: null,
+  setCanvasViewport: (vp) => set({ canvasViewport: vp }),
 
   logOpen: true,
   setLogOpen: (open) => set({ logOpen: open }),

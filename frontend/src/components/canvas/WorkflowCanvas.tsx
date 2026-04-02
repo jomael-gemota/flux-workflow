@@ -1,4 +1,4 @@
-import { useCallback, useRef, useMemo } from 'react';
+import { useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   ReactFlow,
   Background,
@@ -15,6 +15,7 @@ import {
   BackgroundVariant,
   type NodeChange,
   type EdgeChange,
+  type Viewport,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useWorkflowStore, type CanvasNode, type CanvasEdge, type CanvasNodeData } from '../../store/workflowStore';
@@ -121,10 +122,34 @@ export function WorkflowCanvas() {
     executionStatuses,
     isExecuting,
     theme,
+    setCanvasViewport,
   } = useWorkflowStore();
 
   const rfInstance = useRef<ReactFlowInstance<CanvasNode> | null>(null);
   const isDark = theme === 'dark';
+
+  // Restore the saved viewport (or fitView) whenever the active workflow changes.
+  // requestAnimationFrame ensures React Flow has committed the new nodes before we act.
+  useEffect(() => {
+    if (!rfInstance.current || !activeWorkflow) return;
+    const vp = activeWorkflow.viewport;
+    requestAnimationFrame(() => {
+      if (!rfInstance.current) return;
+      if (vp) {
+        rfInstance.current.setViewport(vp, { duration: 150 });
+      } else {
+        rfInstance.current.fitView({ padding: 0.15, duration: 150 });
+      }
+    });
+  }, [activeWorkflow?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Capture the viewport after every pan/zoom so it's ready when Save is pressed.
+  const onMoveEnd = useCallback(
+    (_event: MouseEvent | TouchEvent, vp: Viewport) => {
+      setCanvasViewport(vp);
+    },
+    [setCanvasViewport],
+  );
 
   const onNodesChange = useCallback(
     (changes: NodeChange<CanvasNode>[]) => {
@@ -184,8 +209,9 @@ export function WorkflowCanvas() {
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: CanvasNode) => {
       setSelectedNodeId(node.id);
+      setConfigOpen(true);
     },
-    [setSelectedNodeId]
+    [setSelectedNodeId, setConfigOpen]
   );
 
   const onNodeDoubleClick = useCallback(
@@ -198,7 +224,8 @@ export function WorkflowCanvas() {
 
   const onPaneClick = useCallback(() => {
     setSelectedNodeId(null);
-  }, [setSelectedNodeId]);
+    setConfigOpen(false);
+  }, [setSelectedNodeId, setConfigOpen]);
 
   // Add a node from the floating picker — placed in the visible center of the viewport
   const handlePickerSelect = useCallback(
@@ -273,11 +300,22 @@ export function WorkflowCanvas() {
         onNodeClick={onNodeClick}
         onNodeDoubleClick={onNodeDoubleClick}
         onPaneClick={onPaneClick}
-        onInit={(instance) => { rfInstance.current = instance; }}
+        onInit={(instance) => {
+          rfInstance.current = instance;
+          // Handle the very first render — rfInstance wasn't set when the effect ran
+          const vp = activeWorkflow?.viewport;
+          requestAnimationFrame(() => {
+            if (vp) {
+              instance.setViewport(vp, { duration: 0 });
+            } else {
+              instance.fitView({ padding: 0.15, duration: 0 });
+            }
+          });
+        }}
+        onMoveEnd={onMoveEnd}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         defaultEdgeOptions={{ type: 'execution' }}
-        fitView
         deleteKeyCode="Delete"
         className={isDark ? '!bg-[#171717]' : '!bg-[#E9EEF6]'}
       >

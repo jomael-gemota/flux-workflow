@@ -37,6 +37,8 @@ export interface WorkflowDefinition {
   entryNodeId: string;
   entryNodeIds?: string[];
   schedule?: string;
+  /** Canvas pan/zoom saved with the workflow so the view is restored on load */
+  viewport?: { x: number; y: number; zoom: number };
 }
 
 export interface NodeResult {

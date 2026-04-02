@@ -8,6 +8,8 @@ interface ConfirmModalProps {
   confirmLabel?: string;
   danger?: boolean;
   isLoading?: boolean;
+  /** When true renders a single OK button — use for info/error alerts */
+  alertOnly?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -19,6 +21,7 @@ export function ConfirmModal({
   confirmLabel = 'Confirm',
   danger = false,
   isLoading = false,
+  alertOnly = false,
   onConfirm,
   onCancel,
 }: ConfirmModalProps) {
@@ -65,24 +68,28 @@ export function ConfirmModal({
 
         {/* Actions */}
         <div className="flex justify-end gap-2 mt-5">
-          <button
-            onClick={onCancel}
-            disabled={isLoading}
-            className="px-3.5 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition-colors disabled:opacity-50"
-          >
-            Cancel
-          </button>
+          {!alertOnly && (
+            <button
+              onClick={onCancel}
+              disabled={isLoading}
+              className="px-3.5 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          )}
           <button
             onClick={onConfirm}
             disabled={isLoading}
             className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50 ${
-              danger
+              alertOnly
+                ? 'bg-slate-600 hover:bg-slate-500 dark:bg-slate-600 dark:hover:bg-slate-500 text-white'
+                : danger
                 ? 'bg-red-600 hover:bg-red-500 text-white'
                 : 'bg-blue-600 hover:bg-blue-500 text-white'
             }`}
           >
             {isLoading && <Loader2 className="w-3 h-3 animate-spin" />}
-            {confirmLabel}
+            {alertOnly ? (confirmLabel === 'Confirm' ? 'OK' : confirmLabel) : confirmLabel}
           </button>
         </div>
       </div>

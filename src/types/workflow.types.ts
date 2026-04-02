@@ -37,6 +37,8 @@ export interface WorkflowDefinition {
     entryNodeId: string;       // Primary / first entry node (kept for backward compat)
     entryNodeIds?: string[];   // All parallel entry nodes; overrides entryNodeId when present
     schedule?: string;
+    /** Canvas pan/zoom saved with the workflow so the view is restored on load */
+    viewport?: { x: number; y: number; zoom: number };
 }
 
 export interface ExecutionContext {

@@ -6,6 +6,11 @@ import type { NodeType } from '../../types/workflow';
 
 // ── Logo image helper ─────────────────────────────────────────────────────────
 
+/**
+ * PNG logos have internal transparent padding that makes the visible mark
+ * appear smaller than SVG icons that fill their viewBox edge-to-edge.
+ * A 1.3× CSS transform closes that gap without affecting layout metrics.
+ */
 function LogoImg({ src, size, alt }: { src: string; size: number; alt: string }) {
   return (
     <img
@@ -13,7 +18,13 @@ function LogoImg({ src, size, alt }: { src: string; size: number; alt: string })
       alt={alt}
       width={size}
       height={size}
-      style={{ width: size, height: size, objectFit: 'contain' }}
+      style={{
+        width: size,
+        height: size,
+        objectFit: 'contain',
+        transform: 'scale(1.3)',
+        transformOrigin: 'center',
+      }}
     />
   );
 }
@@ -50,6 +61,26 @@ export function BasecampIcon({ size = 14 }: { size?: number }) {
 
 export function TeamsIcon({ size = 14 }: { size?: number }) {
   return <LogoImg src="/logos/ms-teams.png" size={size} alt="Microsoft Teams" />;
+}
+
+/**
+ * Gemini — 4-pointed star with Google's blue-to-indigo gradient
+ */
+export function GeminiIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="geminiGrad" x1="12" y1="2" x2="12" y2="22" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#4285F4" />
+          <stop offset="100%" stopColor="#8B5CF6" />
+        </linearGradient>
+      </defs>
+      <path
+        d="M12 2C11.72 8.04 8.04 11.72 2 12C8.04 12.28 11.72 15.96 12 22C12.28 15.96 15.96 12.28 22 12C15.96 11.72 12.28 8.04 12 2Z"
+        fill="url(#geminiGrad)"
+      />
+    </svg>
+  );
 }
 
 /**
@@ -94,6 +125,7 @@ export function NodeIcon({ type, size = 13 }: { type: NodeType | string; size?: 
     case 'http':      return <Globe       size={size} className={LUCIDE_CLS} />;
     case 'llm':       return <OpenAIIcon  size={size} />;
     case 'anthropic': return <AnthropicIcon size={size} />;
+    case 'gemini':    return <GeminiIcon  size={size} />;
     case 'condition': return <GitBranch   size={size} className={LUCIDE_CLS} />;
     case 'switch':    return <Shuffle     size={size} className={LUCIDE_CLS} />;
     case 'transform': return <Wand2       size={size} className={LUCIDE_CLS} />;

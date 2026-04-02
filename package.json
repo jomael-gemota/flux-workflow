@@ -28,6 +28,7 @@
     "@fastify/rate-limit": "^10.3.0",
     "@fastify/sensible": "^6.0.4",
     "@fastify/static": "^9.0.0",
+    "@google/generative-ai": "^0.24.1",
     "@microsoft/microsoft-graph-client": "^3.0.7",
     "@slack/web-api": "^7.15.0",
     "bullmq": "^5.71.1",

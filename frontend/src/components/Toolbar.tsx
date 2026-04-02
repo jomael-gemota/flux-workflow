@@ -5,6 +5,7 @@ import { useTriggerWorkflow } from '../hooks/useWorkflows';
 import { useSaveWorkflow } from '../hooks/useSaveWorkflow';
 import { useState } from 'react';
 import { CredentialsModal } from './ui/CredentialsModal';
+import { ConfirmModal } from './ui/ConfirmModal';
 
 export function Toolbar() {
   const {
@@ -27,18 +28,24 @@ export function Toolbar() {
   const [nameEdit, setNameEdit] = useState(false);
   const [nameValue, setNameValue] = useState('');
   const [credentialsOpen, setCredentialsOpen] = useState(false);
+  const [alertModal, setAlertModal] = useState<{ open: boolean; title: string; message: string }>({
+    open: false, title: '', message: '',
+  });
+  function showAlert(title: string, message: string) {
+    setAlertModal({ open: true, title, message });
+  }
 
   async function handleSave() {
     if (!activeWorkflow) return;
     if (nodes.length === 0) {
-      alert('Add at least one node to the canvas before saving.');
+      showAlert('Cannot save', 'Add at least one node to the canvas before saving.');
       return;
     }
     try {
       await save();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
-      alert(`Save failed: ${msg}`);
+      showAlert('Save failed', msg);
     }
   }
 
@@ -56,7 +63,7 @@ export function Toolbar() {
       setLogOpen(true);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
-      alert(`Trigger failed: ${msg}`);
+      showAlert('Trigger failed', msg);
     }
   }
 
@@ -71,6 +78,14 @@ export function Toolbar() {
 
   return (
     <>
+    <ConfirmModal
+      alertOnly
+      open={alertModal.open}
+      title={alertModal.title}
+      message={alertModal.message}
+      onConfirm={() => setAlertModal(a => ({ ...a, open: false }))}
+      onCancel={() => setAlertModal(a => ({ ...a, open: false }))}
+    />
     <header className="h-12 glass-surface border-b border-black/[0.07] dark:border-white/10 flex items-center px-4 gap-4 shrink-0">
       <div className="flex items-center gap-2 font-semibold text-sm">
         <GitBranch className="w-4 h-4 text-blue-500 dark:text-blue-400" />

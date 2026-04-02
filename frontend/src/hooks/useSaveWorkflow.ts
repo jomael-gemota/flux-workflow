@@ -16,7 +16,7 @@ export function useSaveWorkflow() {
   async function save() {
     // Read latest state at call-time — Zustand set() is synchronous so any
     // store update that happened before this call is already reflected here.
-    const { activeWorkflow, nodes, edges, setDirty, setActiveWorkflow } =
+    const { activeWorkflow, nodes, edges, setDirty, setActiveWorkflow, canvasViewport } =
       useWorkflowStore.getState();
 
     if (!activeWorkflow) return;
@@ -35,6 +35,7 @@ export function useSaveWorkflow() {
       entryNodeId,
       activeWorkflow.schedule,
       entryNodeIds,
+      canvasViewport,
     );
 
     if (!activeWorkflow.id || activeWorkflow.id.startsWith('__new__')) {
@@ -51,6 +52,7 @@ export function useSaveWorkflow() {
           nodes: def.nodes,
           entryNodeId: def.entryNodeId,
           entryNodeIds: def.entryNodeIds,
+          viewport: def.viewport,
         },
       });
       if (updated) {
