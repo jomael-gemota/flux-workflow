@@ -389,9 +389,9 @@ export function WorkflowCanvas() {
       >
         <Background
           variant={BackgroundVariant.Dots}
-          color={isDark ? '#2e2e2e' : '#c5cfe0'}
+          color={isDark ? '#4a4a4a' : '#94a3b8'}
           gap={20}
-          size={1}
+          size={1.5}
         />
         <Controls
           className={
