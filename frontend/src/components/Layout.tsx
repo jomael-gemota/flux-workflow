@@ -1,9 +1,11 @@
-import type { ReactNode } from 'react';
+import { type ReactNode, useEffect } from 'react';
 import { ScrollText, ChevronUp, ChevronDown } from 'lucide-react';
 import { Toolbar } from './Toolbar';
 import { WorkflowSidebar } from './WorkflowSidebar';
 import { useWorkflowStore } from '../store/workflowStore';
 import { useResizablePanel } from '../hooks/useResizablePanel';
+import { ProductTour } from './ui/ProductTour';
+import { useTourStore, TOUR_DONE_KEY } from '../store/tourStore';
 
 // ── Persistence keys ──────────────────────────────────────────────────────────
 const LS_CONFIG_W = 'wap_panel_config_width';
@@ -28,6 +30,15 @@ interface LayoutProps {
 
 export function Layout({ canvas, configPanel, executionLog }: LayoutProps) {
   const { logOpen, setLogOpen, configOpen } = useWorkflowStore();
+  const { start: startTour } = useTourStore();
+
+  // Auto-launch the tour once for first-time users
+  useEffect(() => {
+    if (!localStorage.getItem(TOUR_DONE_KEY)) {
+      const id = setTimeout(startTour, 1200);
+      return () => clearTimeout(id);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [configWidth, startConfigDrag] = useResizablePanel(
     LS_CONFIG_W, CONFIG_DEFAULT, CONFIG_MIN, CONFIG_MAX,
@@ -42,6 +53,7 @@ export function Layout({ canvas, configPanel, executionLog }: LayoutProps) {
   return (
     <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-950 text-gray-900 dark:text-white overflow-hidden">
       <Toolbar />
+      <ProductTour />
 
       {/* ── Main row: sidebar | middle column | config panel ── */}
       <div className="flex flex-1 min-h-0">

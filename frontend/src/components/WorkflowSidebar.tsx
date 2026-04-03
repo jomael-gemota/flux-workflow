@@ -645,7 +645,7 @@ export function WorkflowSidebar() {
       onConfirm={modal.onConfirm}
       onCancel={closeModal}
     />
-    <aside className="w-72 glass-surface border-r border-black/[0.07] dark:border-white/10 flex flex-col shrink-0 overflow-hidden">
+    <aside id="tour-sidebar" className="w-72 glass-surface border-r border-black/[0.07] dark:border-white/10 flex flex-col shrink-0 overflow-hidden">
 
       {/* ── Header ──────────────────────────────────────────────────────────── */}
       <div className="px-3 pt-3 pb-2.5 border-b border-black/[0.07] dark:border-white/10 shrink-0 space-y-2">

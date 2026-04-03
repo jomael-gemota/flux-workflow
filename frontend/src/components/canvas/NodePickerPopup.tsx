@@ -265,6 +265,7 @@ export function NodePickerPopup({ onSelect, open: controlledOpen, onOpenChange }
 
       {/* ── Trigger button ───────────────────────────────────────────────── */}
       <button
+        id="tour-add-node-btn"
         type="button"
         onClick={() => setOpen(!open)}
         title="Add a node"

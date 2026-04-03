@@ -179,3 +179,10 @@ body {
 .agent-circuit-pulse {
   animation: agentCircuitPulse 2.6s ease-in-out infinite;
 }
+
+/* ── Product tour: spotlight pulse ring ──────────────────────────────────── */
+@keyframes tourPulse {
+  0%   { opacity: 1;   transform: scale(1);    }
+  70%  { opacity: 0;   transform: scale(1.06); }
+  100% { opacity: 0;   transform: scale(1.06); }
+}

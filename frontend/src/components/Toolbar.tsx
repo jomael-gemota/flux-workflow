@@ -1,4 +1,4 @@
-import { Save, Play, Loader2, LogOut, PanelRight, KeyRound, Sun, Moon, Check, Shield, Clock, ChevronDown } from 'lucide-react';
+import { Save, Play, Loader2, LogOut, PanelRight, KeyRound, Sun, Moon, Check, Shield, Clock, ChevronDown, HelpCircle } from 'lucide-react';
 import { Button } from './ui/Button';
 import { useWorkflowStore } from '../store/workflowStore';
 import { useTriggerWorkflow } from '../hooks/useWorkflows';
@@ -8,6 +8,7 @@ import { createPortal } from 'react-dom';
 import { CredentialsModal } from './ui/CredentialsModal';
 import { ConfirmModal } from './ui/ConfirmModal';
 import { useAuthStore } from '../store/authStore';
+import { useTourStore } from '../store/tourStore';
 import { useQuery } from '@tanstack/react-query';
 import { fetchAdminStats } from '../api/auth';
 import { OwnerDashboard } from './admin/OwnerDashboard';
@@ -31,6 +32,7 @@ export function Toolbar() {
   const { save, isSaving } = useSaveWorkflow();
   const trigger = useTriggerWorkflow();
   const { user, logout } = useAuthStore();
+  const { start: startTour } = useTourStore();
   const isOwner = user?.role === 'owner';
 
   // Pending user count badge — only fetched for owners, every 60 s
@@ -217,6 +219,7 @@ export function Toolbar() {
 
       <div className="ml-auto flex items-center gap-2">
         <Button
+          id="tour-save-btn"
           variant="primary"
           size="sm"
           onClick={handleSave}
@@ -228,6 +231,7 @@ export function Toolbar() {
         </Button>
 
         <Button
+          id="tour-trigger-btn"
           variant="secondary"
           size="sm"
           onClick={handleTrigger}
@@ -244,6 +248,7 @@ export function Toolbar() {
         <div className="w-px h-5 glass-divider" />
 
         <button
+          id="tour-credentials-btn"
           onClick={() => setCredentialsOpen(true)}
           title="Manage Google Workspace credentials"
           className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
@@ -268,6 +273,15 @@ export function Toolbar() {
         </button>
 
         <div className="w-px h-5 glass-divider" />
+
+        {/* ── Help / Tour ──────────────────────────────────────────────── */}
+        <button
+          onClick={startTour}
+          title="Start interactive tour"
+          className="flex items-center justify-center w-7 h-7 rounded text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 transition-colors"
+        >
+          <HelpCircle className="w-3.5 h-3.5" />
+        </button>
 
         {/* ── Theme toggle ─────────────────────────────────────────────── */}
         <button
@@ -304,6 +318,7 @@ export function Toolbar() {
         {/* User avatar — trigger */}
         <div ref={profileRef}>
           <button
+            id="tour-avatar"
             onClick={openProfile}
             className="flex items-center gap-1.5 rounded-full hover:ring-2 hover:ring-blue-400/50 transition-all focus:outline-none"
             title="Your profile"
