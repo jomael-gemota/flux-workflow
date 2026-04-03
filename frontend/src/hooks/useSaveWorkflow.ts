@@ -56,10 +56,9 @@ export function useSaveWorkflow() {
         },
       });
       if (updated) {
-        setActiveWorkflow({
-          ...updated,
-          version: updated.version ?? activeWorkflow.version + 1,
-        });
+        // Always trust the version returned by the API — the backend only
+        // increments it when the content actually changed.
+        setActiveWorkflow({ ...updated });
       }
     }
 

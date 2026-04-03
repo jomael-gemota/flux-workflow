@@ -11,6 +11,17 @@ function workflowFilter(id: string, userId?: string): Record<string, unknown> {
     return f;
 }
 
+/**
+ * Stable hash of the content-significant parts of a workflow definition.
+ * Excludes `version` (metadata) and `viewport` (view-only pan/zoom state)
+ * so that saving those fields alone does not bump the version counter.
+ */
+function contentHash(def: WorkflowDefinition): string {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { version: _v, viewport: _vp, ...content } = def;
+    return JSON.stringify(content);
+}
+
 export class WorkflowRepository {
 
     async create(
@@ -43,17 +54,12 @@ export class WorkflowRepository {
         // avoiding any potential Mongoose document proxy quirks when spreading.
         const existingDef = existing.toObject().definition as WorkflowDefinition;
 
-        await WorkflowVersionModel.create({
-            workflowId: id,
-            version: existing.version,
-            definition: existingDef,
-        });
-
-        const merged: WorkflowDefinition = {
+        // Compute the candidate merged definition (version unchanged for now)
+        const candidate: WorkflowDefinition = {
             ...existingDef,
             ...updates,
             id,
-            version: existing.version + 1,
+            version: existingDef.version,
         };
 
         // If the update provides entryNodeId but no entryNodeIds, the stale
@@ -61,23 +67,35 @@ export class WorkflowRepository {
         // cause the runner to start from a deleted node.  Explicitly clear it
         // so the runner always falls back to the fresh entryNodeId.
         if (updates.entryNodeId && !updates.entryNodeIds) {
-            delete merged.entryNodeIds;
+            delete candidate.entryNodeIds;
         }
 
-        const updated = merged;
+        // Only bump the version (and record a history snapshot) when something
+        // meaningful actually changed.  Viewport-only saves (pan / zoom) are
+        // persisted silently without touching the version counter.
+        const contentChanged = contentHash(existingDef) !== contentHash(candidate);
+
+        if (contentChanged) {
+            await WorkflowVersionModel.create({
+                workflowId: id,
+                version: existingDef.version,
+                definition: existingDef,
+            });
+            candidate.version = existingDef.version + 1;
+        }
 
         await WorkflowModel.updateOne(
             { workflowId: id },
             {
                 $set: {
-                name: updated.name,
-                version: updated.version,
-                definition: updated,
+                    name: candidate.name,
+                    version: candidate.version,
+                    definition: candidate,
                 },
-            }
+            },
         );
 
-        return updated;
+        return candidate;
     }
 
     async delete(id: string, userId?: string): Promise<boolean> {
