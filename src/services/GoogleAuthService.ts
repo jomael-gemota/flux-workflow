@@ -6,6 +6,8 @@ import { getBaseUrl } from '../utils/baseUrl';
 const SCOPES = [
     'https://www.googleapis.com/auth/gmail.send',
     'https://www.googleapis.com/auth/gmail.readonly',
+    'https://www.googleapis.com/auth/gmail.modify',   // labels, drafts, mark read/unread, trash
+    'https://www.googleapis.com/auth/gmail.delete',   // permanent message deletion
     'https://www.googleapis.com/auth/drive',
     'https://www.googleapis.com/auth/documents',
     'https://www.googleapis.com/auth/spreadsheets',
