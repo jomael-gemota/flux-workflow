@@ -45,9 +45,16 @@ export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(
   }
 );
 
+type SelectOption = { value: string; label: string };
+type SelectGroup  = { group: string; options: SelectOption[] };
+
 interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
   label?: string;
-  options: Array<{ value: string; label: string }>;
+  options: Array<SelectOption | SelectGroup>;
+}
+
+function isGroup(o: SelectOption | SelectGroup): o is SelectGroup {
+  return 'group' in o;
 }
 
 export function Select({ label, options, className = '', ...props }: SelectProps) {
@@ -60,11 +67,17 @@ export function Select({ label, options, className = '', ...props }: SelectProps
         {...props}
         className={`w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${className}`}
       >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
+        {options.map((o) =>
+          isGroup(o) ? (
+            <optgroup key={o.group} label={o.group}>
+              {o.options.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </optgroup>
+          ) : (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          )
+        )}
       </select>
     </div>
   );

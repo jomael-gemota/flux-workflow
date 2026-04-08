@@ -4,28 +4,46 @@ import { WorkflowNode, ExecutionContext } from '../types/workflow.types';
 import { GoogleAuthService } from '../services/GoogleAuthService';
 import { ExpressionResolver } from '../engine/ExpressionResolver';
 
-type GmailAction = 'send' | 'list' | 'read';
+type GmailAction =
+    | 'send' | 'send_and_wait' | 'reply'
+    | 'list' | 'read'
+    | 'add_label' | 'remove_label'
+    | 'mark_read' | 'mark_unread'
+    | 'delete_message'
+    | 'create_draft' | 'get_draft' | 'list_drafts' | 'delete_draft';
 
 interface GmailConfig {
     credentialId: string;
     action: GmailAction;
-    // send — to/cc/bcc accept a string (legacy) or array of addresses
+    // send / send_and_wait / reply / create_draft — recipients & body
     to?: string | string[];
     cc?: string | string[];
     bcc?: string | string[];
     subject?: string;
     body?: string;
     isHtml?: boolean;
+    // send_and_wait — how long to poll for a reply (minutes, default 5)
+    waitMinutes?: number;
+    // reply — ID of the message being replied to
+    replyToMessageId?: string;
     // list — user-friendly filter fields (translated to a Gmail query on the fly)
     readStatus?: 'all' | 'read' | 'unread';
     fromFilter?: string | string[];   // single address/name, or multiple (joined with OR)
     subjectFilter?: string;
     bodyFilter?: string;
     hasAttachment?: boolean;
-    attachmentTypes?: string[];   // 'image' | 'pdf' | 'docs' | 'sheets'
+    attachmentTypes?: string[];       // 'image' | 'pdf' | 'docs' | 'sheets'
     maxResults?: number;
-    // read
+    // read / mark_read / mark_unread / add_label / remove_label / delete_message
     messageId?: string;
+    // add_label / remove_label
+    labelIds?: string[];
+    // delete_message — permanent delete vs. move to trash (default = trash)
+    permanent?: boolean;
+    // get_draft / delete_draft
+    draftId?: string;
+    // list_drafts
+    maxDrafts?: number;
 }
 
 export class GmailNode implements NodeExecutor {
@@ -43,104 +61,203 @@ export class GmailNode implements NodeExecutor {
         if (!credentialId) throw new Error('Gmail node: credentialId is required');
         if (!action)       throw new Error('Gmail node: action is required');
 
-        const auth   = await this.googleAuth.getAuthenticatedClient(credentialId);
-        const gmail  = google.gmail({ version: 'v1', auth });
+        const auth  = await this.googleAuth.getAuthenticatedClient(credentialId);
+        const gmail = google.gmail({ version: 'v1', auth });
 
-        // Helper: resolve a to/cc/bcc value that may be a string or string array.
+        // ── Shared helpers ─────────────────────────────────────────────────────
+
+        /** Resolve a to/cc/bcc field that may be a plain string or a string[]. */
         const resolveAddresses = (raw: string | string[] | undefined): string | undefined => {
             if (!raw) return undefined;
             if (Array.isArray(raw)) {
-                const resolved = raw
+                const joined = raw
                     .map((a) => this.resolver.resolveTemplate(a, context))
                     .filter(Boolean)
                     .join(', ');
-                return resolved || undefined;
+                return joined || undefined;
             }
             const resolved = this.resolver.resolveTemplate(raw, context);
             return resolved || undefined;
         };
 
-        if (action === 'send') {
-            const to      = resolveAddresses(config.to) ?? '';
-            const subject = this.resolver.resolveTemplate(config.subject ?? '', context);
-            const body    = this.resolver.resolveTemplate(config.body ?? '', context);
-            const cc      = resolveAddresses(config.cc);
-            const bcc     = resolveAddresses(config.bcc);
+        /** Recursively extract a body part by MIME type from the message payload. */
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const getPart = (parts: any[] | null | undefined, mimeType: string): string => {
+            for (const part of parts ?? []) {
+                if (part.mimeType === mimeType && part.body?.data) {
+                    return Buffer.from(part.body.data, 'base64').toString('utf-8');
+                }
+                if (part.parts) {
+                    const found = getPart(part.parts, mimeType);
+                    if (found) return found;
+                }
+            }
+            return '';
+        };
 
-            const contentType = config.isHtml ? 'text/html' : 'text/plain';
+        /** Decode the full plain-text body from a message payload. */
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const extractBody = (payload: any): string =>
+            getPart(payload?.parts, 'text/plain') ||
+            getPart(payload?.parts, 'text/html') ||
+            (payload?.body?.data ? Buffer.from(payload.body.data, 'base64').toString('utf-8') : '');
 
-            // Normalise line endings inside the body to CRLF so every paragraph
-            // boundary survives the MIME encode/decode cycle intact.
-            const normalisedBody = body.replace(/\r?\n/g, '\r\n');
-
-            // IMPORTANT: filter only null/undefined, NOT the empty string ''.
-            // The empty string is the mandatory blank line that separates MIME
-            // headers from the body.  filter(Boolean) would remove it, causing
-            // the first paragraph to be parsed as a malformed header and only
-            // the text after the first \n\n to appear as the email body.
-            const messageParts = [
-                `To: ${to}`,
-                cc  ? `Cc: ${cc}`  : null,
-                bcc ? `Bcc: ${bcc}` : null,
-                `Subject: ${subject}`,
-                `Content-Type: ${contentType}; charset=utf-8`,
-                '',              // ← blank line — MIME header/body separator
-                normalisedBody,
+        /** Build a base64url-encoded RFC-2822 MIME message. */
+        const buildRaw = (opts: {
+            to: string; cc?: string; bcc?: string;
+            subject: string; body: string; isHtml?: boolean;
+            inReplyTo?: string; references?: string; threadId?: string;
+        }) => {
+            const ct = opts.isHtml ? 'text/html' : 'text/plain';
+            const normBody = opts.body.replace(/\r?\n/g, '\r\n');
+            const parts = [
+                `To: ${opts.to}`,
+                opts.cc         ? `Cc: ${opts.cc}`                    : null,
+                opts.bcc        ? `Bcc: ${opts.bcc}`                  : null,
+                `Subject: ${opts.subject}`,
+                `Content-Type: ${ct}; charset=utf-8`,
+                opts.inReplyTo  ? `In-Reply-To: ${opts.inReplyTo}`    : null,
+                opts.references ? `References: ${opts.references}`    : null,
+                '',   // mandatory blank line between headers and body
+                normBody,
             ];
-            const rawMessage = messageParts
-                .filter((line): line is string => line !== null)
-                .join('\r\n');
+            return Buffer.from(
+                parts.filter((l): l is string => l !== null).join('\r\n')
+            ).toString('base64url');
+        };
 
-            const encoded = Buffer.from(rawMessage).toString('base64url');
-            const res = await gmail.users.messages.send({
-                userId: 'me',
-                requestBody: { raw: encoded },
+        // ── send ───────────────────────────────────────────────────────────────
+
+        if (action === 'send') {
+            const raw = buildRaw({
+                to:      resolveAddresses(config.to) ?? '',
+                cc:      resolveAddresses(config.cc),
+                bcc:     resolveAddresses(config.bcc),
+                subject: this.resolver.resolveTemplate(config.subject ?? '', context),
+                body:    this.resolver.resolveTemplate(config.body    ?? '', context),
+                isHtml:  config.isHtml,
             });
+            const res = await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });
             return { messageId: res.data.id, threadId: res.data.threadId, labelIds: res.data.labelIds };
         }
 
+        // ── send_and_wait ──────────────────────────────────────────────────────
+
+        if (action === 'send_and_wait') {
+            const raw = buildRaw({
+                to:      resolveAddresses(config.to) ?? '',
+                cc:      resolveAddresses(config.cc),
+                bcc:     resolveAddresses(config.bcc),
+                subject: this.resolver.resolveTemplate(config.subject ?? '', context),
+                body:    this.resolver.resolveTemplate(config.body    ?? '', context),
+                isHtml:  config.isHtml,
+            });
+            const sent = await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });
+            const threadId = sent.data.threadId!;
+            const sentId   = sent.data.id!;
+
+            const waitMs  = Math.min((config.waitMinutes ?? 5), 60) * 60_000;
+            const pollMs  = 15_000; // check every 15 s
+            const deadline = Date.now() + waitMs;
+
+            while (Date.now() < deadline) {
+                await new Promise((r) => setTimeout(r, pollMs));
+                const thread = await gmail.users.threads.get({
+                    userId: 'me',
+                    id: threadId,
+                    format: 'metadata',
+                    metadataHeaders: ['From', 'Subject', 'Date'],
+                });
+                const msgs = thread.data.messages ?? [];
+                // A reply exists when there is a message in the thread that is NOT
+                // the one we just sent.
+                const reply = msgs.find((m) => m.id !== sentId);
+                if (reply) {
+                    const rh = reply.payload?.headers ?? [];
+                    const h  = (n: string) => rh.find((x) => x.name === n)?.value ?? '';
+                    return {
+                        replied:          true,
+                        sentMessageId:    sentId,
+                        threadId,
+                        replyMessageId:   reply.id,
+                        replyFrom:        h('From'),
+                        replySubject:     h('Subject'),
+                        replyDate:        h('Date'),
+                        replySnippet:     reply.snippet,
+                    };
+                }
+            }
+
+            return { replied: false, timedOut: true, sentMessageId: sentId, threadId };
+        }
+
+        // ── reply ──────────────────────────────────────────────────────────────
+
+        if (action === 'reply') {
+            const replyToId = this.resolver.resolveTemplate(config.replyToMessageId ?? '', context);
+            if (!replyToId) throw new Error('Gmail reply: replyToMessageId is required');
+
+            const orig = await gmail.users.messages.get({
+                userId: 'me',
+                id: replyToId,
+                format: 'metadata',
+                metadataHeaders: ['From', 'Subject', 'Message-ID', 'References'],
+            });
+            const oh = (n: string) =>
+                (orig.data.payload?.headers ?? []).find((x) => x.name === n)?.value ?? '';
+
+            const origFrom      = oh('From');
+            const origSubject   = oh('Subject');
+            const origMessageId = oh('Message-ID');
+            const origRefs      = oh('References');
+
+            const replySubject  = origSubject.startsWith('Re:') ? origSubject : `Re: ${origSubject}`;
+            const references    = [origRefs, origMessageId].filter(Boolean).join(' ');
+
+            const raw = buildRaw({
+                to:         origFrom,
+                subject:    replySubject,
+                body:       this.resolver.resolveTemplate(config.body ?? '', context),
+                isHtml:     config.isHtml,
+                inReplyTo:  origMessageId,
+                references,
+            });
+
+            const res = await gmail.users.messages.send({
+                userId: 'me',
+                requestBody: { raw, threadId: orig.data.threadId ?? undefined },
+            });
+            return {
+                messageId: res.data.id,
+                threadId:  res.data.threadId,
+                repliedTo: replyToId,
+                labelIds:  res.data.labelIds,
+            };
+        }
+
+        // ── list ───────────────────────────────────────────────────────────────
+
         if (action === 'list') {
             const maxResults = config.maxResults ?? 10;
-
-            // Shared body-extraction helper (mirrors the 'read' action logic).
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const getPart = (parts: any[] | null | undefined, mimeType: string): string => {
-                for (const part of parts ?? []) {
-                    if (part.mimeType === mimeType && part.body?.data) {
-                        return Buffer.from(part.body.data, 'base64').toString('utf-8');
-                    }
-                    if (part.parts) {
-                        const found = getPart(part.parts, mimeType);
-                        if (found) return found;
-                    }
-                }
-                return '';
-            };
-
-            // Build a Gmail search query from the user-friendly filter fields.
             const queryParts: string[] = [];
 
             if (config.readStatus === 'read')   queryParts.push('is:read');
             if (config.readStatus === 'unread') queryParts.push('is:unread');
 
-            // fromFilter may be a single string or an array of addresses/names
             const resolvedFroms: string[] = Array.isArray(config.fromFilter)
-                ? config.fromFilter
-                    .map((f) => this.resolver.resolveTemplate(f, context))
-                    .filter(Boolean)
+                ? config.fromFilter.map((f) => this.resolver.resolveTemplate(f, context)).filter(Boolean)
                 : config.fromFilter
                     ? [this.resolver.resolveTemplate(config.fromFilter, context)].filter(Boolean)
                     : [];
 
-            const subjectFilter = config.subjectFilter ? this.resolver.resolveTemplate(config.subjectFilter, context) : '';
-            const bodyFilter    = config.bodyFilter    ? this.resolver.resolveTemplate(config.bodyFilter, context)    : '';
-
             if (resolvedFroms.length === 1) {
                 queryParts.push(`from:(${resolvedFroms[0]})`);
             } else if (resolvedFroms.length > 1) {
-                // Multiple senders: match emails from ANY of them
                 queryParts.push(`{${resolvedFroms.map((f) => `from:${f}`).join(' ')}}`);
             }
+
+            const subjectFilter = config.subjectFilter ? this.resolver.resolveTemplate(config.subjectFilter, context) : '';
+            const bodyFilter    = config.bodyFilter    ? this.resolver.resolveTemplate(config.bodyFilter,    context) : '';
             if (subjectFilter) queryParts.push(`subject:(${subjectFilter})`);
             if (bodyFilter)    queryParts.push(`"${bodyFilter}"`);
 
@@ -157,100 +274,50 @@ export class GmailNode implements NodeExecutor {
                 });
             }
 
-            const query = queryParts.join(' ');
-
-            // Step 1: run the search to find messages matching the filters
             const res = await gmail.users.messages.list({
                 userId: 'me',
-                q: query || undefined,
+                q: queryParts.join(' ') || undefined,
                 maxResults,
             });
             const matchedRefs = res.data.messages ?? [];
 
-            // Step 2: collect unique thread IDs from the matched messages
             const seenThreadIds = new Set<string>();
-            for (const m of matchedRefs) {
-                if (m.threadId) seenThreadIds.add(m.threadId);
-            }
+            for (const m of matchedRefs) if (m.threadId) seenThreadIds.add(m.threadId);
 
-            // Step 3: fetch every thread in full so the caller gets the complete
-            //         conversation, including the full body of every message.
             const threads = await Promise.all(
                 [...seenThreadIds].map(async (threadId) => {
-                    const thread = await gmail.users.threads.get({
-                        userId: 'me',
-                        id: threadId,
-                        format: 'full',   // full payload so we can decode the body
-                    });
-                    const msgs = (thread.data.messages ?? []).map((m) => {
-                        const headers = m.payload?.headers ?? [];
-                        const h = (name: string) =>
-                            headers.find((x) => x.name === name)?.value ?? '';
-
-                        // Extract the complete plain-text (or HTML) body
-                        const body =
-                            getPart(m.payload?.parts, 'text/plain') ||
-                            getPart(m.payload?.parts, 'text/html') ||
-                            (m.payload?.body?.data
-                                ? Buffer.from(m.payload.body.data, 'base64').toString('utf-8')
-                                : '');
-
-                        return {
-                            id:       m.id,
-                            threadId: m.threadId ?? threadId,
-                            subject:  h('Subject'),
-                            from:     h('From'),
-                            to:       h('To'),
-                            date:     h('Date'),
-                            snippet:  m.snippet,
-                            body,
-                        };
-                    });
+                    const thread = await gmail.users.threads.get({ userId: 'me', id: threadId, format: 'full' });
+                    const msgs = (thread.data.messages ?? []).map((m) => ({
+                        id:       m.id,
+                        threadId: m.threadId ?? threadId,
+                        subject:  (m.payload?.headers ?? []).find((x) => x.name === 'Subject')?.value ?? '',
+                        from:     (m.payload?.headers ?? []).find((x) => x.name === 'From')?.value    ?? '',
+                        to:       (m.payload?.headers ?? []).find((x) => x.name === 'To')?.value      ?? '',
+                        date:     (m.payload?.headers ?? []).find((x) => x.name === 'Date')?.value    ?? '',
+                        snippet:  m.snippet,
+                        body:     extractBody(m.payload),
+                    }));
                     return { threadId, messages: msgs };
                 })
             );
 
-            const totalMessages = threads.reduce((s, t) => s + t.messages.length, 0);
             return {
                 threads,
                 totalThreads:    threads.length,
-                totalMessages,
+                totalMessages:   threads.reduce((s, t) => s + t.messages.length, 0),
                 matchedMessages: matchedRefs.length,
             };
         }
 
+        // ── read (get message) ─────────────────────────────────────────────────
+
         if (action === 'read') {
             const messageId = this.resolver.resolveTemplate(config.messageId ?? '', context);
-            if (!messageId) throw new Error('Gmail read: messageId is required');
+            if (!messageId) throw new Error('Gmail get message: messageId is required');
 
-            const res = await gmail.users.messages.get({
-                userId: 'me',
-                id: messageId,
-                format: 'full',
-            });
-            const payload  = res.data.payload;
-            const headers  = payload?.headers ?? [];
-            const h = (name: string) => headers.find((x) => x.name === name)?.value ?? '';
-
-            // Extract plain-text body
-            let textBody = '';
-            type MsgParts = NonNullable<typeof payload>['parts'];
-            const getPart = (parts: MsgParts, mimeType: string): string => {
-                for (const part of parts ?? []) {
-                    if (part.mimeType === mimeType && part.body?.data) {
-                        return Buffer.from(part.body.data, 'base64').toString('utf-8');
-                    }
-                    if (part.parts) {
-                        const found = getPart(part.parts, mimeType);
-                        if (found) return found;
-                    }
-                }
-                return '';
-            };
-
-            textBody = getPart(payload?.parts, 'text/plain') ||
-                       getPart(payload?.parts, 'text/html') ||
-                       (payload?.body?.data ? Buffer.from(payload.body.data, 'base64').toString('utf-8') : '');
+            const res = await gmail.users.messages.get({ userId: 'me', id: messageId, format: 'full' });
+            const headers = res.data.payload?.headers ?? [];
+            const h = (n: string) => headers.find((x) => x.name === n)?.value ?? '';
 
             return {
                 id:       res.data.id,
@@ -260,9 +327,167 @@ export class GmailNode implements NodeExecutor {
                 to:       h('To'),
                 date:     h('Date'),
                 snippet:  res.data.snippet,
-                body:     textBody,
+                body:     extractBody(res.data.payload),
                 labelIds: res.data.labelIds,
             };
+        }
+
+        // ── add_label ──────────────────────────────────────────────────────────
+
+        if (action === 'add_label') {
+            const messageId = this.resolver.resolveTemplate(config.messageId ?? '', context);
+            if (!messageId) throw new Error('Gmail add label: messageId is required');
+            const labelIds = (config.labelIds ?? []).map((l) => this.resolver.resolveTemplate(l, context)).filter(Boolean);
+            if (labelIds.length === 0) throw new Error('Gmail add label: at least one labelId is required');
+
+            const res = await gmail.users.messages.modify({
+                userId: 'me',
+                id: messageId,
+                requestBody: { addLabelIds: labelIds },
+            });
+            return { messageId: res.data.id, labelIds: res.data.labelIds, addedLabels: labelIds };
+        }
+
+        // ── remove_label ───────────────────────────────────────────────────────
+
+        if (action === 'remove_label') {
+            const messageId = this.resolver.resolveTemplate(config.messageId ?? '', context);
+            if (!messageId) throw new Error('Gmail remove label: messageId is required');
+            const labelIds = (config.labelIds ?? []).map((l) => this.resolver.resolveTemplate(l, context)).filter(Boolean);
+            if (labelIds.length === 0) throw new Error('Gmail remove label: at least one labelId is required');
+
+            const res = await gmail.users.messages.modify({
+                userId: 'me',
+                id: messageId,
+                requestBody: { removeLabelIds: labelIds },
+            });
+            return { messageId: res.data.id, labelIds: res.data.labelIds, removedLabels: labelIds };
+        }
+
+        // ── mark_read ──────────────────────────────────────────────────────────
+
+        if (action === 'mark_read') {
+            const messageId = this.resolver.resolveTemplate(config.messageId ?? '', context);
+            if (!messageId) throw new Error('Gmail mark as read: messageId is required');
+
+            const res = await gmail.users.messages.modify({
+                userId: 'me',
+                id: messageId,
+                requestBody: { removeLabelIds: ['UNREAD'] },
+            });
+            return { messageId: res.data.id, markedAs: 'read', labelIds: res.data.labelIds };
+        }
+
+        // ── mark_unread ────────────────────────────────────────────────────────
+
+        if (action === 'mark_unread') {
+            const messageId = this.resolver.resolveTemplate(config.messageId ?? '', context);
+            if (!messageId) throw new Error('Gmail mark as unread: messageId is required');
+
+            const res = await gmail.users.messages.modify({
+                userId: 'me',
+                id: messageId,
+                requestBody: { addLabelIds: ['UNREAD'] },
+            });
+            return { messageId: res.data.id, markedAs: 'unread', labelIds: res.data.labelIds };
+        }
+
+        // ── delete_message ─────────────────────────────────────────────────────
+
+        if (action === 'delete_message') {
+            const messageId = this.resolver.resolveTemplate(config.messageId ?? '', context);
+            if (!messageId) throw new Error('Gmail delete message: messageId is required');
+
+            if (config.permanent) {
+                await gmail.users.messages.delete({ userId: 'me', id: messageId });
+                return { deleted: true, permanent: true, messageId };
+            } else {
+                const res = await gmail.users.messages.trash({ userId: 'me', id: messageId });
+                return { deleted: true, permanent: false, movedToTrash: true, messageId: res.data.id };
+            }
+        }
+
+        // ── create_draft ───────────────────────────────────────────────────────
+
+        if (action === 'create_draft') {
+            const raw = buildRaw({
+                to:      resolveAddresses(config.to) ?? '',
+                cc:      resolveAddresses(config.cc),
+                bcc:     resolveAddresses(config.bcc),
+                subject: this.resolver.resolveTemplate(config.subject ?? '', context),
+                body:    this.resolver.resolveTemplate(config.body    ?? '', context),
+                isHtml:  config.isHtml,
+            });
+            const res = await gmail.users.drafts.create({
+                userId: 'me',
+                requestBody: { message: { raw } },
+            });
+            return { draftId: res.data.id, messageId: res.data.message?.id };
+        }
+
+        // ── get_draft ──────────────────────────────────────────────────────────
+
+        if (action === 'get_draft') {
+            const draftId = this.resolver.resolveTemplate(config.draftId ?? '', context);
+            if (!draftId) throw new Error('Gmail get draft: draftId is required');
+
+            const res = await gmail.users.drafts.get({ userId: 'me', id: draftId, format: 'full' });
+            const msg     = res.data.message;
+            const headers = msg?.payload?.headers ?? [];
+            const h = (n: string) => headers.find((x) => x.name === n)?.value ?? '';
+
+            return {
+                draftId:   res.data.id,
+                messageId: msg?.id,
+                threadId:  msg?.threadId,
+                subject:   h('Subject'),
+                to:        h('To'),
+                cc:        h('Cc'),
+                from:      h('From'),
+                date:      h('Date'),
+                snippet:   msg?.snippet,
+                body:      extractBody(msg?.payload),
+                labelIds:  msg?.labelIds,
+            };
+        }
+
+        // ── list_drafts ────────────────────────────────────────────────────────
+
+        if (action === 'list_drafts') {
+            const maxDrafts = config.maxDrafts ?? 10;
+            const res = await gmail.users.drafts.list({ userId: 'me', maxResults: maxDrafts });
+            const drafts = await Promise.all(
+                (res.data.drafts ?? []).map(async (d) => {
+                    const detail = await gmail.users.drafts.get({
+                        userId: 'me',
+                        id: d.id!,
+                        format: 'metadata',
+                        metadataHeaders: ['To', 'Subject', 'Date', 'From'],
+                    });
+                    const headers = detail.data.message?.payload?.headers ?? [];
+                    const h = (n: string) => headers.find((x) => x.name === n)?.value ?? '';
+                    return {
+                        draftId:   d.id,
+                        messageId: detail.data.message?.id,
+                        subject:   h('Subject'),
+                        to:        h('To'),
+                        from:      h('From'),
+                        date:      h('Date'),
+                        snippet:   detail.data.message?.snippet,
+                    };
+                })
+            );
+            return { drafts, total: res.data.resultSizeEstimate };
+        }
+
+        // ── delete_draft ───────────────────────────────────────────────────────
+
+        if (action === 'delete_draft') {
+            const draftId = this.resolver.resolveTemplate(config.draftId ?? '', context);
+            if (!draftId) throw new Error('Gmail delete draft: draftId is required');
+
+            await gmail.users.drafts.delete({ userId: 'me', id: draftId });
+            return { deleted: true, draftId };
         }
 
         throw new Error(`Gmail node: unknown action "${action}"`);

@@ -1107,7 +1107,7 @@ function GmailResultDisplay({ result }: { result: NodeTestResult }) {
     );
   }
 
-  // Read action — output has both `body` and `subject`
+  // ── Get a Message / Read action ──────────────────────────────────────────
   if (out.body !== undefined && out.subject !== undefined) {
     const email = out as GmailEmailItem;
     return (
@@ -1124,29 +1124,201 @@ function GmailResultDisplay({ result }: { result: NodeTestResult }) {
           {email.body ? (
             <div>
               <SectionLabel>Message body</SectionLabel>
-              <p className="mt-1 text-[11px] text-slate-800 dark:text-slate-100 whitespace-pre-wrap leading-relaxed">
-                {email.body}
-              </p>
+              <p className="mt-1 text-[11px] text-slate-800 dark:text-slate-100 whitespace-pre-wrap leading-relaxed">{email.body}</p>
             </div>
           ) : email.snippet ? (
             <p className="text-[11px] text-slate-600 dark:text-slate-300 italic">{email.snippet}</p>
           ) : null}
         </div>
-        {email.id && (
-          <p className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">Message ID: {email.id}</p>
+        {email.id && <p className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">Message ID: {email.id}</p>}
+      </div>
+    );
+  }
+
+  // ── Mark as Read / Unread ────────────────────────────────────────────────
+  if (out.markedAs !== undefined) {
+    const markedAs = String(out.markedAs);
+    return (
+      <div className="p-3 space-y-2">
+        <SuccessBanner text={`Message marked as ${markedAs}`} sub={out.messageId ? `Message ID: ${String(out.messageId)}` : undefined} />
+        {Array.isArray(out.labelIds) && (
+          <div className="space-y-0.5">
+            <SectionLabel>Current labels</SectionLabel>
+            <div className="flex flex-wrap gap-1 mt-1">
+              {(out.labelIds as string[]).map((l) => (
+                <span key={l} className="text-[10px] bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded px-1.5 py-0.5 font-mono">{l}</span>
+              ))}
+            </div>
+          </div>
         )}
       </div>
     );
   }
 
-  // Send action
+  // ── Add / Remove Label ───────────────────────────────────────────────────
+  if (out.addedLabels !== undefined || out.removedLabels !== undefined) {
+    const isAdd    = out.addedLabels !== undefined;
+    const changed  = (isAdd ? out.addedLabels : out.removedLabels) as string[];
+    return (
+      <div className="p-3 space-y-2">
+        <SuccessBanner text={isAdd ? 'Label(s) added' : 'Label(s) removed'} sub={out.messageId ? `Message ID: ${String(out.messageId)}` : undefined} />
+        <div>
+          <SectionLabel>{isAdd ? 'Added labels' : 'Removed labels'}</SectionLabel>
+          <div className="flex flex-wrap gap-1 mt-1">
+            {changed.map((l) => (
+              <span key={l} className={`text-[10px] rounded px-1.5 py-0.5 font-mono ${isAdd ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300' : 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-300'}`}>{l}</span>
+            ))}
+          </div>
+        </div>
+        {Array.isArray(out.labelIds) && (
+          <div>
+            <SectionLabel>Current labels on message</SectionLabel>
+            <div className="flex flex-wrap gap-1 mt-1">
+              {(out.labelIds as string[]).map((l) => (
+                <span key={l} className="text-[10px] bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded px-1.5 py-0.5 font-mono">{l}</span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Delete Message ───────────────────────────────────────────────────────
+  if (out.deleted === true && out.draftId === undefined) {
+    const perm = Boolean(out.permanent);
+    return (
+      <div className="p-3 space-y-1.5">
+        <SuccessBanner
+          text={perm ? 'Message permanently deleted' : 'Message moved to Trash'}
+          sub={out.messageId ? `Message ID: ${String(out.messageId)}` : undefined}
+        />
+        {perm && (
+          <p className="text-[10px] text-red-500 dark:text-red-400">This action cannot be undone.</p>
+        )}
+      </div>
+    );
+  }
+
+  // ── Reply action ─────────────────────────────────────────────────────────
+  if (out.repliedTo !== undefined) {
+    return (
+      <div className="p-3 space-y-2">
+        <SuccessBanner text="Reply sent successfully" sub={out.messageId ? `Message ID: ${String(out.messageId)}` : undefined} />
+        <div className="space-y-0.5">
+          <InfoRow label="Thread ID"    value={out.threadId  ? String(out.threadId)  : undefined} mono />
+          <InfoRow label="Replied to"   value={out.repliedTo ? String(out.repliedTo) : undefined} mono />
+        </div>
+      </div>
+    );
+  }
+
+  // ── Send & Wait ──────────────────────────────────────────────────────────
+  if (out.replied !== undefined) {
+    const replied = Boolean(out.replied);
+    return (
+      <div className="p-3 space-y-2">
+        {replied ? (
+          <>
+            <SuccessBanner text="Reply received!" sub={out.replyMessageId ? `Reply ID: ${String(out.replyMessageId)}` : undefined} />
+            <div className="bg-slate-100 dark:bg-slate-800 rounded-md p-3 space-y-1.5">
+              <p className="text-xs font-semibold text-slate-800 dark:text-slate-100">{out.replySubject ? String(out.replySubject) : '(no subject)'}</p>
+              <InfoRow label="From"    value={out.replyFrom ? String(out.replyFrom) : undefined} />
+              <InfoRow label="Date"    value={out.replyDate ? fmtDate(String(out.replyDate)) : undefined} />
+              {!!out.replySnippet && <p className="text-[10px] text-slate-600 dark:text-slate-300 italic pt-1">{String(out.replySnippet)}</p>}
+            </div>
+          </>
+        ) : (
+          <div className="flex gap-2 rounded-md border border-amber-200 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-900/20 px-3 py-2.5">
+            <Info className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
+            <div className="space-y-0.5">
+              <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">No reply received — timed out</p>
+              <p className="text-[10px] text-amber-600 dark:text-amber-400">The email was sent but no reply arrived within the wait window.</p>
+              {!!out.sentMessageId && <p className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">Sent ID: {String(out.sentMessageId)}</p>}
+              {!!out.threadId      && <p className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">Thread: {String(out.threadId)}</p>}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Create Draft ─────────────────────────────────────────────────────────
+  if (out.draftId !== undefined && out.messageId !== undefined && out.subject === undefined) {
+    return (
+      <div className="p-3 space-y-2">
+        <SuccessBanner text="Draft created" />
+        <div className="space-y-0.5">
+          <InfoRow label="Draft ID"   value={String(out.draftId)}   mono />
+          <InfoRow label="Message ID" value={String(out.messageId)} mono />
+        </div>
+      </div>
+    );
+  }
+
+  // ── Get a Draft ──────────────────────────────────────────────────────────
+  if (out.draftId !== undefined && out.subject !== undefined) {
+    return (
+      <div className="p-3 space-y-2.5">
+        <div className="bg-slate-100 dark:bg-slate-800 rounded-md p-3 space-y-2">
+          <p className="text-xs font-semibold text-slate-800 dark:text-slate-100">{out.subject ? String(out.subject) : '(no subject)'}</p>
+          <div className="space-y-0.5 pb-2 border-b border-slate-200 dark:border-slate-700">
+            <InfoRow label="To"   value={out.to   ? String(out.to)   : undefined} />
+            <InfoRow label="From" value={out.from ? String(out.from) : undefined} />
+            <InfoRow label="Date" value={out.date ? fmtDate(String(out.date)) : undefined} />
+          </div>
+          {out.body ? (
+            <div>
+              <SectionLabel>Body</SectionLabel>
+              <p className="mt-1 text-[11px] text-slate-800 dark:text-slate-100 whitespace-pre-wrap leading-relaxed">{String(out.body)}</p>
+            </div>
+          ) : !!out.snippet && (
+            <p className="text-[11px] text-slate-600 dark:text-slate-300 italic">{String(out.snippet)}</p>
+          )}
+        </div>
+        <InfoRow label="Draft ID" value={out.draftId ? String(out.draftId) : undefined} mono />
+      </div>
+    );
+  }
+
+  // ── Get Many Drafts ──────────────────────────────────────────────────────
+  if (Array.isArray(out.drafts)) {
+    type DraftItem = { draftId?: string; messageId?: string; subject?: string; to?: string; from?: string; date?: string; snippet?: string };
+    const drafts = out.drafts as DraftItem[];
+    return (
+      <div className="p-3 space-y-2">
+        <SectionLabel>{drafts.length} draft{drafts.length !== 1 ? 's' : ''} found</SectionLabel>
+        <div className="space-y-2">
+          {drafts.map((d, i) => (
+            <div key={i} className="bg-slate-100 dark:bg-slate-800 rounded-md px-3 py-2.5 space-y-1">
+              <p className="text-xs font-semibold text-slate-800 dark:text-slate-100">{d.subject || '(no subject)'}</p>
+              <div className="flex items-start gap-2 text-[10px] flex-wrap">
+                {d.to   && <span className="text-slate-700 dark:text-slate-200 break-all">To: {d.to}</span>}
+                {d.date && <span className="shrink-0 text-slate-500 dark:text-slate-400">{fmtDate(d.date)}</span>}
+              </div>
+              {d.snippet && <p className="text-[10px] text-slate-600 dark:text-slate-300 italic break-words">{d.snippet}</p>}
+              {d.draftId && <p className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">Draft ID: {d.draftId}</p>}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Delete Draft ─────────────────────────────────────────────────────────
+  if (out.deleted === true && out.draftId !== undefined) {
+    return (
+      <div className="p-3">
+        <SuccessBanner text="Draft deleted" sub={`Draft ID: ${String(out.draftId)}`} />
+      </div>
+    );
+  }
+
+  // ── Send / fallback ──────────────────────────────────────────────────────
   const sent = out as { messageId?: string };
   return (
     <div className="p-3">
-      <SuccessBanner
-        text="Email sent successfully"
-        sub={sent.messageId ? `Message ID: ${sent.messageId}` : undefined}
-      />
+      <SuccessBanner text="Email sent successfully" sub={sent.messageId ? `Message ID: ${sent.messageId}` : undefined} />
     </div>
   );
 }
@@ -3185,21 +3357,95 @@ function EmailTagInput({
 
 // ── GmailConfig ────────────────────────────────────────────────────────────────
 
-function GmailConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
-  const action = (cfg.action as string) ?? 'send';
+// ── Reusable Gmail sub-components ─────────────────────────────────────────────
 
-  // Normalise to/cc/bcc: stored as string[] in config; handle legacy string values.
+/** Shared body composer (To/CC/BCC/Subject/Body/HTML) used by send, send_and_wait, create_draft */
+function GmailBodyComposer({ cfg, onChange, otherNodes, testResults, autoFormatBody }: {
+  cfg: Record<string, unknown>;
+  onChange: (p: Partial<Record<string, unknown>>) => void;
+  otherNodes: CanvasNode[];
+  testResults: Record<string, NodeTestResult>;
+  autoFormatBody: () => void;
+}) {
   function toArr(v: unknown): string[] {
     if (Array.isArray(v)) return v as string[];
     if (typeof v === 'string' && v.trim()) return v.split(',').map((s) => s.trim()).filter(Boolean);
     return [];
   }
+  return (
+    <>
+      <EmailTagInput label="To" value={toArr(cfg.to)} onChange={(v) => onChange({ to: v })}
+        placeholder="recipient@example.com" nodes={otherNodes} testResults={testResults} />
+      <EmailTagInput label="CC" value={toArr(cfg.cc)} onChange={(v) => onChange({ cc: v })}
+        placeholder="cc@example.com" optional nodes={otherNodes} testResults={testResults} />
+      <EmailTagInput label="BCC" value={toArr(cfg.bcc)} onChange={(v) => onChange({ bcc: v })}
+        placeholder="bcc@example.com" optional nodes={otherNodes} testResults={testResults} />
+      <ExpressionInput label="Subject" value={String(cfg.subject ?? '')} onChange={(v) => onChange({ subject: v })}
+        placeholder="Email subject" nodes={otherNodes} testResults={testResults} />
+      <div className="space-y-1">
+        <div className="flex items-center justify-between gap-1">
+          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Body</label>
+          <button type="button" onClick={autoFormatBody}
+            title="Auto-format: normalise spacing and wrap in a greeting / sign-off"
+            className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded text-violet-500 dark:text-violet-400 hover:text-gray-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+            <Wand2 className="w-2.5 h-2.5" />Auto format
+          </button>
+        </div>
+        <ExpressionTextArea label="" value={String(cfg.body ?? '')} onChange={(v) => onChange({ body: v })}
+          placeholder="Email body…" nodes={otherNodes} testResults={testResults} rows={6} resizable />
+      </div>
+      <div className="flex items-center gap-2">
+        <input type="checkbox" id="gmail-html" checked={Boolean(cfg.isHtml)}
+          onChange={(e) => onChange({ isHtml: e.target.checked })} className="w-3.5 h-3.5 rounded" />
+        <label htmlFor="gmail-html" className="text-xs text-slate-500 dark:text-slate-400">Send as HTML</label>
+      </div>
+    </>
+  );
+}
 
-  const toList  = toArr(cfg.to);
-  const ccList  = toArr(cfg.cc);
-  const bccList = toArr(cfg.bcc);
+/** Shared Message ID input */
+function GmailMessageIdInput({ cfg, onChange, otherNodes, testResults, label = 'Message ID', placeholder = 'Paste a message ID or insert variable' }: {
+  cfg: Record<string, unknown>;
+  onChange: (p: Partial<Record<string, unknown>>) => void;
+  otherNodes: CanvasNode[];
+  testResults: Record<string, NodeTestResult>;
+  label?: string;
+  placeholder?: string;
+}) {
+  return (
+    <ExpressionInput label={label} value={String(cfg.messageId ?? '')}
+      onChange={(v) => onChange({ messageId: v })} placeholder={placeholder}
+      nodes={otherNodes} testResults={testResults} />
+  );
+}
 
-  // Attachment type checkboxes for List Emails
+/** Label IDs tag input with a hint about finding them */
+function GmailLabelIdsInput({ cfg, onChange, otherNodes, testResults }: {
+  cfg: Record<string, unknown>;
+  onChange: (p: Partial<Record<string, unknown>>) => void;
+  otherNodes: CanvasNode[];
+  testResults: Record<string, NodeTestResult>;
+}) {
+  const labelIds = (cfg.labelIds as string[] | undefined) ?? [];
+  return (
+    <div className="space-y-1.5">
+      <EmailTagInput label="Label IDs" value={labelIds} onChange={(v) => onChange({ labelIds: v })}
+        placeholder="INBOX, STARRED, Label_123…" nodes={otherNodes} testResults={testResults} />
+      <div className="flex gap-2 rounded-md border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/20 px-3 py-2">
+        <Info className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
+        <p className="text-[10px] text-amber-700 dark:text-amber-300 leading-relaxed">
+          Use system labels like <code>INBOX</code>, <code>STARRED</code>, <code>IMPORTANT</code>, <code>UNREAD</code>, <code>TRASH</code>, or custom label IDs from your Gmail settings.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ── GmailConfig ────────────────────────────────────────────────────────────────
+
+function GmailConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
+  const action = (cfg.action as string) ?? 'send';
+
   const attachmentTypes = (cfg.attachmentTypes as string[] | undefined) ?? [];
   function toggleAttachType(type: string) {
     const next = attachmentTypes.includes(type)
@@ -3208,143 +3454,116 @@ function GmailConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
     onChange({ attachmentTypes: next });
   }
 
-  // Auto-format the email body: normalise spacing and wrap in a simple template
   function autoFormatBody() {
     const current = String(cfg.body ?? '').trim();
-    if (!current) {
-      onChange({ body: 'Hi,\n\n\n\nBest regards,' });
-      return;
-    }
-    // Collapse 3+ consecutive blank lines → 2, trim each line
-    const normalised = current
-      .split(/\r?\n/)
-      .map((l) => l.trimEnd())
-      .join('\n')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim();
-    // Wrap in greeting / sign-off if neither is present
-    const hasGreeting  = /^(hi|hello|dear|hey|good\s)/i.test(normalised);
-    const hasSignOff   = /(regards|sincerely|thanks|cheers|best),?\s*$/i.test(normalised);
+    if (!current) { onChange({ body: 'Hi,\n\n\n\nBest regards,' }); return; }
+    const normalised = current.split(/\r?\n/).map((l) => l.trimEnd()).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+    const hasGreeting = /^(hi|hello|dear|hey|good\s)/i.test(normalised);
+    const hasSignOff  = /(regards|sincerely|thanks|cheers|best),?\s*$/i.test(normalised);
     const withGreeting = hasGreeting ? normalised : `Hi,\n\n${normalised}`;
-    const formatted    = hasSignOff  ? withGreeting : `${withGreeting}\n\nBest regards,`;
-    onChange({ body: formatted });
+    onChange({ body: hasSignOff ? withGreeting : `${withGreeting}\n\nBest regards,` });
   }
 
   return (
     <div className="space-y-3">
-      <CredentialSelect
-        value={String(cfg.credentialId ?? '')}
-        onChange={(id) => onChange({ credentialId: id })}
-      />
+      <CredentialSelect value={String(cfg.credentialId ?? '')} onChange={(id) => onChange({ credentialId: id })} />
+
       <Select
         label="Action"
         value={action}
         onChange={(e) => onChange({ action: e.target.value })}
         options={[
-          { value: 'send', label: 'Send Email' },
-          { value: 'list', label: 'List Emails' },
-          { value: 'read', label: 'Read Email' },
+          { group: 'Message Actions', options: [
+            { value: 'send',           label: 'Send Email' },
+            { value: 'send_and_wait',  label: 'Send & Wait for Reply' },
+            { value: 'reply',          label: 'Reply to a Message' },
+            { value: 'list',           label: 'Get Many Messages' },
+            { value: 'read',           label: 'Get a Message' },
+            { value: 'mark_read',      label: 'Mark as Read' },
+            { value: 'mark_unread',    label: 'Mark as Unread' },
+            { value: 'add_label',      label: 'Add Label to Message' },
+            { value: 'remove_label',   label: 'Remove Label from Message' },
+            { value: 'delete_message', label: 'Delete a Message' },
+          ]},
+          { group: 'Draft Actions', options: [
+            { value: 'create_draft',   label: 'Create a Draft' },
+            { value: 'get_draft',      label: 'Get a Draft' },
+            { value: 'list_drafts',    label: 'Get Many Drafts' },
+            { value: 'delete_draft',   label: 'Delete a Draft' },
+          ]},
         ]}
       />
 
-      {/* ── Send Email ─────────────────────────────────────────── */}
+      {/* ── Send Email ─────────────────────────────────────── */}
       {action === 'send' && (
+        <GmailBodyComposer cfg={cfg} onChange={onChange} otherNodes={otherNodes}
+          testResults={testResults} autoFormatBody={autoFormatBody} />
+      )}
+
+      {/* ── Send & Wait for Reply ──────────────────────────── */}
+      {action === 'send_and_wait' && (
         <>
-          <EmailTagInput
-            label="To"
-            value={toList}
-            onChange={(v) => onChange({ to: v })}
-            placeholder="recipient@example.com"
-            nodes={otherNodes}
-            testResults={testResults}
-          />
-          <EmailTagInput
-            label="CC"
-            value={ccList}
-            onChange={(v) => onChange({ cc: v })}
-            placeholder="cc@example.com"
-            optional
-            nodes={otherNodes}
-            testResults={testResults}
-          />
-          <EmailTagInput
-            label="BCC"
-            value={bccList}
-            onChange={(v) => onChange({ bcc: v })}
-            placeholder="bcc@example.com"
-            optional
-            nodes={otherNodes}
-            testResults={testResults}
-          />
-          <ExpressionInput
-            label="Subject"
-            value={String(cfg.subject ?? '')}
-            onChange={(v) => onChange({ subject: v })}
-            placeholder="Email subject"
-            nodes={otherNodes}
-            testResults={testResults}
-          />
-          {/* Body with auto-format + resizable textarea */}
+          <GmailBodyComposer cfg={cfg} onChange={onChange} otherNodes={otherNodes}
+            testResults={testResults} autoFormatBody={autoFormatBody} />
           <div className="space-y-1">
-            <div className="flex items-center justify-between gap-1">
-              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Body</label>
-              <button
-                type="button"
-                onClick={autoFormatBody}
-                title="Auto-format: normalise spacing and wrap in a greeting / sign-off"
-                className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded text-violet-500 dark:text-violet-400 hover:text-gray-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-              >
-                <Wand2 className="w-2.5 h-2.5" />
-                Auto format
-              </button>
-            </div>
-            <ExpressionTextArea
-              label=""
-              value={String(cfg.body ?? '')}
-              onChange={(v) => onChange({ body: v })}
-              placeholder="Email body…"
-              nodes={otherNodes}
-              testResults={testResults}
-              rows={6}
-              resizable
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="gmail-html"
-              checked={Boolean(cfg.isHtml)}
-              onChange={(e) => onChange({ isHtml: e.target.checked })}
-              className="w-3.5 h-3.5 rounded"
-            />
-            <label htmlFor="gmail-html" className="text-xs text-slate-500 dark:text-slate-400">Send as HTML</label>
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+              Wait up to (minutes)
+            </label>
+            <input type="number" min={1} max={60} value={String(cfg.waitMinutes ?? 5)}
+              onChange={(e) => onChange({ waitMinutes: Number(e.target.value) })}
+              className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            <p className="text-[10px] text-slate-400 dark:text-slate-500">
+              The workflow will poll for a reply every 15 s, up to this limit (max 60 min).
+            </p>
           </div>
         </>
       )}
 
-      {/* ── List Emails ────────────────────────────────────────── */}
+      {/* ── Reply to a Message ─────────────────────────────── */}
+      {action === 'reply' && (
+        <>
+          <ExpressionInput label="Message ID to reply to"
+            value={String(cfg.replyToMessageId ?? '')}
+            onChange={(v) => onChange({ replyToMessageId: v })}
+            placeholder="ID of the message you're replying to"
+            nodes={otherNodes} testResults={testResults} />
+          <div className="space-y-1">
+            <div className="flex items-center justify-between gap-1">
+              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Reply body</label>
+              <button type="button" onClick={autoFormatBody}
+                className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded text-violet-500 dark:text-violet-400 hover:text-gray-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+                <Wand2 className="w-2.5 h-2.5" />Auto format
+              </button>
+            </div>
+            <ExpressionTextArea label="" value={String(cfg.body ?? '')} onChange={(v) => onChange({ body: v })}
+              placeholder="Your reply…" nodes={otherNodes} testResults={testResults} rows={5} resizable />
+          </div>
+          <div className="flex items-center gap-2">
+            <input type="checkbox" id="gmail-reply-html" checked={Boolean(cfg.isHtml)}
+              onChange={(e) => onChange({ isHtml: e.target.checked })} className="w-3.5 h-3.5 rounded" />
+            <label htmlFor="gmail-reply-html" className="text-xs text-slate-500 dark:text-slate-400">Send as HTML</label>
+          </div>
+        </>
+      )}
+
+      {/* ── Get Many Messages (list) ───────────────────────── */}
       {action === 'list' && (
         <>
-          {/* Read/Unread filter */}
           <div className="space-y-1">
             <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Read status</label>
             <div className="flex gap-3">
               {(['all', 'unread', 'read'] as const).map((opt) => (
                 <label key={opt} className="flex items-center gap-1.5 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="gmail-read-status"
-                    value={opt}
+                  <input type="radio" name="gmail-read-status" value={opt}
                     checked={(cfg.readStatus as string | undefined ?? 'all') === opt}
-                    onChange={() => onChange({ readStatus: opt })}
-                    className="w-3 h-3 accent-blue-500"
-                  />
-                  <span className="text-xs text-slate-600 dark:text-slate-300 capitalize">{opt === 'all' ? 'All' : opt === 'unread' ? 'Unread only' : 'Read only'}</span>
+                    onChange={() => onChange({ readStatus: opt })} className="w-3 h-3 accent-blue-500" />
+                  <span className="text-xs text-slate-600 dark:text-slate-300">
+                    {opt === 'all' ? 'All' : opt === 'unread' ? 'Unread only' : 'Read only'}
+                  </span>
                 </label>
               ))}
             </div>
           </div>
-
           <EmailTagInput
             label="From (sender name or email)"
             value={(() => {
@@ -3355,41 +3574,23 @@ function GmailConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
             })()}
             onChange={(v) => onChange({ fromFilter: v })}
             placeholder="john@example.com or John Smith"
-            nodes={otherNodes}
-            testResults={testResults}
-          />
-          <ExpressionInput
-            label="Subject contains"
-            value={String(cfg.subjectFilter ?? '')}
-            onChange={(v) => onChange({ subjectFilter: v })}
-            placeholder="Invoice for"
-            nodes={otherNodes}
-            testResults={testResults}
-          />
-          <ExpressionInput
-            label="Body contains"
-            value={String(cfg.bodyFilter ?? '')}
-            onChange={(v) => onChange({ bodyFilter: v })}
-            placeholder="Any text inside the email body"
-            nodes={otherNodes}
-            testResults={testResults}
-          />
-
-          {/* Attachment filter */}
+            nodes={otherNodes} testResults={testResults} />
+          <ExpressionInput label="Subject contains" value={String(cfg.subjectFilter ?? '')}
+            onChange={(v) => onChange({ subjectFilter: v })} placeholder="Invoice for"
+            nodes={otherNodes} testResults={testResults} />
+          <ExpressionInput label="Body contains" value={String(cfg.bodyFilter ?? '')}
+            onChange={(v) => onChange({ bodyFilter: v })} placeholder="Any text inside the email body"
+            nodes={otherNodes} testResults={testResults} />
           <div className="space-y-2 rounded-md border border-slate-200 dark:border-slate-700 px-3 py-2">
             <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="gmail-has-attach"
-                checked={Boolean(cfg.hasAttachment)}
+              <input type="checkbox" id="gmail-has-attach" checked={Boolean(cfg.hasAttachment)}
                 onChange={(e) => onChange({ hasAttachment: e.target.checked, attachmentTypes: e.target.checked ? attachmentTypes : [] })}
-                className="w-3.5 h-3.5 rounded accent-blue-500"
-              />
+                className="w-3.5 h-3.5 rounded accent-blue-500" />
               <label htmlFor="gmail-has-attach" className="text-xs font-medium text-slate-600 dark:text-slate-300">Has attachment</label>
             </div>
             {Boolean(cfg.hasAttachment) && (
               <div className="pl-5 space-y-1.5">
-                <p className="text-[10px] text-slate-400 dark:text-slate-500">Filter by attachment type (optional — leave all unchecked to match any)</p>
+                <p className="text-[10px] text-slate-400 dark:text-slate-500">Filter by attachment type (optional)</p>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
                   {([
                     { id: 'image',  label: 'Image (jpg, png…)' },
@@ -3398,12 +3599,8 @@ function GmailConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
                     { id: 'sheets', label: 'Excel / Google Sheets' },
                   ] as const).map(({ id, label }) => (
                     <label key={id} className="flex items-center gap-1.5 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={attachmentTypes.includes(id)}
-                        onChange={() => toggleAttachType(id)}
-                        className="w-3 h-3 rounded accent-blue-500"
-                      />
+                      <input type="checkbox" checked={attachmentTypes.includes(id)}
+                        onChange={() => toggleAttachType(id)} className="w-3 h-3 rounded accent-blue-500" />
                       <span className="text-[11px] text-slate-600 dark:text-slate-300">{label}</span>
                     </label>
                   ))}
@@ -3411,44 +3608,123 @@ function GmailConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
               </div>
             )}
           </div>
-
           <div className="space-y-1">
             <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Max results</label>
-            <input
-              type="number"
-              min={1}
-              max={500}
-              value={String(cfg.maxResults ?? 10)}
+            <input type="number" min={1} max={500} value={String(cfg.maxResults ?? 10)}
               onChange={(e) => onChange({ maxResults: Number(e.target.value) })}
-              className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
+              className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
           </div>
         </>
       )}
 
-      {/* ── Read Email ─────────────────────────────────────────── */}
+      {/* ── Get a Message (read) ───────────────────────────── */}
       {action === 'read' && (
         <>
-          {/* Info box explaining the purpose of Read Email */}
           <div className="flex gap-2 rounded-md border border-blue-200 dark:border-blue-800/50 bg-blue-50 dark:bg-blue-900/20 px-3 py-2.5">
             <Info className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400 flex-shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <p className="text-[11px] font-semibold text-blue-700 dark:text-blue-300">What is Read Email?</p>
-              <p className="text-[11px] text-blue-600 dark:text-blue-400 leading-relaxed">
-                <strong>List Emails</strong> returns a summary of matching messages (subject, sender, date, snippet).
-                <br />
-                <strong>Read Email</strong> fetches the <em>complete content</em> of one specific email — full body text, all headers, and label info — using its Message ID. Use it after a List Emails step to retrieve the full details of a message.
-              </p>
-            </div>
+            <p className="text-[11px] text-blue-600 dark:text-blue-400 leading-relaxed">
+              Fetches the <strong>complete content</strong> of one specific email — full body, all headers, and labels. Use a Message ID from a <strong>Get Many Messages</strong> step.
+            </p>
           </div>
-          <ExpressionInput
-            label="Message ID"
-            value={String(cfg.messageId ?? '')}
-            onChange={(v) => onChange({ messageId: v })}
-            placeholder="Paste an ID or insert from a List Emails result"
-            nodes={otherNodes}
-            testResults={testResults}
-          />
+          <GmailMessageIdInput cfg={cfg} onChange={onChange} otherNodes={otherNodes}
+            testResults={testResults} placeholder="Paste an ID or insert from Get Many Messages" />
+        </>
+      )}
+
+      {/* ── Mark as Read ───────────────────────────────────── */}
+      {action === 'mark_read' && (
+        <GmailMessageIdInput cfg={cfg} onChange={onChange} otherNodes={otherNodes}
+          testResults={testResults} placeholder="ID of the message to mark as read" />
+      )}
+
+      {/* ── Mark as Unread ─────────────────────────────────── */}
+      {action === 'mark_unread' && (
+        <GmailMessageIdInput cfg={cfg} onChange={onChange} otherNodes={otherNodes}
+          testResults={testResults} placeholder="ID of the message to mark as unread" />
+      )}
+
+      {/* ── Add Label ──────────────────────────────────────── */}
+      {action === 'add_label' && (
+        <>
+          <GmailMessageIdInput cfg={cfg} onChange={onChange} otherNodes={otherNodes}
+            testResults={testResults} placeholder="ID of the message to label" />
+          <GmailLabelIdsInput cfg={cfg} onChange={onChange} otherNodes={otherNodes} testResults={testResults} />
+        </>
+      )}
+
+      {/* ── Remove Label ───────────────────────────────────── */}
+      {action === 'remove_label' && (
+        <>
+          <GmailMessageIdInput cfg={cfg} onChange={onChange} otherNodes={otherNodes}
+            testResults={testResults} placeholder="ID of the message to modify" />
+          <GmailLabelIdsInput cfg={cfg} onChange={onChange} otherNodes={otherNodes} testResults={testResults} />
+        </>
+      )}
+
+      {/* ── Delete a Message ───────────────────────────────── */}
+      {action === 'delete_message' && (
+        <>
+          <GmailMessageIdInput cfg={cfg} onChange={onChange} otherNodes={otherNodes}
+            testResults={testResults} placeholder="ID of the message to delete" />
+          <div className="space-y-2 rounded-md border border-slate-200 dark:border-slate-700 px-3 py-2">
+            <div className="flex items-center gap-2">
+              <input type="checkbox" id="gmail-permanent" checked={Boolean(cfg.permanent)}
+                onChange={(e) => onChange({ permanent: e.target.checked })} className="w-3.5 h-3.5 rounded accent-red-500" />
+              <label htmlFor="gmail-permanent" className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                Permanently delete (cannot be undone)
+              </label>
+            </div>
+            {!cfg.permanent && (
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 pl-5">
+                By default the message is moved to Trash.
+              </p>
+            )}
+            {cfg.permanent && (
+              <p className="text-[10px] text-red-500 pl-5 font-medium">
+                ⚠ The message will be permanently deleted and cannot be recovered.
+              </p>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* ── Create a Draft ─────────────────────────────────── */}
+      {action === 'create_draft' && (
+        <GmailBodyComposer cfg={cfg} onChange={onChange} otherNodes={otherNodes}
+          testResults={testResults} autoFormatBody={autoFormatBody} />
+      )}
+
+      {/* ── Get a Draft ────────────────────────────────────── */}
+      {action === 'get_draft' && (
+        <ExpressionInput label="Draft ID" value={String(cfg.draftId ?? '')}
+          onChange={(v) => onChange({ draftId: v })}
+          placeholder="Paste a draft ID or insert variable"
+          nodes={otherNodes} testResults={testResults} />
+      )}
+
+      {/* ── Get Many Drafts ────────────────────────────────── */}
+      {action === 'list_drafts' && (
+        <div className="space-y-1">
+          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Max results</label>
+          <input type="number" min={1} max={500} value={String(cfg.maxDrafts ?? 10)}
+            onChange={(e) => onChange({ maxDrafts: Number(e.target.value) })}
+            className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+        </div>
+      )}
+
+      {/* ── Delete a Draft ─────────────────────────────────── */}
+      {action === 'delete_draft' && (
+        <>
+          <ExpressionInput label="Draft ID" value={String(cfg.draftId ?? '')}
+            onChange={(v) => onChange({ draftId: v })}
+            placeholder="ID of the draft to delete"
+            nodes={otherNodes} testResults={testResults} />
+          <div className="flex gap-2 rounded-md border border-red-200 dark:border-red-800/40 bg-red-50 dark:bg-red-900/20 px-3 py-2">
+            <Info className="w-3.5 h-3.5 text-red-500 flex-shrink-0 mt-0.5" />
+            <p className="text-[10px] text-red-600 dark:text-red-400 leading-relaxed">
+              Deleting a draft is permanent and cannot be undone.
+            </p>
+          </div>
         </>
       )}
     </div>
