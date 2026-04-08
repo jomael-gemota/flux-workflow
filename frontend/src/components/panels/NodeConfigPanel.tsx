@@ -3679,7 +3679,7 @@ function GmailConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
                 By default the message is moved to Trash.
               </p>
             )}
-            {cfg.permanent && (
+            {!!cfg.permanent && (
               <p className="text-[10px] text-red-500 pl-5 font-medium">
                 ⚠ The message will be permanently deleted and cannot be recovered.
               </p>
