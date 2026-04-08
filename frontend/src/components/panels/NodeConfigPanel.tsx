@@ -154,6 +154,32 @@ function parseExprSegments(value: string, nodes: CanvasNode[]): ExprSegment[] {
 
 const EXPR_RE = /\{\{nodes\.[^}]+\}\}/;
 
+/**
+ * Resolves all `{{nodes.<nodeId>.<field>}}` tokens in `value` using cached
+ * test-result outputs.  Returns the substituted string, or `null` when at
+ * least one token couldn't be resolved (node not tested / field missing).
+ */
+function resolveValue(
+  value: string,
+  testResults: Record<string, NodeTestResult>,
+): string | null {
+  if (!EXPR_RE.test(value)) return value; // nothing to resolve
+  let allResolved = true;
+  const result = value.replace(/\{\{nodes\.([^.}]+)\.([^}]+)\}\}/g, (_match, nodeId, fieldPath) => {
+    const output = testResults[nodeId]?.output;
+    if (output == null || typeof output !== 'object') { allResolved = false; return ''; }
+    const parts   = fieldPath.split('.');
+    let   current: unknown = output;
+    for (const part of parts) {
+      if (current == null || typeof current !== 'object') { allResolved = false; return ''; }
+      current = (current as Record<string, unknown>)[part];
+    }
+    if (current == null) { allResolved = false; return ''; }
+    return String(current);
+  });
+  return allResolved ? result : null;
+}
+
 function ExprToken({ nodeType, nodeName, field }: { nodeType: string; nodeName: string; field: string }) {
   return (
     <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/60 border border-blue-300 dark:border-blue-700/50 text-[10px] font-medium mx-0.5 align-middle whitespace-nowrap">
@@ -3553,30 +3579,51 @@ function GmailLabelIdsInput({ cfg, onChange }: {
 }
 
 // ── GmailRemoveLabelInput ────────────────────────────────────────────────────
-// Shows only the labels currently applied to the chosen message so the user
-// can pick which ones to remove. Falls back to a manual tag input.
+// When the message ID is a static value: shows only labels on that message.
+// When the message ID is a variable expression: shows all account labels so
+// the user can still pre-select which ones to remove at runtime.
 
-function GmailRemoveLabelInput({ cfg, onChange }: {
+function GmailRemoveLabelInput({ cfg, onChange, otherNodes, testResults }: {
   cfg: Record<string, unknown>;
   onChange: (p: Partial<Record<string, unknown>>) => void;
+  otherNodes: CanvasNode[];
+  testResults: Record<string, NodeTestResult>;
 }) {
-  const credentialId = String(cfg.credentialId ?? '');
-  const messageId    = String(cfg.messageId ?? '');
-  const labelIds     = (cfg.labelIds as string[] | undefined) ?? [];
+  const credentialId  = String(cfg.credentialId ?? '');
+  const messageId     = String(cfg.messageId ?? '');
+  const labelIds      = (cfg.labelIds as string[] | undefined) ?? [];
   const [search, setSearch] = useState('');
 
-  const { data: msgLabels, isLoading, isError, isFetching } = useGmailMessageLabels(credentialId, messageId);
+  const msgIdIsExpr = isExpression(messageId);
+  // Try to resolve the expression from already-run test results
+  const resolvedMessageId = msgIdIsExpr ? resolveValue(messageId, testResults) : messageId;
+  const isResolved        = !msgIdIsExpr || resolvedMessageId !== null;
+
+  // Use the resolved ID when available; fall back to all-account labels only when unresolvable
+  const effectiveMessageId = resolvedMessageId ?? '';
+
+  // Fetch message-specific labels whenever we have a real (non-expression) message ID
+  const { data: msgLabels,  isLoading: msgLoading,  isError: msgError,  isFetching: msgFetching }
+    = useGmailMessageLabels(credentialId, effectiveMessageId);
+  // Fallback: all account labels when expression can't be resolved yet
+  const { data: allLabels,  isLoading: allLoading,  isError: allError }
+    = useGmailLabels(credentialId);
+
+  // Which set of labels to display
+  const usingFallback = msgIdIsExpr && !isResolved;
+  const labels    = usingFallback ? (allLabels ?? []) : (msgLabels ?? []);
+  const isLoading = usingFallback ? allLoading : (msgLoading || msgFetching);
+  const isError   = usingFallback ? allError   : msgError;
 
   function toggleLabel(id: string) {
     const next = labelIds.includes(id) ? labelIds.filter((x) => x !== id) : [...labelIds, id];
     onChange({ labelIds: next });
   }
 
-  const systemLabels = (msgLabels ?? []).filter((l) => l.type === 'system');
-  const userLabels   = (msgLabels ?? []).filter((l) => l.type === 'user');
+  const systemLabels = labels.filter((l) => l.type === 'system');
+  const userLabels   = labels.filter((l) => l.type === 'user');
 
-  function filtered(list: typeof msgLabels) {
-    if (!list) return [];
+  function filtered(list: typeof labels) {
     const q = search.trim().toLowerCase();
     return q ? list.filter((l) => l.name.toLowerCase().includes(q) || l.id.toLowerCase().includes(q)) : list;
   }
@@ -3584,6 +3631,25 @@ function GmailRemoveLabelInput({ cfg, onChange }: {
   return (
     <div className="space-y-2">
       <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Labels to remove</label>
+
+      {/* Expression-mode notice */}
+      {!!messageId && msgIdIsExpr && (
+        isResolved ? (
+          <div className="flex gap-2 rounded-md border border-emerald-200 dark:border-emerald-800/40 bg-emerald-50 dark:bg-emerald-900/20 px-3 py-2">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0 mt-0.5" />
+            <p className="text-[10px] text-emerald-700 dark:text-emerald-300 leading-relaxed">
+              Variable resolved to <code className="font-mono">{resolvedMessageId}</code> — showing labels for that message.
+            </p>
+          </div>
+        ) : (
+          <div className="flex gap-2 rounded-md border border-violet-200 dark:border-violet-800/40 bg-violet-50 dark:bg-violet-900/20 px-3 py-2">
+            <Braces className="w-3.5 h-3.5 text-violet-500 flex-shrink-0 mt-0.5" />
+            <p className="text-[10px] text-violet-700 dark:text-violet-300 leading-relaxed">
+              Message ID is a variable. <strong>Test the upstream node first</strong> to resolve it and see that message's labels — or select from all account labels below.
+            </p>
+          </div>
+        )
+      )}
 
       {!credentialId ? (
         <div className="flex gap-2 rounded-md border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/20 px-3 py-2">
@@ -3596,33 +3662,28 @@ function GmailRemoveLabelInput({ cfg, onChange }: {
         <div className="flex gap-2 rounded-md border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/20 px-3 py-2">
           <Info className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
           <p className="text-[10px] text-amber-700 dark:text-amber-300 leading-relaxed">
-            Enter a Message ID above — the labels applied to that message will appear here.
+            Enter a Message ID above — the labels on that message will appear here.
           </p>
         </div>
-      ) : isExpression(messageId) ? (
-        <div className="flex gap-2 rounded-md border border-violet-200 dark:border-violet-800/40 bg-violet-50 dark:bg-violet-900/20 px-3 py-2">
-          <Braces className="w-3.5 h-3.5 text-violet-500 flex-shrink-0 mt-0.5" />
-          <p className="text-[10px] text-violet-700 dark:text-violet-300 leading-relaxed">
-            The Message ID is set to a variable expression. Labels will be loaded at runtime when the workflow runs. The label IDs selected during the workflow run will be available for removal.
-          </p>
-        </div>
-      ) : isLoading || isFetching ? (
+      ) : isLoading ? (
         <div className="flex items-center gap-2 py-2 text-xs text-zinc-500 dark:text-zinc-400">
           <Loader2 className="w-3.5 h-3.5 animate-spin" />
-          Loading message labels…
+          {usingFallback ? 'Loading account labels…' : 'Loading message labels…'}
         </div>
       ) : isError ? (
         <div className="flex gap-2 rounded-md border border-red-200 dark:border-red-800/40 bg-red-50 dark:bg-red-900/20 px-3 py-2">
           <AlertCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0 mt-0.5" />
           <p className="text-[10px] text-red-700 dark:text-red-300 leading-relaxed">
-            Could not load labels for that message. Please check the message ID and try again.
+            {usingFallback
+              ? 'Could not load account labels. Please check your credential.'
+              : 'Could not load labels for that message. Please check the message ID and try again.'}
           </p>
         </div>
-      ) : (msgLabels ?? []).length === 0 ? (
+      ) : labels.length === 0 ? (
         <div className="flex gap-2 rounded-md border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/40 px-3 py-2">
           <Info className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0 mt-0.5" />
           <p className="text-[10px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
-            This message has no labels applied. Nothing to remove.
+            {usingFallback ? 'No labels found for this account.' : 'This message has no labels applied. Nothing to remove.'}
           </p>
         </div>
       ) : (
@@ -3633,7 +3694,7 @@ function GmailRemoveLabelInput({ cfg, onChange }: {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search labels on this message…"
+              placeholder={usingFallback ? 'Search all account labels…' : 'Search labels on this message…'}
               className="w-full text-xs bg-transparent outline-none placeholder-zinc-400 dark:placeholder-zinc-500 text-zinc-700 dark:text-zinc-200"
             />
           </div>
@@ -3648,12 +3709,8 @@ function GmailRemoveLabelInput({ cfg, onChange }: {
                 {filtered(systemLabels).map((lbl) => (
                   <label key={lbl.id}
                     className="flex items-center gap-2.5 px-2.5 py-1.5 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/60">
-                    <input
-                      type="checkbox"
-                      checked={labelIds.includes(lbl.id)}
-                      onChange={() => toggleLabel(lbl.id)}
-                      className="w-3.5 h-3.5 accent-red-500 flex-shrink-0"
-                    />
+                    <input type="checkbox" checked={labelIds.includes(lbl.id)} onChange={() => toggleLabel(lbl.id)}
+                      className="w-3.5 h-3.5 accent-red-500 flex-shrink-0" />
                     <span className="text-xs text-zinc-700 dark:text-zinc-200 flex-1 min-w-0 truncate">{lbl.name}</span>
                     <span className="text-[9px] text-zinc-400 dark:text-zinc-500 flex-shrink-0 font-mono">{lbl.id}</span>
                   </label>
@@ -3668,19 +3725,15 @@ function GmailRemoveLabelInput({ cfg, onChange }: {
                 {filtered(userLabels).map((lbl) => (
                   <label key={lbl.id}
                     className="flex items-center gap-2.5 px-2.5 py-1.5 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/60">
-                    <input
-                      type="checkbox"
-                      checked={labelIds.includes(lbl.id)}
-                      onChange={() => toggleLabel(lbl.id)}
-                      className="w-3.5 h-3.5 accent-red-500 flex-shrink-0"
-                    />
+                    <input type="checkbox" checked={labelIds.includes(lbl.id)} onChange={() => toggleLabel(lbl.id)}
+                      className="w-3.5 h-3.5 accent-red-500 flex-shrink-0" />
                     <span className="text-xs text-zinc-700 dark:text-zinc-200 flex-1 min-w-0 truncate">{lbl.name}</span>
                     <span className="text-[9px] text-zinc-400 dark:text-zinc-500 flex-shrink-0 font-mono">{lbl.id}</span>
                   </label>
                 ))}
               </div>
             )}
-            {filtered(msgLabels ?? []).length === 0 && (
+            {filtered(labels).length === 0 && (
               <p className="px-2.5 py-3 text-xs text-zinc-400 dark:text-zinc-500 text-center">No labels match "{search}"</p>
             )}
           </div>
@@ -3689,7 +3742,7 @@ function GmailRemoveLabelInput({ cfg, onChange }: {
           {labelIds.length > 0 && (
             <div className="px-2.5 py-1.5 bg-red-50 dark:bg-red-900/20 border-t border-zinc-200 dark:border-zinc-700 flex flex-wrap gap-1">
               {labelIds.map((id) => {
-                const lbl = msgLabels?.find((l) => l.id === id);
+                const lbl = labels.find((l) => l.id === id);
                 return (
                   <span key={id}
                     className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] bg-red-100 dark:bg-red-800/50 text-red-700 dark:text-red-300 font-medium">
@@ -3705,7 +3758,6 @@ function GmailRemoveLabelInput({ cfg, onChange }: {
           )}
         </div>
       )}
-
     </div>
   );
 }
@@ -3926,7 +3978,7 @@ function GmailConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
         <>
           <GmailMessageIdInput cfg={cfg} onChange={onChange} otherNodes={otherNodes}
             testResults={testResults} placeholder="ID of the message to modify" />
-          <GmailRemoveLabelInput cfg={cfg} onChange={onChange} />
+          <GmailRemoveLabelInput cfg={cfg} onChange={onChange} otherNodes={otherNodes} testResults={testResults} />
         </>
       )}
 
