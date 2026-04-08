@@ -458,14 +458,11 @@ export class GmailNode implements NodeExecutor {
             const res = await gmail.users.drafts.list({ userId: 'me', maxResults: maxDrafts });
             const drafts = await Promise.all(
                 (res.data.drafts ?? []).map(async (d) => {
-                    const detail = await gmail.users.drafts.get({
-                        userId: 'me',
-                        id: d.id!,
-                        format: 'metadata',
-                        metadataHeaders: ['To', 'Subject', 'Date', 'From'],
-                    });
+                    // drafts.get does not support format/metadataHeaders — fetch full
+                    const detail = await gmail.users.drafts.get({ userId: 'me', id: d.id! });
                     const headers = detail.data.message?.payload?.headers ?? [];
-                    const h = (n: string) => headers.find((x) => x.name === n)?.value ?? '';
+                    const h = (n: string) =>
+                        headers.find((x: { name?: string | null }) => x.name === n)?.value ?? '';
                     return {
                         draftId:   d.id,
                         messageId: detail.data.message?.id,
