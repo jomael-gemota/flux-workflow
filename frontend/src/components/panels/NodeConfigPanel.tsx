@@ -1308,7 +1308,7 @@ function GSheetsResultDisplay({ result }: { result: NodeTestResult }) {
           <span className="text-xs text-slate-600 dark:text-slate-300">
             {headers.length} column{headers.length !== 1 ? 's' : ''}
           </span>
-          {out.range && (
+          {!!out.range && (
             <>
               <span className="text-slate-400 dark:text-slate-500">·</span>
               <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">{String(out.range)}</span>
@@ -1462,8 +1462,8 @@ function SlackResultDisplay({ result }: { result: NodeTestResult }) {
     <div className="p-3 space-y-2">
       <SuccessBanner text="Message sent to Slack" />
       <div className="space-y-0.5">
-        {out.channel && <InfoRow label="Channel"   value={String(out.channel)} />}
-        {out.ts      && <InfoRow label="Timestamp" value={String(out.ts)} mono />}
+        {!!out.channel && <InfoRow label="Channel"   value={String(out.channel)} />}
+        {!!out.ts      && <InfoRow label="Timestamp" value={String(out.ts)} mono />}
       </div>
     </div>
   );
@@ -1739,7 +1739,7 @@ function TriggerResultDisplay({ result }: { result: NodeTestResult }) {
         <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 text-[11px] font-semibold">
           {triggerLabels[String(triggerType ?? '')] ?? String(triggerType ?? 'Unknown trigger')}
         </span>
-        {triggeredAt && (
+        {!!triggeredAt && (
           <span className="text-[10px] text-slate-600 dark:text-slate-300">
             {fmtDate(String(triggeredAt))}
           </span>
