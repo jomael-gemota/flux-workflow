@@ -239,6 +239,20 @@ export interface SlackChannelsResponse {
   missingScopes: string[];
 }
 
+// ── Gmail data ────────────────────────────────────────────────
+
+export interface GmailLabel {
+  id:   string;
+  name: string;
+  type: 'system' | 'user';
+}
+
+export function listGmailLabels(credentialId: string) {
+  return request<GmailLabel[]>(`/gmail/labels?credentialId=${encodeURIComponent(credentialId)}`);
+}
+
+// ── Slack data ────────────────────────────────────────────────
+
 export function listSlackChannels(credentialId: string) {
   return request<SlackChannelsResponse>(`/slack/channels?credentialId=${encodeURIComponent(credentialId)}`);
 }
