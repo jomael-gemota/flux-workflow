@@ -9,7 +9,7 @@ type GmailAction =
     | 'list' | 'read'
     | 'add_label' | 'remove_label'
     | 'mark_read' | 'mark_unread'
-    | 'delete_message'
+    | 'delete_message' | 'delete_conversation'
     | 'create_draft' | 'get_draft' | 'list_drafts' | 'delete_draft';
 
 interface GmailConfig {
@@ -38,12 +38,26 @@ interface GmailConfig {
     messageId?: string;
     // add_label / remove_label
     labelIds?: string[];
-    // delete_message — permanent delete vs. move to trash (default = trash)
+    // delete_message / delete_conversation — permanent delete vs. move to trash (default = trash)
     permanent?: boolean;
     // get_draft / delete_draft
     draftId?: string;
     // list_drafts
     maxDrafts?: number;
+    // send / reply — file attachments
+    attachments?: GmailAttachment[];
+}
+
+interface GmailAttachment {
+    /** Display filename (may contain an expression). */
+    filename: string;
+    /** MIME type, e.g. "application/pdf". Auto-detected from filename when omitted. */
+    mimeType?: string;
+    /**
+     * Base64-encoded file content **or** an expression like
+     * `{{nodes.gdrive-node.fileContent}}` that resolves to base64 at runtime.
+     */
+    data: string;
 }
 
 export class GmailNode implements NodeExecutor {
@@ -102,40 +116,132 @@ export class GmailNode implements NodeExecutor {
             getPart(payload?.parts, 'text/html') ||
             (payload?.body?.data ? Buffer.from(payload.body.data, 'base64').toString('utf-8') : '');
 
-        /** Build a base64url-encoded RFC-2822 MIME message. */
+        /** Infer a MIME type from a filename extension when none is provided. */
+        const guessMime = (filename: string): string => {
+            const ext = filename.split('.').pop()?.toLowerCase() ?? '';
+            const map: Record<string, string> = {
+                pdf:  'application/pdf',
+                doc:  'application/msword',
+                docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                xls:  'application/vnd.ms-excel',
+                xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                ppt:  'application/vnd.ms-powerpoint',
+                pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                png:  'image/png',
+                jpg:  'image/jpeg',
+                jpeg: 'image/jpeg',
+                gif:  'image/gif',
+                webp: 'image/webp',
+                svg:  'image/svg+xml',
+                txt:  'text/plain',
+                csv:  'text/csv',
+                html: 'text/html',
+                json: 'application/json',
+                zip:  'application/zip',
+                mp4:  'video/mp4',
+            };
+            return map[ext] ?? 'application/octet-stream';
+        };
+
+        /**
+         * Build a base64url-encoded RFC-2822 MIME message.
+         * When attachments are provided the message is wrapped in multipart/mixed.
+         */
         const buildRaw = (opts: {
             to: string; cc?: string; bcc?: string;
             subject: string; body: string; isHtml?: boolean;
-            inReplyTo?: string; references?: string; threadId?: string;
+            inReplyTo?: string; references?: string;
+            attachments?: Array<{ filename: string; mimeType?: string; data: string }>;
         }) => {
-            const ct = opts.isHtml ? 'text/html' : 'text/plain';
+            const ct       = opts.isHtml ? 'text/html' : 'text/plain';
             const normBody = opts.body.replace(/\r?\n/g, '\r\n');
-            const parts = [
-                `To: ${opts.to}`,
-                opts.cc         ? `Cc: ${opts.cc}`                    : null,
-                opts.bcc        ? `Bcc: ${opts.bcc}`                  : null,
-                `Subject: ${opts.subject}`,
-                `Content-Type: ${ct}; charset=utf-8`,
-                opts.inReplyTo  ? `In-Reply-To: ${opts.inReplyTo}`    : null,
-                opts.references ? `References: ${opts.references}`    : null,
-                '',   // mandatory blank line between headers and body
-                normBody,
-            ];
-            return Buffer.from(
-                parts.filter((l): l is string => l !== null).join('\r\n')
-            ).toString('base64url');
+            const atts     = opts.attachments ?? [];
+
+            let mime: string;
+
+            if (atts.length === 0) {
+                // Simple single-part message
+                const headers = [
+                    `To: ${opts.to}`,
+                    opts.cc         ? `Cc: ${opts.cc}`                 : null,
+                    opts.bcc        ? `Bcc: ${opts.bcc}`               : null,
+                    `Subject: ${opts.subject}`,
+                    `MIME-Version: 1.0`,
+                    `Content-Type: ${ct}; charset=utf-8`,
+                    opts.inReplyTo  ? `In-Reply-To: ${opts.inReplyTo}` : null,
+                    opts.references ? `References: ${opts.references}` : null,
+                    '',
+                    normBody,
+                ];
+                mime = headers.filter((l): l is string => l !== null).join('\r\n');
+            } else {
+                // Multipart/mixed envelope
+                const boundary = `__boundary_${Date.now().toString(36)}`;
+                const lines: string[] = [
+                    `To: ${opts.to}`,
+                    ...(opts.cc         ? [`Cc: ${opts.cc}`]                 : []),
+                    ...(opts.bcc        ? [`Bcc: ${opts.bcc}`]               : []),
+                    `Subject: ${opts.subject}`,
+                    `MIME-Version: 1.0`,
+                    `Content-Type: multipart/mixed; boundary="${boundary}"`,
+                    ...(opts.inReplyTo  ? [`In-Reply-To: ${opts.inReplyTo}`] : []),
+                    ...(opts.references ? [`References: ${opts.references}`] : []),
+                    '',
+                    // Body part
+                    `--${boundary}`,
+                    `Content-Type: ${ct}; charset=utf-8`,
+                    `Content-Transfer-Encoding: quoted-printable`,
+                    '',
+                    normBody,
+                ];
+
+                for (const att of atts) {
+                    const mime_type = att.mimeType || guessMime(att.filename);
+                    // Strip data-URL prefix if someone pasted a full data URL
+                    const b64 = att.data.includes(',') ? att.data.split(',')[1] : att.data;
+                    // Fold base64 at 76 chars per RFC 2045
+                    const folded = (b64.match(/.{1,76}/g) ?? []).join('\r\n');
+                    lines.push(
+                        `--${boundary}`,
+                        `Content-Type: ${mime_type}; name="${att.filename}"`,
+                        `Content-Transfer-Encoding: base64`,
+                        `Content-Disposition: attachment; filename="${att.filename}"`,
+                        '',
+                        folded,
+                    );
+                }
+                lines.push(`--${boundary}--`);
+                mime = lines.join('\r\n');
+            }
+
+            return Buffer.from(mime).toString('base64url');
+        };
+
+        /** Resolve the attachments array — data fields may contain expressions. */
+        const resolveAttachments = (
+            raw: GmailAttachment[] | undefined,
+        ): Array<{ filename: string; mimeType?: string; data: string }> => {
+            if (!raw || raw.length === 0) return [];
+            return raw
+                .map((att) => ({
+                    filename: this.resolver.resolveTemplate(att.filename, context),
+                    mimeType: att.mimeType,
+                    data:     this.resolver.resolveTemplate(att.data, context),
+                }))
+                .filter((att) => att.filename && att.data);  // skip incomplete entries
         };
 
         // ── send ───────────────────────────────────────────────────────────────
 
         if (action === 'send') {
             const raw = buildRaw({
-                to:      resolveAddresses(config.to) ?? '',
-                cc:      resolveAddresses(config.cc),
-                bcc:     resolveAddresses(config.bcc),
-                subject: this.resolver.resolveTemplate(config.subject ?? '', context),
-                body:    this.resolver.resolveTemplate(config.body    ?? '', context),
-                isHtml:  config.isHtml,
+                to:          resolveAddresses(config.to) ?? '',
+                cc:          resolveAddresses(config.cc),
+                bcc:         resolveAddresses(config.bcc),
+                subject:     this.resolver.resolveTemplate(config.subject ?? '', context),
+                body:        this.resolver.resolveTemplate(config.body    ?? '', context),
+                isHtml:      config.isHtml,
+                attachments: resolveAttachments(config.attachments),
             });
             const res = await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });
             return { messageId: res.data.id, threadId: res.data.threadId, labelIds: res.data.labelIds };
@@ -215,12 +321,13 @@ export class GmailNode implements NodeExecutor {
             const references    = [origRefs, origMessageId].filter(Boolean).join(' ');
 
             const raw = buildRaw({
-                to:         origFrom,
-                subject:    replySubject,
-                body:       this.resolver.resolveTemplate(config.body ?? '', context),
-                isHtml:     config.isHtml,
-                inReplyTo:  origMessageId,
+                to:          origFrom,
+                subject:     replySubject,
+                body:        this.resolver.resolveTemplate(config.body ?? '', context),
+                isHtml:      config.isHtml,
+                inReplyTo:   origMessageId,
                 references,
+                attachments: resolveAttachments(config.attachments),
             });
 
             const res = await gmail.users.messages.send({
@@ -404,6 +511,53 @@ export class GmailNode implements NodeExecutor {
             } else {
                 const res = await gmail.users.messages.trash({ userId: 'me', id: messageId });
                 return { deleted: true, permanent: false, movedToTrash: true, messageId: res.data.id };
+            }
+        }
+
+        // ── delete_conversation ────────────────────────────────────────────────
+        // Finds the thread the given message belongs to, then deletes every
+        // message in that thread (trash or permanent).
+
+        if (action === 'delete_conversation') {
+            const messageId = this.resolver.resolveTemplate(config.messageId ?? '', context);
+            if (!messageId) throw new Error('Gmail delete conversation: messageId is required');
+
+            // Retrieve just the minimal metadata to get the threadId
+            const msgMeta = await gmail.users.messages.get({
+                userId: 'me',
+                id: messageId,
+                format: 'minimal',
+            });
+            const threadId = msgMeta.data.threadId;
+            if (!threadId) throw new Error('Gmail delete conversation: could not determine threadId for the given message');
+
+            // Fetch all messages in the thread so we know how many there are
+            const threadRes = await gmail.users.threads.get({
+                userId: 'me',
+                id: threadId,
+                format: 'minimal',
+            });
+            const messageCount = (threadRes.data.messages ?? []).length;
+
+            if (config.permanent) {
+                // Permanently delete the entire thread (requires https://mail.google.com/ scope)
+                await gmail.users.threads.delete({ userId: 'me', id: threadId });
+                return {
+                    deleted:       true,
+                    permanent:     true,
+                    threadId,
+                    messageCount,
+                };
+            } else {
+                // Move the entire thread to Trash
+                const res = await gmail.users.threads.trash({ userId: 'me', id: threadId });
+                return {
+                    deleted:       true,
+                    permanent:     false,
+                    movedToTrash:  true,
+                    threadId:      res.data.id,
+                    messageCount,
+                };
             }
         }
 

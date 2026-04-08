@@ -1211,6 +1211,26 @@ function GmailResultDisplay({ result }: { result: NodeTestResult }) {
     );
   }
 
+  // ── Delete Conversation ──────────────────────────────────────────────────
+  if (out.deleted === true && out.threadId !== undefined && out.draftId === undefined) {
+    const perm  = Boolean(out.permanent);
+    const count = out.messageCount != null ? Number(out.messageCount) : null;
+    return (
+      <div className="p-3 space-y-1.5">
+        <SuccessBanner
+          text={perm ? 'Conversation permanently deleted' : 'Conversation moved to Trash'}
+          sub={out.threadId ? `Thread ID: ${String(out.threadId)}` : undefined}
+        />
+        {count !== null && (
+          <InfoRow label="Messages removed" value={String(count)} />
+        )}
+        {perm && (
+          <p className="text-[10px] text-red-500 dark:text-red-400">This action cannot be undone.</p>
+        )}
+      </div>
+    );
+  }
+
   // ── Delete Message ───────────────────────────────────────────────────────
   if (out.deleted === true && out.draftId === undefined) {
     const perm = Boolean(out.permanent);
@@ -3386,6 +3406,237 @@ function EmailTagInput({
 
 // ── Reusable Gmail sub-components ─────────────────────────────────────────────
 
+// ── Attachment types / MIME guesser (mirrors backend map) ─────────────────────
+
+const EXT_MIME: Record<string, string> = {
+  pdf: 'application/pdf', doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  ppt: 'application/vnd.ms-powerpoint',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+  gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml',
+  txt: 'text/plain', csv: 'text/csv', html: 'text/html',
+  json: 'application/json', zip: 'application/zip', mp4: 'video/mp4',
+};
+
+function guessMime(filename: string): string {
+  const ext = filename.split('.').pop()?.toLowerCase() ?? '';
+  return EXT_MIME[ext] ?? 'application/octet-stream';
+}
+
+interface AttachmentEntry {
+  id: string;            // UI-only key
+  source: 'upload' | 'expression';
+  filename: string;
+  mimeType?: string;
+  data: string;          // base64 (upload) or {{expression}} (expression)
+}
+
+function newEntry(): AttachmentEntry {
+  return { id: crypto.randomUUID(), source: 'upload', filename: '', mimeType: '', data: '' };
+}
+
+/** Attachment manager used inside Send Email and Reply to a Message */
+function GmailAttachmentInput({ cfg, onChange, otherNodes, testResults }: {
+  cfg: Record<string, unknown>;
+  onChange: (p: Partial<Record<string, unknown>>) => void;
+  otherNodes: CanvasNode[];
+  testResults: Record<string, NodeTestResult>;
+}) {
+  const raw = (cfg.attachments as AttachmentEntry[] | undefined) ?? [];
+
+  function save(list: AttachmentEntry[]) {
+    // Strip UI-only `id` and `source` before persisting — keep data clean for backend
+    onChange({
+      attachments: list.map(({ filename, mimeType, data }) => ({ filename, mimeType, data })),
+      // Store full entries (with id+source) only in a UI shadow field so we can edit them
+      _attachmentsUI: list,
+    });
+  }
+
+  // Rehydrate from shadow UI field so source+id survive config round-trips
+  const entries: AttachmentEntry[] = (() => {
+    const ui = cfg._attachmentsUI as AttachmentEntry[] | undefined;
+    if (ui && ui.length === raw.length) return ui;
+    return raw.map((a) => ({
+      id: crypto.randomUUID(),
+      source: (EXPR_RE.test(a.data) ? 'expression' : 'upload') as 'upload' | 'expression',
+      filename: a.filename ?? '',
+      mimeType: a.mimeType ?? '',
+      data:     a.data ?? '',
+    }));
+  })();
+
+  function update(id: string, patch: Partial<AttachmentEntry>) {
+    save(entries.map((e) => (e.id === id ? { ...e, ...patch } : e)));
+  }
+
+  function remove(id: string) { save(entries.filter((e) => e.id !== id)); }
+
+  function addUpload()     { save([...entries, { ...newEntry(), source: 'upload'     }]); }
+  function addExpression() { save([...entries, { ...newEntry(), source: 'expression' }]); }
+
+  function readFileAsBase64(file: File): Promise<string> {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        resolve(result.includes(',') ? result.split(',')[1] : result);
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  /**
+   * Handle one or many files selected via the file input.
+   * The first file updates the existing placeholder entry (id); any additional
+   * files are appended as brand-new entries so all files are captured at once.
+   */
+  async function handleFilesChange(id: string, files: FileList) {
+    const fileArray = Array.from(files);
+    if (fileArray.length === 0) return;
+
+    const resolved = await Promise.all(
+      fileArray.map(async (file) => ({
+        filename: file.name,
+        mimeType: file.type || guessMime(file.name),
+        data:     await readFileAsBase64(file),
+      }))
+    );
+
+    // Update the placeholder entry with the first file, then append the rest
+    const [first, ...rest] = resolved;
+    const extra: AttachmentEntry[] = rest.map((r) => ({
+      ...newEntry(),
+      source:   'upload' as const,
+      ...r,
+    }));
+
+    // We need the current entries snapshot here, so use functional save
+    save(
+      entries.map((e) => (e.id === id ? { ...e, ...first } : e)).concat(extra)
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <label className="text-xs font-medium text-slate-500 dark:text-slate-400">
+          Attachments <span className="text-slate-400 dark:text-slate-500 font-normal">(optional)</span>
+        </label>
+        <div className="flex gap-1.5">
+          <button type="button" onClick={addUpload}
+            className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">
+            + Upload file
+          </button>
+          <button type="button" onClick={addExpression}
+            className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">
+            <Braces className="w-2.5 h-2.5" /> From node
+          </button>
+        </div>
+      </div>
+
+      {entries.length === 0 && (
+        <p className="text-[10px] text-slate-400 dark:text-slate-500 italic">
+          No attachments. Click "+ Upload file" for a local file, or "From node" to attach output from another node (e.g. Google Drive, Docs, Sheets).
+        </p>
+      )}
+
+      <div className="space-y-2">
+        {entries.map((att) => (
+          <div key={att.id}
+            className="rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 p-2.5 space-y-2">
+            {/* Header row */}
+            <div className="flex items-center justify-between gap-2">
+              <span className={`text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                att.source === 'upload'
+                  ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300'
+                  : 'bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-300'
+              }`}>
+                {att.source === 'upload' ? 'Local file' : 'From node'}
+              </span>
+              <button type="button" onClick={() => remove(att.id)}
+                className="text-slate-400 hover:text-red-500 dark:hover:text-red-400 transition-colors ml-auto">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {att.source === 'upload' ? (
+              /* ── Local file upload ── */
+              <div className="space-y-1.5">
+                <label className="flex flex-col gap-1 cursor-pointer group">
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400">File</span>
+                  <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded border text-xs transition-colors ${
+                    att.data
+                      ? 'border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300'
+                      : 'border-dashed border-slate-300 dark:border-slate-600 text-slate-400 dark:text-slate-500 group-hover:border-blue-400 dark:group-hover:border-blue-500'
+                  }`}>
+                    {att.data ? (
+                      <>
+                        <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span className="truncate">{att.filename || 'File loaded'}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Click to choose a file…</span>
+                      </>
+                    )}
+                  </div>
+                  <input type="file" multiple className="sr-only"
+                    onChange={(e) => { if (e.target.files?.length) handleFilesChange(att.id, e.target.files); }} />
+                </label>
+                {att.data && (
+                  <p className="text-[9px] text-slate-400 dark:text-slate-500 truncate">
+                    {att.filename} · {att.mimeType}
+                  </p>
+                )}
+              </div>
+            ) : (
+              /* ── Expression / from node ── */
+              <div className="space-y-1.5">
+                <ExpressionInput
+                  label="Filename"
+                  value={att.filename}
+                  onChange={(v) => update(att.id, {
+                    filename: v,
+                    mimeType: att.mimeType || (EXPR_RE.test(v) ? '' : guessMime(v)),
+                  })}
+                  placeholder="report.pdf or {{nodes.x.filename}}"
+                  nodes={otherNodes}
+                  testResults={testResults}
+                />
+                <ExpressionInput
+                  label="File content (base64)"
+                  value={att.data}
+                  onChange={(v) => update(att.id, { data: v })}
+                  placeholder="{{nodes.gdrive-node.fileContent}}"
+                  nodes={otherNodes}
+                  testResults={testResults}
+                  hint="Must resolve to a base64-encoded string at runtime."
+                />
+                <div className="space-y-0.5">
+                  <label className="text-[10px] text-slate-500 dark:text-slate-400">
+                    MIME type <span className="text-slate-400 font-normal">(optional — auto-detected from filename)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={att.mimeType ?? ''}
+                    onChange={(e) => update(att.id, { mimeType: e.target.value })}
+                    placeholder={att.filename && !EXPR_RE.test(att.filename) ? guessMime(att.filename) : 'application/pdf'}
+                    className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** Shared body composer (To/CC/BCC/Subject/Body/HTML) used by send, send_and_wait, create_draft */
 function GmailBodyComposer({ cfg, onChange, otherNodes, testResults, autoFormatBody }: {
   cfg: Record<string, unknown>;
@@ -3426,6 +3677,7 @@ function GmailBodyComposer({ cfg, onChange, otherNodes, testResults, autoFormatB
           onChange={(e) => onChange({ isHtml: e.target.checked })} className="w-3.5 h-3.5 rounded" />
         <label htmlFor="gmail-html" className="text-xs text-slate-500 dark:text-slate-400">Send as HTML</label>
       </div>
+      <GmailAttachmentInput cfg={cfg} onChange={onChange} otherNodes={otherNodes} testResults={testResults} />
     </>
   );
 }
@@ -3804,7 +4056,8 @@ function GmailConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
             { value: 'mark_unread',    label: 'Mark as Unread' },
             { value: 'add_label',      label: 'Add Label to Message' },
             { value: 'remove_label',   label: 'Remove Label from Message' },
-            { value: 'delete_message', label: 'Delete a Message' },
+            { value: 'delete_message',      label: 'Delete a Message' },
+            { value: 'delete_conversation', label: 'Remove a Conversation' },
           ]},
           { group: 'Draft Actions', options: [
             { value: 'create_draft',   label: 'Create a Draft' },
@@ -3864,6 +4117,7 @@ function GmailConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
               onChange={(e) => onChange({ isHtml: e.target.checked })} className="w-3.5 h-3.5 rounded" />
             <label htmlFor="gmail-reply-html" className="text-xs text-slate-500 dark:text-slate-400">Send as HTML</label>
           </div>
+          <GmailAttachmentInput cfg={cfg} onChange={onChange} otherNodes={otherNodes} testResults={testResults} />
         </>
       )}
 
@@ -4003,6 +4257,41 @@ function GmailConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
             {!!cfg.permanent && (
               <p className="text-[10px] text-red-500 pl-5 font-medium">
                 ⚠ The message will be permanently deleted and cannot be recovered.
+              </p>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* ── Remove a Conversation ──────────────────────────── */}
+      {action === 'delete_conversation' && (
+        <>
+          <div className="flex gap-2 rounded-md border border-blue-200 dark:border-blue-800/40 bg-blue-50 dark:bg-blue-900/20 px-3 py-2">
+            <Info className="w-3.5 h-3.5 text-blue-500 flex-shrink-0 mt-0.5" />
+            <p className="text-[10px] text-blue-700 dark:text-blue-300 leading-relaxed">
+              Provide any message from the conversation. The entire thread it belongs to will be removed — including all replies and forwarded messages.
+            </p>
+          </div>
+          <GmailMessageIdInput cfg={cfg} onChange={onChange} otherNodes={otherNodes}
+            testResults={testResults} label="Any Message ID in the Conversation"
+            placeholder="ID of any message in the thread" />
+          <div className="space-y-2 rounded-md border border-slate-200 dark:border-slate-700 px-3 py-2">
+            <div className="flex items-center gap-2">
+              <input type="checkbox" id="gmail-conv-permanent" checked={Boolean(cfg.permanent)}
+                onChange={(e) => onChange({ permanent: e.target.checked })}
+                className="w-3.5 h-3.5 rounded accent-red-500" />
+              <label htmlFor="gmail-conv-permanent" className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                Permanently delete (cannot be undone)
+              </label>
+            </div>
+            {!cfg.permanent && (
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 pl-5">
+                By default the entire conversation is moved to Trash.
+              </p>
+            )}
+            {!!cfg.permanent && (
+              <p className="text-[10px] text-red-500 pl-5 font-medium">
+                ⚠ All messages in this conversation will be permanently deleted and cannot be recovered.
               </p>
             )}
           </div>
