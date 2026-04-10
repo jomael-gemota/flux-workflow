@@ -6,6 +6,11 @@ import { serialize } from '../components/canvas/canvasUtils';
  * Shared save hook — works from any component (Toolbar, NodeConfigPanel, etc.).
  * Reads the LATEST store state via getState() at call time so it always picks up
  * any synchronous store mutations that happened just before save() was called.
+ *
+ * Guards against a race condition where the user switches workflows while a save
+ * is in-flight: after the async call returns, we re-check the store's active
+ * workflow id and only update store state if the user is still on the same
+ * workflow that was saved.
  */
 export function useSaveWorkflow() {
   const update = useUpdateWorkflow();
@@ -14,14 +19,14 @@ export function useSaveWorkflow() {
   const isSaving = update.isPending || create.isPending;
 
   async function save() {
-    // Read latest state at call-time — Zustand set() is synchronous so any
-    // store update that happened before this call is already reflected here.
-    const { activeWorkflow, nodes, edges, setDirty, setActiveWorkflow, canvasViewport } =
+    const { activeWorkflow, nodes, edges, canvasViewport } =
       useWorkflowStore.getState();
 
     if (!activeWorkflow) return;
     const workflowNodes = nodes.filter((n) => n.type !== 'stickyNote');
     if (workflowNodes.length === 0) return;
+
+    const savedWorkflowId = activeWorkflow.id;
 
     const entryNodes = nodes.filter((n) => n.type !== 'stickyNote' && n.data.isEntry);
     const entryNodeId = entryNodes[0]?.id ?? activeWorkflow.entryNodeId;
@@ -42,8 +47,12 @@ export function useSaveWorkflow() {
     if (!activeWorkflow.id || activeWorkflow.id.startsWith('__new__')) {
       const { id: _discarded, ...defWithoutId } = def;
       const created = await create.mutateAsync(defWithoutId);
-      if (created?.id) {
+
+      const { activeWorkflow: currentWf, setActiveWorkflow, setDirty } =
+        useWorkflowStore.getState();
+      if (created?.id && currentWf?.id === savedWorkflowId) {
         setActiveWorkflow({ ...created, version: created.version ?? 1 });
+        setDirty(false);
       }
     } else {
       const updated = await update.mutateAsync({
@@ -57,14 +66,16 @@ export function useSaveWorkflow() {
           stickyNotes: def.stickyNotes,
         },
       });
-      if (updated) {
-        // Always trust the version returned by the API — the backend only
-        // increments it when the content actually changed.
-        setActiveWorkflow({ ...updated });
+
+      const { activeWorkflow: currentWf, setActiveWorkflow, setDirty } =
+        useWorkflowStore.getState();
+      if (currentWf?.id === savedWorkflowId) {
+        if (updated) {
+          setActiveWorkflow({ ...updated });
+        }
+        setDirty(false);
       }
     }
-
-    setDirty(false);
   }
 
   return { save, isSaving };

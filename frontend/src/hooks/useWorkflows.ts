@@ -57,6 +57,28 @@ export function useDeleteWorkflow() {
   });
 }
 
+export function useVersionHistory(workflowId: string | null) {
+  return useQuery({
+    queryKey: ['workflow-versions', workflowId],
+    queryFn: () => api.getVersionHistory(workflowId!),
+    enabled: !!workflowId,
+    select: (data) => data.versions,
+  });
+}
+
+export function useRestoreVersion() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ workflowId, version }: { workflowId: string; version: number }) =>
+      api.restoreVersion(workflowId, version),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ['workflows'] });
+      qc.invalidateQueries({ queryKey: ['workflows', vars.workflowId] });
+      qc.invalidateQueries({ queryKey: ['workflow-versions', vars.workflowId] });
+    },
+  });
+}
+
 export function useTriggerWorkflow() {
   const qc = useQueryClient();
   return useMutation({

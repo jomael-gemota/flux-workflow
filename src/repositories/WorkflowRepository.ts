@@ -114,11 +114,58 @@ export class WorkflowRepository {
         return doc?.webhookSecret ?? null;
     }
 
-    async findVersionHistory(id: string): Promise<WorkflowDefinition[]> {
+    async findVersionHistory(id: string): Promise<(WorkflowDefinition & { archivedAt?: string })[]> {
         const versions = await WorkflowVersionModel
         .find({ workflowId: id })
         .sort({ version: -1 });
-        return versions.map(v => v.definition as WorkflowDefinition);
+        return versions.map(v => ({
+            ...(v.definition as WorkflowDefinition),
+            archivedAt: v.archivedAt?.toISOString(),
+        }));
+    }
+
+    async restoreVersion(
+        id: string,
+        targetVersion: number,
+        userId?: string,
+    ): Promise<WorkflowDefinition | null> {
+        const existing = await WorkflowModel.findOne(workflowFilter(id, userId));
+        if (!existing) return null;
+
+        const existingDef = existing.toObject().definition as WorkflowDefinition;
+
+        const archived = await WorkflowVersionModel.findOne({
+            workflowId: id,
+            version: targetVersion,
+        });
+        if (!archived) return null;
+
+        const restoredDef = archived.definition as WorkflowDefinition;
+
+        await WorkflowVersionModel.create({
+            workflowId: id,
+            version: existingDef.version,
+            definition: existingDef,
+        });
+
+        const candidate: WorkflowDefinition = {
+            ...restoredDef,
+            id,
+            version: existingDef.version + 1,
+        };
+
+        await WorkflowModel.updateOne(
+            workflowFilter(id, userId),
+            {
+                $set: {
+                    name: candidate.name,
+                    version: candidate.version,
+                    definition: candidate,
+                },
+            },
+        );
+
+        return candidate;
     }
 
     async findAll(

@@ -1,4 +1,4 @@
-import { Save, Play, Loader2, LogOut, PanelRight, KeyRound, Sun, Moon, Check, Shield, Clock, ChevronDown, HelpCircle } from 'lucide-react';
+import { Save, Play, Loader2, LogOut, PanelRight, KeyRound, Sun, Moon, Check, Shield, Clock, ChevronDown, HelpCircle, History } from 'lucide-react';
 import { Button } from './ui/Button';
 import { useWorkflowStore } from '../store/workflowStore';
 import { useTriggerWorkflow } from '../hooks/useWorkflows';
@@ -7,6 +7,7 @@ import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { CredentialsModal } from './ui/CredentialsModal';
 import { ConfirmModal } from './ui/ConfirmModal';
+import { VersionHistoryModal } from './ui/VersionHistoryModal';
 import { useAuthStore } from '../store/authStore';
 import { useTourStore } from '../store/tourStore';
 import { useQuery } from '@tanstack/react-query';
@@ -52,6 +53,7 @@ export function Toolbar() {
   const [nameEdit, setNameEdit] = useState(false);
   const [nameValue, setNameValue] = useState('');
   const [credentialsOpen, setCredentialsOpen] = useState(false);
+  const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
   const [alertModal, setAlertModal] = useState<{ open: boolean; title: string; message: string }>({
     open: false, title: '', message: '',
   });
@@ -245,6 +247,17 @@ export function Toolbar() {
           Trigger
         </Button>
 
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setVersionHistoryOpen(true)}
+          disabled={!activeWorkflow || isNew}
+          title="Browse and restore previous versions"
+        >
+          <History className="w-3 h-3" />
+          History
+        </Button>
+
         <div className="w-px h-5 glass-divider" />
 
         <button
@@ -339,6 +352,7 @@ export function Toolbar() {
     {ownerDashOpen && <OwnerDashboard onClose={() => setOwnerDashOpen(false)} />}
 
     <CredentialsModal open={credentialsOpen} onClose={() => setCredentialsOpen(false)} />
+    <VersionHistoryModal open={versionHistoryOpen} onClose={() => setVersionHistoryOpen(false)} />
 
     {/* Profile dropdown — rendered via portal so it escapes overflow:hidden parents */}
     {profileOpen && createPortal(

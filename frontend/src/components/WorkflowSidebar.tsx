@@ -9,6 +9,7 @@ import { useProjectList, useCreateProject, useUpdateProject, useDeleteProject } 
 import { ConfirmModal } from './ui/ConfirmModal';
 import { useWorkflowStore } from '../store/workflowStore';
 import { useAuthStore } from '../store/authStore';
+import { useSaveWorkflow } from '../hooks/useSaveWorkflow';
 import { deserialize } from './canvas/canvasUtils';
 import type { WorkflowDefinition } from '../types/workflow';
 import type { Project } from '../api/client';
@@ -355,6 +356,7 @@ export function WorkflowSidebar() {
     setPendingNewProjectName,
   } = useWorkflowStore();
 
+  const { save: saveCurrentWorkflow } = useSaveWorkflow();
   const userId = useAuthStore((s) => s.user?.id ?? '');
 
   // ── Project data from the API (user-scoped by the backend) ─────────────────
@@ -451,6 +453,7 @@ export function WorkflowSidebar() {
   }
 
   function loadWorkflow(wf: WorkflowDefinition) {
+    if (activeWorkflow?.id === wf.id) return;
     if (activeWorkflow?.id === '__new__') {
       showConfirm(
         'Discard new workflow?',
@@ -458,6 +461,11 @@ export function WorkflowSidebar() {
         'Discard', true,
         () => loadWorkflowImpl(wf),
       );
+      return;
+    }
+    const { isDirty } = useWorkflowStore.getState();
+    if (isDirty && activeWorkflow?.id) {
+      saveCurrentWorkflow().then(() => loadWorkflowImpl(wf));
       return;
     }
     loadWorkflowImpl(wf);

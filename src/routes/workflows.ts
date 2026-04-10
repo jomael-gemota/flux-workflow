@@ -149,6 +149,24 @@ export async function workflowRoutes(
         }
     );
 
+    fastify.post<{ Params: { id: string }; Body: { version: number } }>(
+        '/workflows/:id/restore',
+        { preHandler: apiKeyAuth },
+        async (request, reply) => {
+            const { version } = request.body as { version: number };
+            if (typeof version !== 'number') throw BadRequestError('version is required');
+            const userId = getRequestUserId(request);
+
+            const restored = await workflowRepo.restoreVersion(request.params.id, version, userId);
+            if (!restored) throw NotFoundError(`Workflow ${request.params.id} version ${version}`);
+
+            if (scheduler) await scheduler.refresh(request.params.id).catch(() => {});
+            if (onWorkflowUpdated) await onWorkflowUpdated(request.params.id).catch(() => {});
+
+            return reply.code(200).send(restored);
+        }
+    );
+
     // ── Node test routes ──────────────────────────────────────────────────────
 
     fastify.post<{ Params: { id: string; nodeId: string } }>(

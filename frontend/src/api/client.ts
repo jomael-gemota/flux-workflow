@@ -114,6 +114,21 @@ export function deleteWorkflow(id: string) {
   });
 }
 
+export type VersionEntry = WorkflowDefinition & { archivedAt?: string };
+
+export function getVersionHistory(workflowId: string) {
+  return request<{ workflowId: string; versions: VersionEntry[] }>(
+    `/workflows/${workflowId}/versions`
+  );
+}
+
+export function restoreVersion(workflowId: string, version: number) {
+  return request<WorkflowDefinition>(`/workflows/${workflowId}/restore`, {
+    method: 'POST',
+    body: JSON.stringify({ version }),
+  });
+}
+
 export function triggerWorkflow(
   workflowId: string,
   input: Record<string, unknown> = {}
@@ -237,6 +252,30 @@ export interface SlackUser {
 export interface SlackChannelsResponse {
   channels: SlackChannel[];
   missingScopes: string[];
+}
+
+// ── Google Drive data ─────────────────────────────────────────
+
+export interface GDriveItem {
+  id: string;
+  name: string;
+  mimeType: string;
+  parents?: string[];
+  modifiedTime?: string;
+  size?: string;
+}
+
+export function listGDriveItems(credentialId: string, folderId?: string, type?: string) {
+  const params = new URLSearchParams({ credentialId });
+  if (folderId) params.set('folderId', folderId);
+  if (type)     params.set('type', type);
+  return request<{ items: GDriveItem[] }>(`/gdrive/items?${params}`);
+}
+
+export function getGDriveFile(credentialId: string, fileId: string) {
+  return request<GDriveItem>(
+    `/gdrive/file?credentialId=${encodeURIComponent(credentialId)}&fileId=${encodeURIComponent(fileId)}`
+  );
 }
 
 // ── Gmail data ────────────────────────────────────────────────

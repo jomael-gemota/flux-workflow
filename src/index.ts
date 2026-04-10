@@ -38,6 +38,7 @@ import { apiKeyRoutes } from './routes/apiKeys';
 import { oauthRoutes } from './routes/oauthRoutes';
 import { credentialRoutes } from './routes/credentialRoutes';
 import { gmailDataRoutes } from './routes/gmailDataRoutes';
+import { gdriveDataRoutes } from './routes/gdriveDataRoutes';
 import { slackDataRoutes } from './routes/slackDataRoutes';
 import { teamsDataRoutes } from './routes/teamsDataRoutes';
 import { basecampDataRoutes } from './routes/basecampDataRoutes';
@@ -167,6 +168,7 @@ async function bootstrap() {
     await fastify.register(oauthRoutes,          { prefix: '/api', googleAuth, slackAuth, teamsAuth, basecampAuth, credentialRepo });
     await fastify.register(credentialRoutes,     { prefix: '/api', credentialRepo });
     await fastify.register(gmailDataRoutes,      { prefix: '/api', googleAuth });
+    await fastify.register(gdriveDataRoutes,     { prefix: '/api', googleAuth });
     await fastify.register(slackDataRoutes,      { prefix: '/api', slackAuth });
     await fastify.register(teamsDataRoutes,      { prefix: '/api', teamsAuth });
     await fastify.register(basecampDataRoutes,   { prefix: '/api', basecampAuth });

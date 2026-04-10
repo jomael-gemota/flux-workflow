@@ -9,6 +9,7 @@ import { useCredentialList } from '../../hooks/useCredentials';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import { useSaveWorkflow } from '../../hooks/useSaveWorkflow';
 import { useGmailLabels, useGmailMessageLabels, isExpression } from '../../hooks/useGmailData';
+import { useGDriveItems } from '../../hooks/useGDriveData';
 import { useSlackChannels, useSlackUsers } from '../../hooks/useSlackData';
 import { useTeamsTeams, useTeamsChannels, useTeamsUsers } from '../../hooks/useTeamsData';
 import { useBasecampProjects, useBasecampTodolists, useBasecampTodos, useBasecampTodoGroups, useBasecampPeople } from '../../hooks/useBasecampData';
@@ -60,9 +61,17 @@ const NODE_OUTPUT_FIELDS: Record<string, OutputField[]> = {
     { key: 'from', label: 'From address (read)' },
   ],
   gdrive: [
-    { key: 'files', label: 'File list (list)' },
-    { key: 'id', label: 'Uploaded file ID (upload)' },
-    { key: 'content', label: 'File content text (download)' },
+    { key: 'files',        label: 'File/folder list (list)' },
+    { key: 'total',        label: 'Total matched count (list)' },
+    { key: 'id',           label: 'File ID (upload / create / copy)' },
+    { key: 'name',         label: 'File name' },
+    { key: 'webViewLink',  label: 'File open link' },
+    { key: 'content',      label: 'File text content (download)' },
+    { key: 'folderId',     label: 'Folder ID (create_folder)' },
+    { key: 'permissionId', label: 'Permission ID (share)' },
+    { key: 'deleted',      label: 'Deleted flag (delete)' },
+    { key: 'movedTo',      label: 'Moved-to folder ID (move)' },
+    { key: 'newName',      label: 'New name after rename' },
   ],
   gdocs: [
     { key: 'documentId', label: 'Document ID' },
@@ -1382,15 +1391,17 @@ function GDriveResultDisplay({ result }: { result: NodeTestResult }) {
       size?: string | number; modifiedTime?: string; webViewLink?: string;
     };
     const files = out.files as DriveFile[];
+    const isFolder = (f: DriveFile) => f.mimeType === 'application/vnd.google-apps.folder';
     return (
       <div className="p-3 space-y-2">
         <ExpandableList
           items={files}
-          countLabel={(n) => `${n} file${n !== 1 ? 's' : ''} found`}
+          countLabel={(n) => `${n} item${n !== 1 ? 's' : ''} found`}
           initialShow={6}
-          emptyText="No files matched the query"
+          emptyText="No files or folders matched the query"
           renderItem={(file) => (
             <div className="bg-slate-100 dark:bg-slate-800 rounded-md px-3 py-2 flex items-center gap-3">
+              <span className="text-base flex-shrink-0">{isFolder(file) ? '📁' : '📄'}</span>
               <div className="flex-1 min-w-0 space-y-0.5">
                 <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 break-words">
                   {file.name || 'Untitled'}
@@ -1432,12 +1443,109 @@ function GDriveResultDisplay({ result }: { result: NodeTestResult }) {
     );
   }
 
-  // Upload action
+  // Delete actions
+  if (out.deleted) {
+    const del = out as { name?: string; fileId?: string; folderId?: string; permanent?: boolean; movedToTrash?: boolean };
+    return (
+      <div className="p-3 space-y-2">
+        <SuccessBanner
+          text={del.permanent ? 'Permanently deleted' : 'Moved to Trash'}
+          sub={del.name}
+        />
+        {(del.fileId || del.folderId) && (
+          <InfoRow label="ID" value={(del.fileId ?? del.folderId) as string} mono />
+        )}
+      </div>
+    );
+  }
+
+  // Share — grant access
+  if (out.shared) {
+    const sh = out as { targetId?: string; role?: string; type?: string; email?: string; permissionId?: string };
+    return (
+      <div className="p-3 space-y-2">
+        <SuccessBanner text="Shared successfully" />
+        <InfoRow label="Target ID"     value={sh.targetId}     mono />
+        <InfoRow label="Role"          value={sh.role} />
+        <InfoRow label="Type"          value={sh.type} />
+        {sh.email && <InfoRow label="Email" value={sh.email} />}
+        <InfoRow label="Permission ID" value={sh.permissionId} mono />
+      </div>
+    );
+  }
+
+  // Share — restrict access
+  if (out.restricted) {
+    const rs = out as {
+      targetId?: string;
+      removedEmail?: string;
+      removedType?: string;
+      removedCount?: number;
+      permissionId?: string;
+      note?: string;
+    };
+    const summary = rs.removedEmail
+      ? `Access removed for ${rs.removedEmail}`
+      : rs.removedType === 'anyone'
+        ? 'Public link access removed'
+        : typeof rs.removedCount === 'number'
+          ? `Made private — ${rs.removedCount} permission${rs.removedCount !== 1 ? 's' : ''} removed`
+          : 'Access restricted';
+    return (
+      <div className="p-3 space-y-2">
+        <SuccessBanner text={summary} />
+        <InfoRow label="Target ID" value={rs.targetId} mono />
+        {rs.removedEmail   && <InfoRow label="Removed user"    value={rs.removedEmail} />}
+        {rs.removedType    && <InfoRow label="Removed type"    value={rs.removedType} />}
+        {typeof rs.removedCount === 'number' && <InfoRow label="Permissions removed" value={String(rs.removedCount)} />}
+        {rs.permissionId   && <InfoRow label="Permission ID"   value={rs.permissionId} mono />}
+        {rs.note           && <InfoRow label="Note"            value={rs.note} />}
+      </div>
+    );
+  }
+
+  // Move action
+  if (out.movedTo) {
+    const mv = out as { fileId?: string; name?: string; movedTo?: string };
+    return (
+      <div className="p-3 space-y-2">
+        <SuccessBanner text={`Moved: ${mv.name || 'file'}`} />
+        <InfoRow label="File ID"    value={mv.fileId}  mono />
+        <InfoRow label="Moved into" value={mv.movedTo} mono />
+      </div>
+    );
+  }
+
+  // Rename action
+  if (out.newName) {
+    const rn = out as { fileId?: string; newName?: string; webViewLink?: string };
+    return (
+      <div className="p-3 space-y-2">
+        <SuccessBanner text={`Renamed to: ${rn.newName}`} />
+        <InfoRow label="File ID" value={rn.fileId} mono />
+        {rn.webViewLink && <InfoRow label="Link" value={rn.webViewLink} url />}
+      </div>
+    );
+  }
+
+  // Create folder action
+  if (out.folderId) {
+    const cf = out as { folderId?: string; name?: string; webViewLink?: string };
+    return (
+      <div className="p-3 space-y-2">
+        <SuccessBanner text={`Folder created: ${cf.name}`} />
+        <InfoRow label="Folder ID" value={cf.folderId} mono />
+        {cf.webViewLink && <InfoRow label="Link" value={cf.webViewLink} url />}
+      </div>
+    );
+  }
+
+  // Upload / create_file / copy_file (generic file result with id + name)
   const up = out as { name?: string; id?: string; webViewLink?: string };
   return (
     <div className="p-3 space-y-2">
-      <SuccessBanner text={`Uploaded: ${up.name || 'file'}`} />
-      <InfoRow label="File ID" value={up.id} mono />
+      <SuccessBanner text={up.name ? `Done: ${up.name}` : 'Operation successful'} />
+      {up.id && <InfoRow label="File ID" value={up.id} mono />}
       {up.webViewLink && <InfoRow label="Link" value={up.webViewLink} url />}
     </div>
   );
@@ -2361,7 +2469,7 @@ interface NodeDraft {
 }
 
 export function NodeConfigPanel() {
-  const { nodes, selectedNodeId, setNodes, setSelectedNodeId, setDirty, activeWorkflow, setActiveWorkflow } =
+  const { nodes, selectedNodeId, setNodes, setSelectedNodeId, activeWorkflow, setActiveWorkflow } =
     useWorkflowStore();
 
   const { save: saveWorkflow, isSaving: isSavingDisabled } = useSaveWorkflow();
@@ -2519,13 +2627,8 @@ export function NodeConfigPanel() {
           }
         : n
     ));
-    // Immediately clear the global dirty flag so the Toolbar "Save Workflow"
-    // button doesn't flicker active during the async save below.
-    setDirty(false);
-
     try {
       await saveWorkflow();
-      // Update the original snapshot → isDirtyLocal recomputes to false
       setOriginalSnapshot({ ...draft, config: { ...draft.config } });
       setSaveSuccess(true);
       setIsSavingNode(false);
@@ -4379,14 +4482,543 @@ function GmailConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
   );
 }
 
+// ── GDrive sub-components ──────────────────────────────────────────────────────
+
+/** Inline folder browser — lets the user navigate Drive and pick a folder. */
+function GDriveFolderBrowser({ credentialId, value, valuePath, onChange, label = 'Folder', placeholder = 'My Drive (root)', foldersOnly = true }: {
+  credentialId: string;
+  value: string;
+  valuePath: string;
+  onChange: (id: string, path: string) => void;
+  label?: string;
+  placeholder?: string;
+  foldersOnly?: boolean;
+}) {
+  const [open, setOpen]           = useState(false);
+  const [browseFolderId, setBrowseFolderId] = useState<string>('root');
+  const [breadcrumb, setBreadcrumb]         = useState<{ id: string; name: string }[]>([]);
+
+  const itemType = foldersOnly ? 'folders' : 'all';
+  const { data, isLoading, isError } = useGDriveItems(credentialId, browseFolderId === 'root' ? undefined : browseFolderId, itemType);
+
+  function navigateInto(id: string, name: string) {
+    setBrowseFolderId(id);
+    setBreadcrumb((prev) => [...prev, { id, name }]);
+  }
+
+  function navigateToBreadcrumb(idx: number) {
+    if (idx < 0) {
+      setBrowseFolderId('root');
+      setBreadcrumb([]);
+    } else {
+      setBrowseFolderId(breadcrumb[idx].id);
+      setBreadcrumb((prev) => prev.slice(0, idx + 1));
+    }
+  }
+
+  function selectCurrent() {
+    const path = breadcrumb.length === 0
+      ? 'My Drive'
+      : 'My Drive / ' + breadcrumb.map((b) => b.name).join(' / ');
+    onChange(browseFolderId === 'root' ? '' : browseFolderId, path);
+    setOpen(false);
+  }
+
+  function selectItem(id: string, name: string) {
+    const path = breadcrumb.length === 0
+      ? `My Drive / ${name}`
+      : `My Drive / ${breadcrumb.map((b) => b.name).join(' / ')} / ${name}`;
+    onChange(id, path);
+    setOpen(false);
+  }
+
+  const items = data?.items ?? [];
+  const folders = items.filter((i) => i.mimeType === 'application/vnd.google-apps.folder');
+  const files   = items.filter((i) => i.mimeType !== 'application/vnd.google-apps.folder');
+
+  const displayPath = valuePath || (value ? value : '');
+
+  return (
+    <div className="space-y-1">
+      {label && <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">{label}</label>}
+
+      {/* Selected path display */}
+      <button
+        type="button"
+        onClick={() => { if (credentialId) setOpen((o) => !o); }}
+        className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-md border text-xs text-left transition-colors ${
+          credentialId
+            ? 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:border-blue-400 dark:hover:border-blue-500'
+            : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 text-slate-400 dark:text-slate-500 cursor-not-allowed'
+        }`}
+      >
+        <span className="truncate">
+          {displayPath || <span className="text-slate-400 dark:text-slate-500">{placeholder}</span>}
+        </span>
+        <div className="flex items-center gap-1 shrink-0">
+          {value && (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={(e) => { e.stopPropagation(); onChange('', ''); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onChange('', ''); } }}
+              className="text-slate-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+            >
+              <X className="w-3 h-3" />
+            </span>
+          )}
+          {open ? <ChevronUp className="w-3 h-3 text-slate-400" /> : <ChevronDown className="w-3 h-3 text-slate-400" />}
+        </div>
+      </button>
+
+      {!credentialId && (
+        <p className="text-[10px] text-slate-400 dark:text-slate-500">Select a credential above to browse folders.</p>
+      )}
+
+      {/* Inline browser */}
+      {open && credentialId && (
+        <div className="rounded-md border border-slate-200 dark:border-slate-700 overflow-hidden">
+          {/* Breadcrumb nav */}
+          <div className="flex items-center gap-0.5 px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700 text-[10px] text-slate-500 dark:text-slate-400 flex-wrap">
+            <button type="button" onClick={() => navigateToBreadcrumb(-1)}
+              className="hover:text-blue-500 dark:hover:text-blue-400 transition-colors font-medium">
+              My Drive
+            </button>
+            {breadcrumb.map((crumb, idx) => (
+              <span key={crumb.id} className="flex items-center gap-0.5">
+                <span className="text-slate-300 dark:text-slate-600">/</span>
+                <button type="button" onClick={() => navigateToBreadcrumb(idx)}
+                  className="hover:text-blue-500 dark:hover:text-blue-400 transition-colors">
+                  {crumb.name}
+                </button>
+              </span>
+            ))}
+          </div>
+
+          {/* Items list */}
+          <div className="max-h-48 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
+            {isLoading ? (
+              <div className="flex items-center gap-2 px-3 py-3 text-xs text-slate-500 dark:text-slate-400">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading…
+              </div>
+            ) : isError ? (
+              <div className="flex gap-2 px-3 py-2.5">
+                <AlertCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0 mt-0.5" />
+                <p className="text-[10px] text-red-600 dark:text-red-400">Could not load items.</p>
+              </div>
+            ) : items.length === 0 ? (
+              <p className="px-3 py-3 text-xs text-slate-400 dark:text-slate-500 text-center italic">
+                This folder is empty
+              </p>
+            ) : (
+              <>
+                {folders.map((item) => (
+                  <div key={item.id}
+                    className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                    <span className="text-sm">📁</span>
+                    <span className="flex-1 min-w-0 text-xs text-slate-700 dark:text-slate-200 truncate">{item.name}</span>
+                    <div className="flex gap-1 shrink-0">
+                      {!foldersOnly && (
+                        <button type="button" onClick={() => selectItem(item.id, item.name)}
+                          className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-800/40 transition-colors">
+                          Select
+                        </button>
+                      )}
+                      <button type="button" onClick={() => navigateInto(item.id, item.name)}
+                        className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">
+                        Open →
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {!foldersOnly && files.map((item) => (
+                  <div key={item.id}
+                    className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                    <span className="text-sm">📄</span>
+                    <span className="flex-1 min-w-0 text-xs text-slate-700 dark:text-slate-200 truncate">{item.name}</span>
+                    <button type="button" onClick={() => selectItem(item.id, item.name)}
+                      className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-800/40 transition-colors shrink-0">
+                      Select
+                    </button>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+
+          {/* Select current folder button */}
+          {foldersOnly && (
+            <div className="px-2.5 py-2 bg-slate-50 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-700 flex justify-between items-center">
+              <span className="text-[10px] text-slate-400 dark:text-slate-500 italic">
+                Currently in: {breadcrumb.length === 0 ? 'My Drive' : breadcrumb[breadcrumb.length - 1].name}
+              </span>
+              <button type="button" onClick={selectCurrent}
+                className="text-[10px] px-2 py-0.5 rounded bg-blue-500 text-white hover:bg-blue-600 dark:hover:bg-blue-400 transition-colors font-medium">
+                Select this folder
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Upload input — supports local file, text/expression content, or pick from Drive. */
+function GDriveUploadInput({ cfg, onChange, otherNodes, testResults }: {
+  cfg: Record<string, unknown>;
+  onChange: (p: Partial<Record<string, unknown>>) => void;
+  otherNodes: CanvasNode[];
+  testResults: Record<string, NodeTestResult>;
+}) {
+  const credentialId = String(cfg.credentialId ?? '');
+  const source = (cfg.uploadSource as string | undefined) ?? 'content';
+
+  function readFileAsBase64(file: File): Promise<string> {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        resolve(result.includes(',') ? result.split(',')[1] : result);
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function handleFileChange(file: File) {
+    const data = await readFileAsBase64(file);
+    onChange({ uploadFileName: file.name, uploadData: data, uploadMimeType: file.type || undefined });
+  }
+
+  return (
+    <div className="space-y-3">
+      {/* Source selector */}
+      <div className="space-y-1">
+        <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">File source</label>
+        <div className="flex gap-3">
+          {([['content', 'Text / expression'], ['local', 'Upload from device'], ['drive', 'From Drive folder']] as const).map(([val, lbl]) => (
+            <label key={val} className="flex items-center gap-1.5 cursor-pointer">
+              <input type="radio" name="gdrive-upload-source" value={val}
+                checked={source === val}
+                onChange={() => onChange({ uploadSource: val })}
+                className="w-3 h-3 accent-blue-500" />
+              <span className="text-xs text-slate-600 dark:text-slate-300">{lbl}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Text / expression source ─────────────────────────── */}
+      {source === 'content' && (
+        <>
+          <ExpressionInput label="File name" value={String(cfg.uploadFileName ?? '')}
+            onChange={(v) => onChange({ uploadFileName: v })} placeholder="report.csv"
+            nodes={otherNodes} testResults={testResults} />
+          <ExpressionTextArea label="Content" value={String(cfg.uploadContent ?? '')}
+            onChange={(v) => onChange({ uploadContent: v })} placeholder="File content or {{expression}}"
+            nodes={otherNodes} testResults={testResults} rows={4} />
+        </>
+      )}
+
+      {/* ── Upload from device ────────────────────────────────── */}
+      {source === 'local' && (
+        <div className="space-y-1">
+          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">File</label>
+          <label className="flex flex-col gap-1 cursor-pointer group">
+            <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded border text-xs transition-colors ${
+              cfg.uploadData
+                ? 'border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300'
+                : 'border-dashed border-slate-300 dark:border-slate-600 text-slate-400 dark:text-slate-500 group-hover:border-blue-400 dark:group-hover:border-blue-500'
+            }`}>
+              {cfg.uploadData ? (
+                <><CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" /><span className="truncate">{String(cfg.uploadFileName || 'File loaded')}</span></>
+              ) : (
+                <span>Click to choose a file…</span>
+              )}
+            </div>
+            <input type="file" className="sr-only"
+              onChange={(e) => { if (e.target.files?.[0]) handleFileChange(e.target.files[0]); }} />
+          </label>
+          {!!cfg.uploadData && (
+            <p className="text-[9px] text-slate-400 dark:text-slate-500 truncate">
+              {String(cfg.uploadFileName)} · {String(cfg.uploadMimeType || 'auto-detected')}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* ── From Drive folder ─────────────────────────────────── */}
+      {source === 'drive' && (
+        <>
+          <GDriveFilePicker
+            credentialId={credentialId}
+            cfg={cfg}
+            onChange={(p) => onChange(p)}
+            label="Source file(s) (from Drive)"
+            placeholder="Browse and select a Drive file"
+            fileIdKey="sourceFileId"
+            filePathKey="sourceFilePath"
+            otherNodes={otherNodes}
+            testResults={testResults}
+          />
+          <ExpressionInput
+            label="New name for copy (optional — single file only)"
+            value={String(cfg.uploadFileName ?? '')}
+            onChange={(v) => onChange({ uploadFileName: v })}
+            placeholder="Leave blank to keep the original file name"
+            nodes={otherNodes}
+            testResults={testResults}
+            hint="Ignored when copying multiple files — each file keeps its original name. Use {{nodes.x.files[0].id}} for one file or {{nodes.x.files}} to copy all."
+          />
+        </>
+      )}
+
+      {/* Destination folder */}
+      <GDriveFolderBrowser
+        credentialId={credentialId}
+        value={String(cfg.destinationFolderId ?? '')}
+        valuePath={String(cfg.destinationFolderPath ?? '')}
+        onChange={(id, path) => onChange({ destinationFolderId: id, destinationFolderPath: path })}
+        label="Destination folder (optional)"
+        placeholder="My Drive (root)"
+      />
+    </div>
+  );
+}
+
+/**
+ * File picker for actions that target a specific file.
+ * Supports two modes:
+ *   Browse     — navigate Drive visually and click to select
+ *   Expression — type / insert a {{nodes.x.files[0].id}} expression
+ */
+function GDriveFilePicker({ credentialId, cfg, onChange, label = 'File', placeholder = 'Browse and select a file', fileIdKey = 'fileId', filePathKey = 'filePath', otherNodes, testResults }: {
+  credentialId: string;
+  cfg: Record<string, unknown>;
+  onChange: (p: Partial<Record<string, unknown>>) => void;
+  label?: string;
+  placeholder?: string;
+  fileIdKey?: string;
+  filePathKey?: string;
+  otherNodes: CanvasNode[];
+  testResults: Record<string, NodeTestResult>;
+}) {
+  const currentValue = String(cfg[fileIdKey] ?? '');
+  const [mode, setMode] = useState<'browse' | 'expression'>(() =>
+    EXPR_RE.test(currentValue) ? 'expression' : 'browse'
+  );
+
+  function switchMode(next: 'browse' | 'expression') {
+    setMode(next);
+    onChange({ [fileIdKey]: '', [filePathKey]: '' });
+  }
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between gap-2">
+        <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">{label}</label>
+        <div className="flex rounded overflow-hidden border border-slate-200 dark:border-slate-700 text-[10px] shrink-0">
+          <button type="button" onClick={() => switchMode('browse')}
+            className={`px-2 py-0.5 transition-colors ${mode === 'browse' ? 'bg-blue-500 text-white' : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'}`}>
+            Browse
+          </button>
+          <button type="button" onClick={() => switchMode('expression')}
+            className={`px-2 py-0.5 transition-colors flex items-center gap-1 ${mode === 'expression' ? 'bg-blue-500 text-white' : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'}`}>
+            <Braces className="w-2.5 h-2.5" /> Expression
+          </button>
+        </div>
+      </div>
+
+      {mode === 'browse' ? (
+        <GDriveFolderBrowser
+          credentialId={credentialId}
+          value={currentValue}
+          valuePath={String(cfg[filePathKey] ?? '')}
+          onChange={(id, path) => onChange({ [fileIdKey]: id, [filePathKey]: path })}
+          label=""
+          placeholder={placeholder}
+          foldersOnly={false}
+        />
+      ) : (
+        <ExpressionInput
+          label=""
+          value={currentValue}
+          onChange={(v) => onChange({ [fileIdKey]: v, [filePathKey]: '' })}
+          placeholder="{{nodes.list-node.files[0].id}} or {{nodes.list-node.files}}"
+          nodes={otherNodes}
+          testResults={testResults}
+          hint="One file: {{nodes.list-node.files[0].id}} — All files from list: {{nodes.list-node.files}}"
+        />
+      )}
+    </div>
+  );
+}
+
+/** Grant-access settings block (share_file / share_folder in "grant" mode). */
+function GDriveGrantFields({ cfg, onChange, otherNodes, testResults }: {
+  cfg: Record<string, unknown>;
+  onChange: (p: Partial<Record<string, unknown>>) => void;
+  otherNodes: CanvasNode[];
+  testResults: Record<string, NodeTestResult>;
+}) {
+  const shareType = (cfg.shareType as string | undefined) ?? 'user';
+  return (
+    <>
+      <div className="space-y-1">
+        <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Share with</label>
+        <div className="flex gap-3">
+          {([['user', 'Specific user'], ['anyone', 'Anyone with link']] as const).map(([val, lbl]) => (
+            <label key={val} className="flex items-center gap-1.5 cursor-pointer">
+              <input type="radio" name="gdrive-share-type" value={val}
+                checked={shareType === val}
+                onChange={() => onChange({ shareType: val })}
+                className="w-3 h-3 accent-blue-500" />
+              <span className="text-xs text-slate-600 dark:text-slate-300">{lbl}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {shareType === 'user' && (
+        <>
+          <ExpressionInput label="Email address" value={String(cfg.shareEmail ?? '')}
+            onChange={(v) => onChange({ shareEmail: v })} placeholder="user@example.com"
+            nodes={otherNodes} testResults={testResults} />
+          <div className="flex items-center gap-2">
+            <input type="checkbox" id="gdrive-notify" checked={cfg.sendNotification !== false}
+              onChange={(e) => onChange({ sendNotification: e.target.checked })} className="w-3.5 h-3.5 rounded" />
+            <label htmlFor="gdrive-notify" className="text-xs text-slate-500 dark:text-slate-400">Send notification email</label>
+          </div>
+        </>
+      )}
+
+      <div className="space-y-1">
+        <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Permission</label>
+        <select value={String(cfg.shareRole ?? 'reader')}
+          onChange={(e) => onChange({ shareRole: e.target.value })}
+          className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500">
+          <option value="reader">Viewer (read only)</option>
+          <option value="commenter">Commenter</option>
+          <option value="writer">Editor</option>
+        </select>
+      </div>
+    </>
+  );
+}
+
+/** Restrict-access settings block (share_file / share_folder in "restrict" mode). */
+function GDriveRestrictFields({ cfg, onChange, otherNodes, testResults }: {
+  cfg: Record<string, unknown>;
+  onChange: (p: Partial<Record<string, unknown>>) => void;
+  otherNodes: CanvasNode[];
+  testResults: Record<string, NodeTestResult>;
+}) {
+  const restrictType = (cfg.restrictType as string | undefined) ?? 'user';
+  return (
+    <>
+      <div className="space-y-1">
+        <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Remove access for</label>
+        <div className="flex flex-col gap-2">
+          {([
+            ['user',   'Specific user',        'Remove one person\'s access by email'],
+            ['anyone', 'Anyone with the link',  'Revoke the public "anyone with link" permission'],
+            ['all',    'Everyone (make private)','Remove all shared access — only the owner can open it'],
+          ] as const).map(([val, lbl, desc]) => (
+            <label key={val} className="flex items-start gap-2 cursor-pointer">
+              <input type="radio" name="gdrive-restrict-type" value={val}
+                checked={restrictType === val}
+                onChange={() => onChange({ restrictType: val })}
+                className="w-3 h-3 accent-blue-500 mt-0.5 flex-shrink-0" />
+              <div>
+                <span className="text-xs text-slate-700 dark:text-slate-200 font-medium">{lbl}</span>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed">{desc}</p>
+              </div>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {restrictType === 'user' && (
+        <ExpressionInput label="User email to remove" value={String(cfg.shareEmail ?? '')}
+          onChange={(v) => onChange({ shareEmail: v })} placeholder="user@example.com"
+          nodes={otherNodes} testResults={testResults} />
+      )}
+
+      {restrictType === 'all' && (
+        <div className="flex gap-2 rounded-md border border-red-200 dark:border-red-800/40 bg-red-50 dark:bg-red-900/20 px-3 py-2">
+          <AlertCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0 mt-0.5" />
+          <p className="text-[10px] text-red-600 dark:text-red-400 leading-relaxed">
+            All collaborators will lose access immediately. Only the owner will retain access.
+          </p>
+        </div>
+      )}
+    </>
+  );
+}
+
+/** Mode toggle + the right fields for share_file / share_folder. */
+function GDriveShareFields({ cfg, onChange, otherNodes, testResults }: {
+  cfg: Record<string, unknown>;
+  onChange: (p: Partial<Record<string, unknown>>) => void;
+  otherNodes: CanvasNode[];
+  testResults: Record<string, NodeTestResult>;
+}) {
+  const shareMode = (cfg.shareMode as string | undefined) ?? 'grant';
+  return (
+    <>
+      {/* Grant / Restrict toggle */}
+      <div className="space-y-1">
+        <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Action</label>
+        <div className="flex gap-1 p-0.5 bg-slate-100 dark:bg-slate-700 rounded-md w-fit">
+          {([['grant', 'Grant access'], ['restrict', 'Restrict access']] as const).map(([val, lbl]) => (
+            <button key={val} type="button"
+              onClick={() => onChange({ shareMode: val })}
+              className={`px-3 py-1 text-xs rounded font-medium transition-colors ${
+                shareMode === val
+                  ? 'bg-white dark:bg-slate-600 text-slate-800 dark:text-slate-100 shadow-sm'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+              }`}>
+              {lbl}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {shareMode === 'restrict'
+        ? <GDriveRestrictFields cfg={cfg} onChange={onChange} otherNodes={otherNodes} testResults={testResults} />
+        : <GDriveGrantFields    cfg={cfg} onChange={onChange} otherNodes={otherNodes} testResults={testResults} />
+      }
+    </>
+  );
+}
+
 // ── GDriveConfig ───────────────────────────────────────────────────────────────
 
 function GDriveConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
-  const action = (cfg.action as string) ?? 'list';
+  const action       = (cfg.action as string) ?? 'list';
+  const credentialId = String(cfg.credentialId ?? '');
+
+  const fileTypes = (cfg.fileTypes as string[] | undefined) ?? [];
+  function toggleFileType(t: string) {
+    const next = fileTypes.includes(t) ? fileTypes.filter((x) => x !== t) : [...fileTypes, t];
+    onChange({ fileTypes: next });
+  }
+
+  const FILE_TYPE_OPTIONS = [
+    { value: 'image',  label: 'Images' },
+    { value: 'pdf',    label: 'PDFs' },
+    { value: 'docs',   label: 'Documents (Docs / Word)' },
+    { value: 'sheets', label: 'Spreadsheets (Sheets / Excel)' },
+    { value: 'slides', label: 'Presentations (Slides / PPT)' },
+    { value: 'video',  label: 'Video' },
+    { value: 'audio',  label: 'Audio' },
+    { value: 'zip',    label: 'Archives (zip / rar)' },
+  ];
+
   return (
     <div className="space-y-3">
       <CredentialSelect
-        value={String(cfg.credentialId ?? '')}
+        value={credentialId}
         onChange={(id) => onChange({ credentialId: id })}
       />
       <Select
@@ -4394,20 +5026,130 @@ function GDriveConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
         value={action}
         onChange={(e) => onChange({ action: e.target.value })}
         options={[
-          { value: 'list',     label: 'List Files' },
-          { value: 'upload',   label: 'Upload File' },
-          { value: 'download', label: 'Download File' },
+          { group: 'File Actions', options: [
+            { value: 'list',      label: 'List Files / Folders' },
+            { value: 'upload',    label: 'Upload File' },
+            { value: 'download',  label: 'Download File' },
+            { value: 'create_file', label: 'Create File' },
+            { value: 'copy_file',   label: 'Copy File' },
+            { value: 'move_file',   label: 'Move File' },
+            { value: 'rename_file', label: 'Rename File' },
+            { value: 'update_file', label: 'Update File Content' },
+            { value: 'share_file',  label: 'Share File' },
+            { value: 'delete_file', label: 'Delete File' },
+          ]},
+          { group: 'Folder Actions', options: [
+            { value: 'create_folder', label: 'Create Folder' },
+            { value: 'share_folder',  label: 'Share Folder' },
+            { value: 'delete_folder', label: 'Delete Folder' },
+          ]},
         ]}
       />
 
+      {/* ── List Files / Folders ──────────────────────────────── */}
       {action === 'list' && (
         <>
-          <ExpressionInput label="Search query (Drive format)" value={String(cfg.query ?? '')}
-            onChange={(v) => onChange({ query: v })} placeholder="name contains 'report'"
+          <GDriveFolderBrowser
+            credentialId={credentialId}
+            value={String(cfg.searchFolderId ?? '')}
+            valuePath={String(cfg.searchFolderPath ?? '')}
+            onChange={(id, path) => onChange({ searchFolderId: id, searchFolderPath: path })}
+            label="Search in folder (optional)"
+            placeholder="All of My Drive"
+          />
+
+          {(() => {
+            const hasSearch = String(cfg.searchQuery ?? '').trim().length > 0;
+            return (
+              <>
+                <ExpressionInput label="Search" value={String(cfg.searchQuery ?? '')}
+                  onChange={(v) => onChange({ searchQuery: v })}
+                  placeholder="e.g. Q4 report, invoice, budget…"
+                  nodes={otherNodes} testResults={testResults}
+                  hint={
+                    hasSearch
+                      ? 'Searches both file names and content. Results are sorted by relevance while this field is in use.'
+                      : 'Searches both file names and content — no Drive query syntax needed.'
+                  } />
+
+                <div className="space-y-1">
+                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Show</label>
+                  <div className="flex gap-3">
+                    {([['both', 'Files & Folders'], ['files', 'Files only'], ['folders', 'Folders only']] as const).map(([val, lbl]) => (
+                      <label key={val} className="flex items-center gap-1.5 cursor-pointer">
+                        <input type="radio" name="gdrive-include-type" value={val}
+                          checked={(cfg.includeType as string | undefined ?? 'both') === val}
+                          onChange={() => onChange({ includeType: val })}
+                          className="w-3 h-3 accent-blue-500" />
+                        <span className="text-xs text-slate-600 dark:text-slate-300">{lbl}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className={hasSearch ? 'opacity-40 pointer-events-none select-none' : ''}>
+                  <ExpressionInput label="File name contains (optional)" value={String(cfg.fileNameFilter ?? '')}
+                    onChange={(v) => onChange({ fileNameFilter: v })} placeholder="report"
+                    nodes={otherNodes} testResults={testResults}
+                    hint={hasSearch ? 'Not available — Search already matches file names.' : undefined} />
+                </div>
+              </>
+            );
+          })()}
+
+          <ExpressionInput label="Owner email (optional)" value={String(cfg.owner ?? '')}
+            onChange={(v) => onChange({ owner: v })} placeholder="owner@example.com"
             nodes={otherNodes} testResults={testResults} />
-          <ExpressionInput label="Folder ID (optional)" value={String(cfg.folderId ?? '')}
-            onChange={(v) => onChange({ folderId: v })} placeholder="Leave blank to search all"
-            nodes={otherNodes} testResults={testResults} />
+
+          <div className="space-y-1.5">
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Date filter (optional)</label>
+            <select value={String(cfg.dateField ?? '')}
+              onChange={(e) => onChange({ dateField: e.target.value || undefined })}
+              className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500">
+              <option value="">No date filter</option>
+              <option value="createdTime">Date created</option>
+              <option value="modifiedTime">Date modified</option>
+            </select>
+            {!!cfg.dateField && (
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-0.5">
+                  <label className="text-[10px] text-slate-500 dark:text-slate-400">After</label>
+                  <input type="date" value={String(cfg.dateAfter ?? '')}
+                    onChange={(e) => onChange({ dateAfter: e.target.value || undefined })}
+                    className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                </div>
+                <div className="space-y-0.5">
+                  <label className="text-[10px] text-slate-500 dark:text-slate-400">Before</label>
+                  <input type="date" value={String(cfg.dateBefore ?? '')}
+                    onChange={(e) => onChange({ dateBefore: e.target.value || undefined })}
+                    className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+              File types <span className="text-slate-400 dark:text-slate-500 font-normal">(optional)</span>
+            </label>
+            <div className="grid grid-cols-2 gap-1">
+              {FILE_TYPE_OPTIONS.map((ft) => (
+                <label key={ft.value} className="flex items-center gap-1.5 cursor-pointer">
+                  <input type="checkbox" checked={fileTypes.includes(ft.value)}
+                    onChange={() => toggleFileType(ft.value)}
+                    className="w-3.5 h-3.5 accent-blue-500 flex-shrink-0" />
+                  <span className="text-xs text-slate-600 dark:text-slate-300">{ft.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input type="checkbox" id="gdrive-shared" checked={Boolean(cfg.includeShared)}
+              onChange={(e) => onChange({ includeShared: e.target.checked })} className="w-3.5 h-3.5 rounded" />
+            <label htmlFor="gdrive-shared" className="text-xs text-slate-500 dark:text-slate-400">Include shared drives and files</label>
+          </div>
+
           <div className="space-y-1">
             <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Max results</label>
             <input type="number" min={1} max={1000} value={String(cfg.maxResults ?? 20)}
@@ -4417,30 +5159,264 @@ function GDriveConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
         </>
       )}
 
+      {/* ── Upload File ───────────────────────────────────────── */}
       {action === 'upload' && (
+        <GDriveUploadInput cfg={cfg} onChange={onChange} otherNodes={otherNodes} testResults={testResults} />
+      )}
+
+      {/* ── Download File ─────────────────────────────────────── */}
+      {action === 'download' && (
         <>
-          <ExpressionInput label="File name" value={String(cfg.fileName ?? '')}
-            onChange={(v) => onChange({ fileName: v })} placeholder="report.csv"
+          <GDriveFolderBrowser
+            credentialId={credentialId}
+            value={String(cfg.downloadFolderId ?? '')}
+            valuePath={String(cfg.downloadFolderPath ?? '')}
+            onChange={(id, path) => onChange({ downloadFolderId: id, downloadFolderPath: path })}
+            label="Folder to search in (optional)"
+            placeholder="All of My Drive"
+          />
+          <ExpressionInput label="File name" value={String(cfg.downloadFileName ?? '')}
+            onChange={(v) => onChange({ downloadFileName: v })} placeholder="monthly_report.xlsx"
+            nodes={otherNodes} testResults={testResults}
+            hint="The first file whose name contains this text will be downloaded." />
+        </>
+      )}
+
+      {/* ── Create File ───────────────────────────────────────── */}
+      {action === 'create_file' && (() => {
+        const createMime = String(cfg.mimeType ?? 'text/plain');
+        const isGoogleNative = [
+          'application/vnd.google-apps.document',
+          'application/vnd.google-apps.spreadsheet',
+          'application/vnd.google-apps.presentation',
+          'application/vnd.google-apps.form',
+        ].includes(createMime);
+
+        return (
+          <>
+            <div className="space-y-1">
+              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">File type</label>
+              <select value={createMime}
+                onChange={(e) => onChange({ mimeType: e.target.value })}
+                className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500">
+                <optgroup label="Google Workspace">
+                  <option value="application/vnd.google-apps.document">Google Docs</option>
+                  <option value="application/vnd.google-apps.spreadsheet">Google Sheets</option>
+                  <option value="application/vnd.google-apps.presentation">Google Slides</option>
+                  <option value="application/vnd.google-apps.form">Google Forms</option>
+                </optgroup>
+                <optgroup label="Text files">
+                  <option value="text/plain">Plain text (.txt)</option>
+                  <option value="text/csv">CSV (.csv)</option>
+                  <option value="text/html">HTML (.html)</option>
+                  <option value="application/json">JSON (.json)</option>
+                  <option value="text/markdown">Markdown (.md)</option>
+                </optgroup>
+              </select>
+            </div>
+
+            <ExpressionInput label="File name" value={String(cfg.fileName ?? '')}
+              onChange={(v) => onChange({ fileName: v })}
+              placeholder={
+                createMime === 'application/vnd.google-apps.document'     ? 'My Document' :
+                createMime === 'application/vnd.google-apps.spreadsheet'  ? 'My Spreadsheet' :
+                createMime === 'application/vnd.google-apps.presentation' ? 'My Presentation' :
+                createMime === 'application/vnd.google-apps.form'         ? 'My Form' :
+                'new-file.txt'
+              }
+              nodes={otherNodes} testResults={testResults}
+              hint={isGoogleNative ? 'No extension needed — Drive handles formatting automatically.' : undefined} />
+
+            {isGoogleNative ? (
+              <div className="flex gap-2 rounded-md border border-blue-200 dark:border-blue-800/40 bg-blue-50 dark:bg-blue-900/20 px-3 py-2">
+                <Info className="w-3.5 h-3.5 text-blue-500 flex-shrink-0 mt-0.5" />
+                <p className="text-[10px] text-blue-700 dark:text-blue-300 leading-relaxed">
+                  Google Workspace files are created blank — you can open and edit them in Drive after creation. To add content to a Docs or Sheets file, use the Google Docs / Google Sheets nodes.
+                </p>
+              </div>
+            ) : (
+              <ExpressionTextArea label="Initial content (optional)" value={String(cfg.content ?? '')}
+                onChange={(v) => onChange({ content: v })} placeholder="File content or {{expression}}"
+                nodes={otherNodes} testResults={testResults} rows={4} />
+            )}
+
+            <GDriveFolderBrowser
+              credentialId={credentialId}
+              value={String(cfg.folderId ?? '')}
+              valuePath={String(cfg.folderPath ?? '')}
+              onChange={(id, path) => onChange({ folderId: id, folderPath: path })}
+              label="Destination folder (optional)"
+              placeholder="My Drive (root)"
+            />
+
+            {!isGoogleNative && (
+              <div className="flex gap-2 rounded-md border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/20 px-3 py-2">
+                <Info className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
+                <p className="text-[10px] text-amber-700 dark:text-amber-300 leading-relaxed">
+                  For binary files (images, videos, PDFs), use <strong>Upload File</strong> → "Upload from device" instead.
+                </p>
+              </div>
+            )}
+          </>
+        );
+      })()}
+
+      {/* ── Copy File ─────────────────────────────────────────── */}
+      {action === 'copy_file' && (
+        <>
+          <GDriveFilePicker
+            credentialId={credentialId} cfg={cfg} onChange={onChange}
+            label="Source file" placeholder="Browse and select the file to copy"
+            otherNodes={otherNodes} testResults={testResults} />
+          <ExpressionInput label="New file name (optional)" value={String(cfg.newName ?? '')}
+            onChange={(v) => onChange({ newName: v })} placeholder="Leave blank to keep original name"
             nodes={otherNodes} testResults={testResults} />
-          <div className="space-y-1">
-            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">MIME type</label>
-            <input type="text" value={String(cfg.mimeType ?? 'text/plain')}
-              onChange={(e) => onChange({ mimeType: e.target.value })}
-              className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
-          </div>
-          <ExpressionTextArea label="Content" value={String(cfg.content ?? '')}
-            onChange={(v) => onChange({ content: v })} placeholder="File content or expression"
-            nodes={otherNodes} testResults={testResults} rows={4} />
-          <ExpressionInput label="Folder ID (optional)" value={String(cfg.folderId ?? '')}
-            onChange={(v) => onChange({ folderId: v })} placeholder="Upload destination folder"
+          <GDriveFolderBrowser
+            credentialId={credentialId}
+            value={String(cfg.destinationFolderId ?? '')}
+            valuePath={String(cfg.destinationFolderPath ?? '')}
+            onChange={(id, path) => onChange({ destinationFolderId: id, destinationFolderPath: path })}
+            label="Destination folder (optional)"
+            placeholder="Same folder as source"
+          />
+        </>
+      )}
+
+      {/* ── Move File ─────────────────────────────────────────── */}
+      {action === 'move_file' && (
+        <>
+          <GDriveFilePicker
+            credentialId={credentialId} cfg={cfg} onChange={onChange}
+            label="File to move" placeholder="Browse and select the file to move"
+            otherNodes={otherNodes} testResults={testResults} />
+          <GDriveFolderBrowser
+            credentialId={credentialId}
+            value={String(cfg.destinationFolderId ?? '')}
+            valuePath={String(cfg.destinationFolderPath ?? '')}
+            onChange={(id, path) => onChange({ destinationFolderId: id, destinationFolderPath: path })}
+            label="Move to folder"
+            placeholder="Select destination folder"
+          />
+        </>
+      )}
+
+      {/* ── Rename File ───────────────────────────────────────── */}
+      {action === 'rename_file' && (
+        <>
+          <GDriveFilePicker
+            credentialId={credentialId} cfg={cfg} onChange={onChange}
+            label="File to rename" placeholder="Browse and select the file to rename"
+            otherNodes={otherNodes} testResults={testResults} />
+          <ExpressionInput label="New name" value={String(cfg.newName ?? '')}
+            onChange={(v) => onChange({ newName: v })} placeholder="new-filename.xlsx"
             nodes={otherNodes} testResults={testResults} />
         </>
       )}
 
-      {action === 'download' && (
-        <ExpressionInput label="File ID" value={String(cfg.fileId ?? '')}
-          onChange={(v) => onChange({ fileId: v })} placeholder="Google Drive file ID"
-          nodes={otherNodes} testResults={testResults} />
+      {/* ── Update File Content ───────────────────────────────── */}
+      {action === 'update_file' && (
+        <>
+          <GDriveFilePicker
+            credentialId={credentialId} cfg={cfg} onChange={onChange}
+            label="File to update" placeholder="Browse and select the file to update"
+            otherNodes={otherNodes} testResults={testResults} />
+          <ExpressionTextArea label="New content" value={String(cfg.content ?? '')}
+            onChange={(v) => onChange({ content: v })} placeholder="Replacement content or {{expression}}"
+            nodes={otherNodes} testResults={testResults} rows={5} />
+        </>
+      )}
+
+      {/* ── Share File ────────────────────────────────────────── */}
+      {action === 'share_file' && (
+        <>
+          <GDriveFilePicker
+            credentialId={credentialId} cfg={cfg} onChange={onChange}
+            label="File to share" placeholder="Browse and select the file to share"
+            otherNodes={otherNodes} testResults={testResults} />
+          <GDriveShareFields cfg={cfg} onChange={onChange} otherNodes={otherNodes} testResults={testResults} />
+        </>
+      )}
+
+      {/* ── Delete File ───────────────────────────────────────── */}
+      {action === 'delete_file' && (
+        <>
+          <GDriveFilePicker
+            credentialId={credentialId} cfg={cfg} onChange={onChange}
+            label="File to delete" placeholder="Browse and select the file to delete"
+            otherNodes={otherNodes} testResults={testResults} />
+          <div className="flex items-center gap-2">
+            <input type="checkbox" id="gdrive-del-permanent" checked={Boolean(cfg.permanent)}
+              onChange={(e) => onChange({ permanent: e.target.checked })} className="w-3.5 h-3.5 rounded" />
+            <label htmlFor="gdrive-del-permanent" className="text-xs text-slate-500 dark:text-slate-400">Permanently delete (skip Trash)</label>
+          </div>
+          {cfg.permanent && (
+            <div className="flex gap-2 rounded-md border border-red-200 dark:border-red-800/40 bg-red-50 dark:bg-red-900/20 px-3 py-2">
+              <AlertCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0 mt-0.5" />
+              <p className="text-[10px] text-red-600 dark:text-red-400 leading-relaxed">
+                Permanently deleted files cannot be recovered.
+              </p>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── Create Folder ─────────────────────────────────────── */}
+      {action === 'create_folder' && (
+        <>
+          <ExpressionInput label="Folder name" value={String(cfg.folderName ?? '')}
+            onChange={(v) => onChange({ folderName: v })} placeholder="My New Folder"
+            nodes={otherNodes} testResults={testResults} />
+          <GDriveFolderBrowser
+            credentialId={credentialId}
+            value={String(cfg.parentFolderId ?? '')}
+            valuePath={String(cfg.parentFolderPath ?? '')}
+            onChange={(id, path) => onChange({ parentFolderId: id, parentFolderPath: path })}
+            label="Create inside folder (optional)"
+            placeholder="My Drive (root)"
+          />
+        </>
+      )}
+
+      {/* ── Share Folder ──────────────────────────────────────── */}
+      {action === 'share_folder' && (
+        <>
+          <GDriveFolderBrowser
+            credentialId={credentialId}
+            value={String(cfg.folderId ?? '')}
+            valuePath={String(cfg.folderPath ?? '')}
+            onChange={(id, path) => onChange({ folderId: id, folderPath: path })}
+            label="Folder to share"
+            placeholder="Browse and select a folder"
+          />
+          <GDriveShareFields cfg={cfg} onChange={onChange} otherNodes={otherNodes} testResults={testResults} />
+        </>
+      )}
+
+      {/* ── Delete Folder ─────────────────────────────────────── */}
+      {action === 'delete_folder' && (
+        <>
+          <GDriveFolderBrowser
+            credentialId={credentialId}
+            value={String(cfg.folderId ?? '')}
+            valuePath={String(cfg.folderPath ?? '')}
+            onChange={(id, path) => onChange({ folderId: id, folderPath: path })}
+            label="Folder to delete"
+            placeholder="Browse and select a folder"
+          />
+          <div className="flex items-center gap-2">
+            <input type="checkbox" id="gdrive-folder-del-permanent" checked={Boolean(cfg.permanent)}
+              onChange={(e) => onChange({ permanent: e.target.checked })} className="w-3.5 h-3.5 rounded" />
+            <label htmlFor="gdrive-folder-del-permanent" className="text-xs text-slate-500 dark:text-slate-400">Permanently delete (skip Trash)</label>
+          </div>
+          {cfg.permanent && (
+            <div className="flex gap-2 rounded-md border border-red-200 dark:border-red-800/40 bg-red-50 dark:bg-red-900/20 px-3 py-2">
+              <AlertCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0 mt-0.5" />
+              <p className="text-[10px] text-red-600 dark:text-red-400 leading-relaxed">
+                Permanently deleted folders and all their contents cannot be recovered.
+              </p>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
