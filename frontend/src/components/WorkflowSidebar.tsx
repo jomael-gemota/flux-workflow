@@ -46,13 +46,14 @@ function WorkflowIcon() {
 interface WorkflowRowProps {
   wf: WorkflowDefinition;
   isActive: boolean;
+  isSwitching?: boolean;
   onLoad: (wf: WorkflowDefinition) => void;
   onDelete: (wf: WorkflowDefinition) => void;
   onRename: (wf: WorkflowDefinition, newName: string) => void;
   onDragStart: (e: React.DragEvent, wfId: string) => void;
 }
 
-function WorkflowRow({ wf, isActive, onLoad, onDelete, onRename, onDragStart }: WorkflowRowProps) {
+function WorkflowRow({ wf, isActive, isSwitching, onLoad, onDelete, onRename, onDragStart }: WorkflowRowProps) {
   const [menuOpen, setMenuOpen]   = useState(false);
   const [editing, setEditing]     = useState(false);
   const [draft, setDraft]         = useState(wf.name);
@@ -107,7 +108,10 @@ function WorkflowRow({ wf, isActive, onLoad, onDelete, onRename, onDragStart }: 
         <GripVertical className="w-3.5 h-3.5" />
       </div>
 
-      <WorkflowIcon />
+      {isSwitching
+        ? <Loader2 className="w-3.5 h-3.5 text-blue-400 dark:text-blue-400 animate-spin shrink-0" />
+        : <WorkflowIcon />
+      }
 
       {editing ? (
         <input
@@ -189,6 +193,7 @@ interface ProjectSectionProps {
   project: Project;
   workflows: WorkflowDefinition[];
   activeWorkflowId: string | null;
+  switchingToWorkflowId: string | null;
   isOpen: boolean;
   onToggle: () => void;
   onRename: (name: string) => void;
@@ -203,7 +208,7 @@ interface ProjectSectionProps {
 }
 
 function ProjectSection({
-  project, workflows, activeWorkflowId, isOpen,
+  project, workflows, activeWorkflowId, switchingToWorkflowId, isOpen,
   onToggle, onRename, onDelete, onNewWorkflow,
   onLoadWorkflow, onDeleteWorkflow, onRenameWorkflow, onWorkflowDragStart,
   onDragOver, onDrop,
@@ -326,6 +331,7 @@ function ProjectSection({
                 key={wf.id}
                 wf={wf}
                 isActive={activeWorkflowId === wf.id}
+                isSwitching={switchingToWorkflowId === wf.id}
                 onLoad={onLoadWorkflow}
                 onDelete={onDeleteWorkflow}
                 onRename={onRenameWorkflow}
@@ -354,6 +360,10 @@ export function WorkflowSidebar() {
     setSelectedNodeId,
     pendingNewProjectName,
     setPendingNewProjectName,
+    isSwitchingWorkflow,
+    switchingToWorkflowId,
+    setIsSwitchingWorkflow,
+    setSwitchingToWorkflowId,
   } = useWorkflowStore();
 
   const { save: saveCurrentWorkflow } = useSaveWorkflow();
@@ -452,8 +462,9 @@ export function WorkflowSidebar() {
     setSelectedNodeId(null);
   }
 
-  function loadWorkflow(wf: WorkflowDefinition) {
+  async function loadWorkflow(wf: WorkflowDefinition) {
     if (activeWorkflow?.id === wf.id) return;
+    if (isSwitchingWorkflow) return;
     if (activeWorkflow?.id === '__new__') {
       showConfirm(
         'Discard new workflow?',
@@ -465,7 +476,15 @@ export function WorkflowSidebar() {
     }
     const { isDirty } = useWorkflowStore.getState();
     if (isDirty && activeWorkflow?.id) {
-      saveCurrentWorkflow().then(() => loadWorkflowImpl(wf));
+      setSwitchingToWorkflowId(wf.id);
+      setIsSwitchingWorkflow(true);
+      try {
+        await saveCurrentWorkflow();
+      } finally {
+        setIsSwitchingWorkflow(false);
+        setSwitchingToWorkflowId(null);
+      }
+      loadWorkflowImpl(wf);
       return;
     }
     loadWorkflowImpl(wf);
@@ -711,6 +730,7 @@ export function WorkflowSidebar() {
                     key={wf.id}
                     wf={wf}
                     isActive={activeWorkflow?.id === wf.id}
+                    isSwitching={switchingToWorkflowId === wf.id}
                     onLoad={loadWorkflow}
                     onDelete={handleDeleteWorkflow}
                     onRename={handleRenameWorkflow}
@@ -727,11 +747,12 @@ export function WorkflowSidebar() {
                 .filter((wf): wf is WorkflowDefinition => Boolean(wf));
 
               return (
-                <ProjectSection
+                  <ProjectSection
                   key={project.id}
                   project={project}
                   workflows={projectWorkflows}
                   activeWorkflowId={activeWorkflow?.id ?? null}
+                  switchingToWorkflowId={switchingToWorkflowId}
                   isOpen={openProjects.has(project.id)}
                   onToggle={() => toggleProject(project.id)}
                   onRename={(name) => renameProject(project.id, name)}

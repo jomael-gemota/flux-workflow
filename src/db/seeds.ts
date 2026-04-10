@@ -165,5 +165,5 @@ export async function runSeeds(workflowRepo: WorkflowRepository): Promise<void> 
         seeded++;
     }
 
-    console.log(`🌱 Seeds: ${seeded} inserted, ${skipped} already existed.`);
+    // console.log(`🌱 Seeds: ${seeded} inserted, ${skipped} already existed.`);
 }

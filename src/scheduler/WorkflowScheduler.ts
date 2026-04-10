@@ -29,7 +29,7 @@ export class WorkflowScheduler {
             }
         }
 
-        console.log(`[Scheduler] Started ${this.tasks.size} scheduled task(s)`);
+        // console.log(`[Scheduler] Started ${this.tasks.size} scheduled task(s)`);
     }
 
     /** Re-scan a single workflow's trigger nodes and update cron tasks. */
@@ -89,7 +89,7 @@ export class WorkflowScheduler {
                     'schedule',
                     triggerNodeId,
                 );
-                console.log(`[Scheduler] Triggered ${workflowId}::${nodeId}`);
+                // console.log(`[Scheduler] Triggered ${workflowId}::${nodeId}`);
             } catch (err) {
                 console.error(`[Scheduler] Failed to trigger ${workflowId}::${nodeId}:`, err);
             }
@@ -116,6 +116,6 @@ export class WorkflowScheduler {
             task.stop();
         }
         this.tasks.clear();
-        console.log('[Scheduler] All scheduled tasks stopped');
+        // console.log('[Scheduler] All scheduled tasks stopped');
     }
 }

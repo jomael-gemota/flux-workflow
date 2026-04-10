@@ -45,7 +45,7 @@ export class PollingService {
             count += this.registerWorkflow(workflow.id, workflow.nodes ?? []);
         }
 
-        console.log(`[PollingService] Started ${count} polling trigger(s)`);
+        // console.log(`[PollingService] Started ${count} polling trigger(s)`);
     }
 
     async refresh(workflowId: string): Promise<void> {
@@ -60,7 +60,7 @@ export class PollingService {
     stop(): void {
         for (const [, interval] of this.intervals) clearInterval(interval);
         this.intervals.clear();
-        console.log('[PollingService] All polling triggers stopped');
+        // console.log('[PollingService] All polling triggers stopped');
     }
 
     // ── internals ────────────────────────────────────────────────────────
@@ -166,7 +166,7 @@ export class PollingService {
                     'api',
                     pn.nodeId,
                 );
-                console.log(`[PollingService] Triggered ${key} with ${newItems.length} new item(s)`);
+                // console.log(`[PollingService] Triggered ${key} with ${newItems.length} new item(s)`);
             } catch (err) {
                 console.error(`[PollingService] Trigger error ${key}:`, err);
             }

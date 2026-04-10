@@ -52,7 +52,7 @@ export function createWorkflowWorker(
     });
 
     worker.on('completed', job => {
-        console.log(`[Worker] Job ${job.id} completed (execution: ${job.data.executionId})`);
+        // console.log(`[Worker] Job ${job.id} completed (execution: ${job.data.executionId})`);
     });
 
     return worker;

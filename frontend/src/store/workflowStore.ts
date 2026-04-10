@@ -91,6 +91,12 @@ interface WorkflowStore {
    */
   pendingNewProjectName: string | null;
   setPendingNewProjectName: (name: string | null) => void;
+
+  // Workflow switching — true while a save-then-load is in flight
+  isSwitchingWorkflow: boolean;
+  switchingToWorkflowId: string | null;
+  setIsSwitchingWorkflow: (v: boolean) => void;
+  setSwitchingToWorkflowId: (id: string | null) => void;
 }
 
 export const useWorkflowStore = create<WorkflowStore>((set) => ({
@@ -165,4 +171,9 @@ export const useWorkflowStore = create<WorkflowStore>((set) => ({
   },
   pendingNewProjectName: null,
   setPendingNewProjectName: (name) => set({ pendingNewProjectName: name }),
+
+  isSwitchingWorkflow: false,
+  switchingToWorkflowId: null,
+  setIsSwitchingWorkflow: (v) => set({ isSwitchingWorkflow: v }),
+  setSwitchingToWorkflowId: (id) => set({ switchingToWorkflowId: id }),
 }));

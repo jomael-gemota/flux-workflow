@@ -4,7 +4,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import * as api from '../api/client';
-import type { WorkflowDefinition } from '../types/workflow';
+import type { WorkflowDefinition, PaginatedResponse } from '../types/workflow';
 
 export function useWorkflowList() {
   return useQuery({
@@ -41,8 +41,26 @@ export function useUpdateWorkflow() {
       id: string;
       body: Partial<Pick<WorkflowDefinition, 'name' | 'nodes' | 'entryNodeId' | 'entryNodeIds' | 'schedule' | 'viewport' | 'stickyNotes'>>;
     }) => api.updateWorkflow(id, body),
-    onSuccess: (_data, vars) => {
-      // Invalidate both the specific workflow cache AND the list so the sidebar refreshes
+    onSuccess: (data, vars) => {
+      if (data) {
+        // Immediately write the fresh server response into both caches so that
+        // navigating back to this workflow always loads the saved state. Without
+        // this, the sidebar would still hold stale data until the background
+        // refetch (triggered by invalidateQueries below) completes — creating a
+        // race condition where quickly switching back shows the pre-save layout.
+        qc.setQueryData<WorkflowDefinition>(['workflows', vars.id], data);
+        qc.setQueryData<PaginatedResponse<WorkflowDefinition>>(
+          ['workflows'],
+          (old) => {
+            if (!old) return old;
+            return {
+              ...old,
+              data: old.data.map((wf) => (wf.id === vars.id ? data : wf)),
+            };
+          }
+        );
+      }
+      // Still invalidate so any peer clients or stale subscribers get fresh data.
       qc.invalidateQueries({ queryKey: ['workflows'] });
       qc.invalidateQueries({ queryKey: ['workflows', vars.id] });
     },

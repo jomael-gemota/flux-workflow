@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect } from 'react';
-import { ScrollText, ChevronUp, ChevronDown } from 'lucide-react';
+import { ScrollText, ChevronUp, ChevronDown, Loader2 } from 'lucide-react';
 import { Toolbar } from './Toolbar';
 import { WorkflowSidebar } from './WorkflowSidebar';
 import { useWorkflowStore } from '../store/workflowStore';
@@ -29,7 +29,7 @@ interface LayoutProps {
 }
 
 export function Layout({ canvas, configPanel, executionLog }: LayoutProps) {
-  const { logOpen, setLogOpen, configOpen } = useWorkflowStore();
+  const { logOpen, setLogOpen, configOpen, isSwitchingWorkflow } = useWorkflowStore();
   const { start: startTour } = useTourStore();
 
   // Auto-launch the tour once for first-time users
@@ -63,7 +63,21 @@ export function Layout({ canvas, configPanel, executionLog }: LayoutProps) {
         <div className="flex flex-1 min-w-0 flex-col">
 
           {/* Canvas — fills all remaining vertical space */}
-          <div className="flex-1 min-h-0 relative">{canvas}</div>
+          <div className="flex-1 min-h-0 relative">
+            {canvas}
+
+            {/* Workflow-switch loading overlay — shown while the previous workflow is being saved */}
+            {isSwitchingWorkflow && (
+              <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/10 dark:bg-black/25 backdrop-blur-[2px] pointer-events-none">
+                <div className="flex items-center gap-2.5 bg-white/90 dark:bg-slate-800/90 px-4 py-2.5 rounded-xl shadow-lg ring-1 ring-black/[0.06] dark:ring-white/10">
+                  <Loader2 className="w-4 h-4 animate-spin text-blue-500 shrink-0" />
+                  <span className="text-[13px] font-medium text-slate-600 dark:text-slate-300">
+                    Saving workflow…
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Execution log panel (slides up above the bottom bar) */}
           {logOpen && (

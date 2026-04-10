@@ -107,7 +107,7 @@ async function bootstrap() {
     if (process.env.REDIS_URL) {
         createWorkflowWorker(runner, workflowRepo, executionRepo);
     } else {
-        console.log('ℹ️  No REDIS_URL set — running without background worker (synchronous mode)');
+        // console.log('ℹ️  No REDIS_URL set — running without background worker (synchronous mode)');
     }
 
     // 4. Start cron scheduler + polling service
@@ -134,7 +134,7 @@ async function bootstrap() {
 
     // 4. Fastify server
     const fastify = Fastify({
-		logger: true,
+		logger: false,
 		genReqId: () => crypto.randomUUID(),
 		// Raise from the default 1 MB to 50 MB to accommodate base64-encoded
 		// file attachments stored inside workflow node configs.
