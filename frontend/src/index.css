@@ -97,6 +97,16 @@ body {
   animation: edgeProgressSweep 1.15s cubic-bezier(0.4, 0, 0.55, 1) infinite;
 }
 
+/* ── Execution edge: selected-state marching dashes ───────────────────
+   Animates stroke-dashoffset so the dashes appear to march along the
+   connector, giving clear feedback that the edge is selected and ready
+   to be deleted (press Delete/Backspace).
+──────────────────────────────────────────────────────────────────── */
+@keyframes edgeSelectionMarch {
+  from { stroke-dashoffset: 0; }
+  to   { stroke-dashoffset: -20; }
+}
+
 /* ── React Flow controls – light mode ──────────────────────────────── */
 .react-flow__controls button {
   background-color: #ffffff;

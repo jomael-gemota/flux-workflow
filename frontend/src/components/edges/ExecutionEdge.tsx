@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import {
   getBezierPath,
   EdgeLabelRenderer,
@@ -42,6 +42,9 @@ const BASE_WIDTH: Record<EdgeExecutionStatus, number> = {
   skipped: 2,
 };
 
+// ── Selection highlight colour (neutral indigo-300 — works on all statuses) ──
+const SELECTED_COLOR = '#a5b4fc';
+
 // ── Arrow marker dimensions (absolute user-space units) ──────────────────────
 const MARKER_W  = 11;  // width  of the arrowhead triangle
 const MARKER_H  = 8;   // height of the arrowhead triangle
@@ -57,7 +60,10 @@ export const ExecutionEdge = memo(function ExecutionEdge({
   sourcePosition,
   targetPosition,
   data,
+  selected,
 }: EdgeProps) {
+  const [isHovered, setIsHovered] = useState(false);
+
   const d = data as ExecutionEdgeData | undefined;
   const status: EdgeExecutionStatus = d?.executionStatus ?? 'idle';
 
@@ -80,8 +86,11 @@ export const ExecutionEdge = memo(function ExecutionEdge({
   // Per-status marker IDs — shared across all edges with the same status,
   // so we only ever define 6 markers regardless of edge count.
   const markerId = `wap-arrow-${status}`;
+  const selectedMarkerId = `wap-arrow-selected-${id}`;
   // Flowing edges hide the arrowhead (the sweep is the visual focus)
   const arrowOpacity = isFlowing ? 0 : baseOpacity;
+
+  const isHighlighted = isHovered || selected;
 
   return (
     <>
@@ -107,7 +116,83 @@ export const ExecutionEdge = memo(function ExecutionEdge({
             fillOpacity={arrowOpacity}
           />
         </marker>
+
+        {/* Arrowhead for selected/hover highlight ring */}
+        <marker
+          id={selectedMarkerId}
+          markerWidth={MARKER_W + 2}
+          markerHeight={MARKER_H + 2}
+          refX={MARKER_W}
+          refY={(MARKER_H + 2) / 2}
+          orient="auto"
+          markerUnits="userSpaceOnUse"
+        >
+          <polygon
+            points={`0,0 ${MARKER_W + 2},${(MARKER_H + 2) / 2} 0,${MARKER_H + 2}`}
+            fill={selected ? SELECTED_COLOR : color}
+            fillOpacity={selected ? 0.9 : 0.55}
+          />
+        </marker>
       </defs>
+
+      {/*
+        ── 0. Wide transparent hit area ─────────────────────────────────────────
+        20 px invisible stroke so users can click anywhere near the connector.
+        This is the first path so it sits beneath all visual layers but still
+        receives pointer events (decorative layers above have pointerEvents:none).
+      */}
+      <path
+        d={edgePath}
+        fill="none"
+        stroke="transparent"
+        strokeWidth={20}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        style={{ cursor: 'pointer' }}
+      />
+
+      {/*
+        ── 0b. Hover / selected highlight ring ──────────────────────────────────
+        Shown when the cursor is over the connector OR the edge is selected.
+        Selected state uses a bright white glow; hover uses the status colour.
+      */}
+      {isHighlighted && (
+        <path
+          d={edgePath}
+          fill="none"
+          stroke={selected ? SELECTED_COLOR : color}
+          strokeWidth={baseWidth + (selected ? 6 : 8)}
+          strokeOpacity={selected ? 0.35 : 0.22}
+          strokeLinecap="round"
+          markerEnd={`url(#${selectedMarkerId})`}
+          style={{
+            pointerEvents: 'none',
+            transition: 'stroke-opacity 0.15s ease, stroke-width 0.15s ease',
+            filter: selected ? 'blur(1px)' : undefined,
+          }}
+        />
+      )}
+
+      {/*
+        ── 0c. Selected crisp border ─────────────────────────────────────────────
+        A sharper, thinner dashed overlay on top of the glow when selected,
+        confirming which connector is chosen before the user presses Delete.
+      */}
+      {selected && (
+        <path
+          d={edgePath}
+          fill="none"
+          stroke={SELECTED_COLOR}
+          strokeWidth={baseWidth + 1}
+          strokeOpacity={0.85}
+          strokeDasharray="6 4"
+          strokeLinecap="round"
+          style={{
+            pointerEvents: 'none',
+            animation: 'edgeSelectionMarch 0.6s linear infinite',
+          }}
+        />
+      )}
 
       {/*
         ── 1. Base path ─────────────────────────────────────────────────────────
