@@ -6009,8 +6009,6 @@ function ColorPicker({ label, value, onChange, nodes, testResults }: {
 }
 
 function GSheetsFormatPanel({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
-  const credentialId = String(cfg.credentialId ?? '');
-
   return (
     <div className="space-y-3">
       {/* Target range */}
@@ -6317,8 +6315,8 @@ function GSheetsValuesInput({
         nodes={otherNodes}
         testResults={testResults}
         rows={multiRow ? 4 : 3}
-        hint={hint}
       />
+      {hint && <p className="text-[10px] text-slate-400 dark:text-slate-500">{hint}</p>}
 
       {/* Column keys — shown collapsed by default */}
       <div className="space-y-1">
