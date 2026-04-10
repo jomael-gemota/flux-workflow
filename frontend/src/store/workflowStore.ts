@@ -41,6 +41,10 @@ interface WorkflowStore {
   nodes: CanvasNode[];
   edges: CanvasEdge[];
   setNodes: (nodes: CanvasNode[]) => void;
+  /** Like setNodes but does NOT mark the canvas dirty. Use for React Flow's
+   *  internal bookkeeping changes (dimension measurements, selection) so they
+   *  don't produce false-positive unsaved-changes prompts. */
+  setNodesOnly: (nodes: CanvasNode[]) => void;
   setEdges: (edges: CanvasEdge[]) => void;
 
   // Selection
@@ -104,6 +108,7 @@ export const useWorkflowStore = create<WorkflowStore>((set) => ({
   nodes: [],
   edges: [],
   setNodes: (nodes) => set({ nodes, isDirty: true }),
+  setNodesOnly: (nodes) => set({ nodes }),
   setEdges: (edges) => set({ edges, isDirty: true }),
 
   selectedNodeId: null,

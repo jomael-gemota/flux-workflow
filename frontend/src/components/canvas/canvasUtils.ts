@@ -263,7 +263,11 @@ export function serialize(
     entryNodeIds: resolvedEntryIds.length > 0 ? resolvedEntryIds : undefined,
     schedule,
     viewport: viewport ?? undefined,
-    stickyNotes: stickyNotes.length > 0 ? stickyNotes : undefined,
+    // Always send stickyNotes — even as an empty array — so the backend explicitly
+    // clears them when the user deletes all notes. Sending `undefined` would cause
+    // JSON.stringify to omit the key entirely, leaving the backend's existing sticky
+    // notes untouched (it can't distinguish "not provided" from "clear them all").
+    stickyNotes,
   };
 }
 

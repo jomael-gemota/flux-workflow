@@ -121,6 +121,7 @@ export function WorkflowCanvas() {
     nodes,
     edges,
     setNodes,
+    setNodesOnly,
     setEdges,
     setSelectedNodeId,
     setConfigOpen,
@@ -191,9 +192,31 @@ export function WorkflowCanvas() {
 
   const onNodesChange = useCallback(
     (changes: NodeChange<CanvasNode>[]) => {
-      setNodes(applyNodeChanges(changes, nodes) as CanvasNode[]);
+      const updated = applyNodeChanges(changes, nodes) as CanvasNode[];
+
+      // Only mark dirty for changes the user intentionally made.
+      // React Flow fires 'dimensions' changes on every mount/re-layout to measure
+      // nodes, and 'select' changes whenever focus moves.  Those are internal
+      // bookkeeping events and must NOT flip isDirty to true — otherwise loading
+      // any workflow immediately makes it appear modified and triggers spurious
+      // auto-saves when the user switches tabs.
+      //
+      // Sticky-note resizes arrive as 'dimensions' with resizing:true; those ARE
+      // user edits and should mark the canvas dirty.
+      const hasDirtyChange = changes.some((c) => {
+        if (c.type === 'remove') return true;
+        if (c.type === 'position' && c.dragging) return true;
+        if (c.type === 'dimensions' && (c as { resizing?: boolean }).resizing) return true;
+        return false;
+      });
+
+      if (hasDirtyChange) {
+        setNodes(updated);
+      } else {
+        setNodesOnly(updated);
+      }
     },
-    [nodes, setNodes]
+    [nodes, setNodes, setNodesOnly]
   );
 
   const onEdgesChange = useCallback(
