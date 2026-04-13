@@ -84,7 +84,7 @@ interface WorkflowStore {
 
   // Canvas empty-state helpers
   /** Creates a blank unsaved workflow and makes it active */
-  createNewWorkflow: (projectId?: string) => void;
+  createNewWorkflow: (projectId?: string, name?: string) => void;
   /**
    * When non-null the sidebar should create a project with this name.
    * The canvas sets it after the user confirms the modal; the sidebar clears it once done.
@@ -162,9 +162,9 @@ export const useWorkflowStore = create<WorkflowStore>((set) => ({
       isDirty: true,
     })),
 
-  createNewWorkflow: (projectId) => {
+  createNewWorkflow: (projectId, name) => {
     const newWf: WorkflowDefinition = {
-      id: '__new__', name: 'New Workflow', version: 1, nodes: [], entryNodeId: '',
+      id: '__new__', name: name?.trim() || 'New Workflow', version: 1, nodes: [], entryNodeId: '',
     };
     set({ activeWorkflow: newWf, nodes: [], edges: [], isDirty: false, selectedNodeId: null });
     if (projectId) sessionStorage.setItem('wap_new_wf_project', projectId);

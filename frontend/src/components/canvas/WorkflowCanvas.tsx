@@ -139,7 +139,10 @@ export function WorkflowCanvas() {
   const [projectModalOpen, setProjectModalOpen] = useState(false);
   const [projectNameInput, setProjectNameInput] = useState('');
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [newWfModalOpen, setNewWfModalOpen] = useState(false);
+  const [newWfNameDraft, setNewWfNameDraft] = useState('');
   const projectNameInputRef = useRef<HTMLInputElement>(null);
+  const newWfNameInputRef = useRef<HTMLInputElement>(null);
   const rfInstance = useRef<ReactFlowInstance<CanvasNode> | null>(null);
   const isDark = theme === 'dark';
 
@@ -156,6 +159,18 @@ export function WorkflowCanvas() {
     setProjectNameInput('');
     setProjectModalOpen(true);
     setTimeout(() => projectNameInputRef.current?.focus(), 50);
+  }
+
+  function openNewWfModal() {
+    setNewWfNameDraft('');
+    setNewWfModalOpen(true);
+    setTimeout(() => newWfNameInputRef.current?.focus(), 50);
+  }
+
+  function handleNewWfConfirm() {
+    const name = newWfNameDraft.trim() || 'New Workflow';
+    setNewWfModalOpen(false);
+    createNewWorkflow(undefined, name);
   }
 
   function submitProjectModal() {
@@ -527,7 +542,7 @@ export function WorkflowCanvas() {
 
           <div className="flex items-center gap-3">
             <button
-              onClick={() => createNewWorkflow()}
+              onClick={openNewWfModal}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-sm font-semibold shadow-lg shadow-blue-600/25 transition-all"
             >
               <Plus className="w-4 h-4" />
@@ -551,6 +566,50 @@ export function WorkflowCanvas() {
           onSubmit={submitProjectModal}
           onClose={() => setProjectModalOpen(false)}
         />
+
+        {/* ── New Workflow name modal ───────────────────────────────────────── */}
+        {newWfModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center">
+            <div
+              className="absolute inset-0 bg-black/40 dark:bg-black/60 backdrop-blur-[1px]"
+              onClick={() => setNewWfModalOpen(false)}
+            />
+            <div className="relative bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl w-full max-w-sm mx-4 p-5">
+              <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-1">
+                New Workflow
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+                Give your workflow a name to get started.
+              </p>
+              <input
+                ref={newWfNameInputRef}
+                type="text"
+                value={newWfNameDraft}
+                onChange={(e) => setNewWfNameDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleNewWfConfirm();
+                  if (e.key === 'Escape') setNewWfModalOpen(false);
+                }}
+                placeholder="e.g. Send Daily Report"
+                className="w-full px-3 py-2 rounded-lg text-sm border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => setNewWfModalOpen(false)}
+                  className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleNewWfConfirm}
+                  className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 active:scale-95 transition-all shadow shadow-blue-600/20"
+                >
+                  Create
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
