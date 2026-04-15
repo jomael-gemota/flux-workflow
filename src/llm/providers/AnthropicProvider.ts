@@ -16,7 +16,7 @@ export class AnthropicProvider implements LLMProvider {
         messages: ChatMessage[],
         model: string,
         temperature = 0.7,
-        maxTokens = 1000
+        maxTokens = 2048
     ): Promise<LLMResponse> {
         const systemMessage = messages.find(m => m.role === 'system');
         const conversationMessages = messages.filter(m => m.role !== 'system');

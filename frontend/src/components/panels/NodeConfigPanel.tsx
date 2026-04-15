@@ -447,7 +447,8 @@ function ExpressionTextArea({
       {showDisplay && (
         <div
           onClick={() => { setFocused(true); requestAnimationFrame(() => ref.current?.focus()); }}
-          className="w-full min-h-[56px] flex flex-wrap items-start gap-y-1 content-start bg-slate-100 dark:bg-slate-800 border border-slate-600 hover:border-slate-500 rounded-md px-2.5 py-1.5 cursor-text"
+          className="w-full flex flex-wrap items-start gap-y-1 content-start bg-slate-100 dark:bg-slate-800 border border-slate-600 hover:border-slate-500 rounded-md px-2.5 py-1.5 cursor-text"
+          style={{ minHeight: `${rows * 20 + 12}px` }}
           title="Click to edit"
         >
           <DisplayValue value={value} nodes={nodes} placeholder={placeholder} />
@@ -463,7 +464,8 @@ function ExpressionTextArea({
         onChange={(e) => onChange(e.target.value)}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
-        className={`w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${resizable ? 'resize-y min-h-[80px]' : 'resize-none'} ${showDisplay ? 'sr-only' : ''}`}
+        className={`w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${resizable ? 'resize-y' : 'resize-none'} ${showDisplay ? 'sr-only' : ''}`}
+        style={resizable ? { minHeight: `${rows * 20 + 12}px` } : undefined}
       />
       {open && (
         <VariablePickerPanel nodes={nodes} testResults={testResults} onInsert={handleInsert} />
@@ -3268,30 +3270,77 @@ function HttpConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
   );
 }
 
-const LLM_MODELS: Record<string, { value: string; label: string }[]> = {
+interface LLMModelEntry { value: string; label: string; description: string; preview?: boolean }
+interface LLMProviderEntry { label: string; description: string }
+
+const LLM_PROVIDERS: Record<string, LLMProviderEntry> = {
+  openai: {
+    label: 'OpenAI',
+    description: "OpenAI's GPT-5.4 family leads on complex reasoning, coding, and agentic tasks. Models support a 1M token context window, built-in computer use, and native tool calling.",
+  },
+  anthropic: {
+    label: 'Anthropic',
+    description: "Anthropic's Claude models are known for safety, nuanced long-context understanding, and reliable instruction-following — ideal for analysis, writing, and multi-step workflows.",
+  },
+  gemini: {
+    label: 'Google Gemini',
+    description: "Google's Gemini models are natively multimodal, handling text, images, audio, video, and code. They offer a 1M+ token context window and competitive frontier-class intelligence.",
+  },
+};
+
+const LLM_MODELS: Record<string, LLMModelEntry[]> = {
   openai: [
-    { value: 'gpt-4o',           label: 'GPT-4o' },
-    { value: 'gpt-4o-mini',      label: 'GPT-4o Mini' },
-    { value: 'gpt-4-turbo',      label: 'GPT-4 Turbo' },
-    { value: 'gpt-4',            label: 'GPT-4' },
-    { value: 'gpt-3.5-turbo',    label: 'GPT-3.5 Turbo' },
-    { value: 'o1',               label: 'o1' },
-    { value: 'o1-mini',          label: 'o1-mini' },
-    { value: 'o3-mini',          label: 'o3-mini' },
+    {
+      value: 'gpt-5.4',
+      label: 'GPT-5.4',
+      description: "OpenAI's current flagship. Best for complex reasoning, coding, and agentic tasks. 1M token context with built-in computer use and native compaction support.",
+    },
+    {
+      value: 'gpt-5.4-mini',
+      label: 'GPT-5.4 Mini',
+      description: 'A faster, more affordable GPT-5.4 variant. Strong reasoning at lower latency — ideal for high-volume agentic subflows and coding tasks.',
+    },
+    {
+      value: 'gpt-5.4-nano',
+      label: 'GPT-5.4 Nano',
+      description: 'The most cost-efficient GPT-5.4-class model. Best for simple, high-throughput tasks where speed and low cost are the top priority.',
+    },
   ],
   anthropic: [
-    { value: 'claude-3-7-sonnet-20250219', label: 'Claude 3.7 Sonnet' },
-    { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet' },
-    { value: 'claude-3-5-haiku-20241022',  label: 'Claude 3.5 Haiku' },
-    { value: 'claude-3-opus-20240229',     label: 'Claude 3 Opus' },
-    { value: 'claude-3-haiku-20240307',    label: 'Claude 3 Haiku' },
+    {
+      value: 'claude-opus-4-6',
+      label: 'Claude Opus 4.6',
+      description: "Anthropic's most intelligent model. Excels at complex analysis, deep reasoning, long-context tasks, and nuanced writing.",
+    },
+    {
+      value: 'claude-sonnet-4-6',
+      label: 'Claude Sonnet 4.6',
+      description: 'Balanced performance and cost for production workloads. A reliable default for most workflows requiring strong instruction-following and reasoning.',
+    },
+    {
+      value: 'claude-haiku-4-5-20251001',
+      label: 'Claude Haiku 4.5',
+      description: 'The fastest Claude model. Optimized for high-volume, latency-sensitive tasks such as classification, data extraction, and routing.',
+    },
   ],
   gemini: [
-    { value: 'gemini-2.0-flash',      label: 'Gemini 2.0 Flash' },
-    { value: 'gemini-2.0-flash-lite', label: 'Gemini 2.0 Flash Lite' },
-    { value: 'gemini-1.5-pro',        label: 'Gemini 1.5 Pro' },
-    { value: 'gemini-1.5-flash',      label: 'Gemini 1.5 Flash' },
-    { value: 'gemini-1.5-flash-8b',   label: 'Gemini 1.5 Flash 8B' },
+    {
+      value: 'gemini-3.1-pro-preview',
+      label: 'Gemini 3.1 Pro (Preview)',
+      description: "Google's most advanced reasoning model. Handles complex problem-solving across text, images, audio, video, and code with a 1M token context.",
+      preview: true,
+    },
+    {
+      value: 'gemini-3-flash-preview',
+      label: 'Gemini 3 Flash (Preview)',
+      description: 'Frontier-class multimodal performance at a fraction of larger model costs. Strong agentic and vision capabilities with fast response times.',
+      preview: true,
+    },
+    {
+      value: 'gemini-2.5-flash',
+      label: 'Gemini 2.5 Flash',
+      description: "Google's best stable (GA) price-performance model. Low-latency and high-volume ready with solid reasoning — no preview caveats.",
+    },
   ],
 };
 
@@ -3299,8 +3348,9 @@ function LLMConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
   const provider = String(cfg.provider ?? 'openai');
   const models = LLM_MODELS[provider] ?? LLM_MODELS.openai;
   const currentModel = String(cfg.model ?? models[0].value);
-  // Ensure current model value is valid for the provider; if not, fall back to first
   const modelValue = models.some(m => m.value === currentModel) ? currentModel : models[0].value;
+  const providerInfo = LLM_PROVIDERS[provider];
+  const modelInfo = models.find(m => m.value === modelValue);
 
   function handleProviderChange(newProvider: string) {
     const firstModel = (LLM_MODELS[newProvider] ?? LLM_MODELS.openai)[0].value;
@@ -3313,33 +3363,54 @@ function LLMConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
         label="Provider"
         value={provider}
         onChange={(e) => handleProviderChange(e.target.value)}
-        options={[
-          { value: 'openai',    label: 'OpenAI' },
-          { value: 'anthropic', label: 'Anthropic' },
-          { value: 'gemini',    label: 'Google Gemini' },
-        ]}
+        options={Object.entries(LLM_PROVIDERS).map(([value, info]) => ({ value, label: info.label }))}
       />
+      {providerInfo && (
+        <p className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/60 rounded-md px-2.5 py-2 leading-relaxed -mt-1">
+          {providerInfo.description}
+        </p>
+      )}
       <Select
         label="Model"
         value={modelValue}
         onChange={(e) => onChange({ model: e.target.value })}
         options={models}
       />
+      {modelInfo && (
+        <p className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/60 rounded-md px-2.5 py-2 leading-relaxed -mt-1">
+          {modelInfo.description}
+        </p>
+      )}
+      {modelInfo?.preview && (
+        <div className="flex gap-2 items-start bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-md px-2.5 py-2 -mt-1">
+          <span className="text-amber-500 dark:text-amber-400 mt-px shrink-0">⚠</span>
+          <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
+            <strong>Preview model</strong> — not yet generally available (GA). Google may change behavior, pricing, or availability without notice. Not recommended for critical production workflows.
+          </p>
+        </div>
+      )}
       <div className="space-y-1">
         <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Temperature (0–2)</label>
         <input type="number" min={0} max={2} step={0.1} value={String(cfg.temperature ?? 0.7)}
           onChange={(e) => onChange({ temperature: parseFloat(e.target.value) })}
           className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500" />
+        <p className="text-xs text-slate-400 dark:text-slate-500 leading-relaxed pt-0.5">
+          Controls how creative or predictable the response is. <strong className="text-slate-500 dark:text-slate-400">Lower values</strong> (e.g. 0.2) give focused, consistent answers. <strong className="text-slate-500 dark:text-slate-400">Higher values</strong> (e.g. 1.5) produce more varied and creative output.
+        </p>
       </div>
       <div className="space-y-1">
         <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Max tokens</label>
-        <input type="number" min={1} value={String(cfg.maxTokens ?? 500)}
+        <input type="number" min={1} value={String(cfg.maxTokens ?? 2048)}
           onChange={(e) => onChange({ maxTokens: Number(e.target.value) })}
           className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500" />
+        <p className="text-xs text-slate-400 dark:text-slate-500 leading-relaxed pt-0.5">
+          The maximum length of the AI's response. A token is roughly ¾ of a word — so 500 tokens ≈ 375 words. Increase this if responses feel cut off; lower it to keep replies short and concise.
+        </p>
       </div>
       <ExpressionTextArea
         label="System prompt"
-        rows={2}
+        rows={4}
+        resizable
         value={String(cfg.systemPrompt ?? '')}
         onChange={(v) => onChange({ systemPrompt: v })}
         placeholder="You are a helpful assistant..."
@@ -3348,7 +3419,8 @@ function LLMConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
       />
       <ExpressionTextArea
         label="User prompt"
-        rows={3}
+        rows={6}
+        resizable
         value={String(cfg.userPrompt ?? '')}
         onChange={(v) => onChange({ userPrompt: v })}
         placeholder="Summarize the following content…"
