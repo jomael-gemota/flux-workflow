@@ -70,7 +70,7 @@ export class GeminiProvider implements LLMProvider {
         const content = response.text();
 
         const usage = response.usageMetadata;
-        const thinkingTokens = (usage as Record<string, unknown>)?.thoughtsTokenCount as number ?? 0;
+        const thinkingTokens = (usage as unknown as Record<string, unknown>)?.thoughtsTokenCount as number ?? 0;
         return {
             content,
             model,
