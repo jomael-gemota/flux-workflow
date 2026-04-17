@@ -8,9 +8,17 @@ interface TriggerNodeInfo {
     cronExpression: string;
 }
 
+export interface ScheduledTaskInfo {
+    workflowId: string;
+    nodeId: string;
+    cronExpression: string;
+}
+
 export class WorkflowScheduler {
     // key = "workflowId::nodeId"
     private tasks: Map<string, ScheduledTask> = new Map();
+    // key = "workflowId::nodeId" → cronExpression
+    private taskExpressions: Map<string, string> = new Map();
 
     constructor(
         private workflowRepo: WorkflowRepository,
@@ -80,6 +88,7 @@ export class WorkflowScheduler {
             existing.stop();
         }
 
+        this.taskExpressions.set(key, cronExpression);
         const task = cron.schedule(cronExpression, async () => {
             try {
                 const triggerNodeId = nodeId === '__schedule__' ? undefined : nodeId;
@@ -107,6 +116,7 @@ export class WorkflowScheduler {
             if (key.startsWith(`${workflowId}::`)) {
                 task.stop();
                 this.tasks.delete(key);
+                this.taskExpressions.delete(key);
             }
         }
     }
@@ -116,6 +126,22 @@ export class WorkflowScheduler {
             task.stop();
         }
         this.tasks.clear();
+        this.taskExpressions.clear();
         // console.log('[Scheduler] All scheduled tasks stopped');
+    }
+
+    /** Returns all currently registered scheduled tasks with their cron expressions. */
+    getScheduledTasks(): ScheduledTaskInfo[] {
+        const result: ScheduledTaskInfo[] = [];
+        for (const [key, cronExpression] of this.taskExpressions) {
+            const separatorIdx = key.indexOf('::');
+            if (separatorIdx === -1) continue;
+            result.push({
+                workflowId: key.slice(0, separatorIdx),
+                nodeId: key.slice(separatorIdx + 2),
+                cronExpression,
+            });
+        }
+        return result;
     }
 }

@@ -1,4 +1,4 @@
-import { Save, Play, Loader2, LogOut, PanelRight, KeyRound, Sun, Moon, Check, Shield, Clock, ChevronDown, HelpCircle, History } from 'lucide-react';
+import { Save, Play, Loader2, LogOut, PanelRight, KeyRound, Sun, Moon, Check, Shield, Clock, ChevronDown, HelpCircle, History, Eye } from 'lucide-react';
 import { Button } from './ui/Button';
 import { useWorkflowStore } from '../store/workflowStore';
 import { useTriggerWorkflow } from '../hooks/useWorkflows';
@@ -13,6 +13,7 @@ import { useTourStore } from '../store/tourStore';
 import { useQuery } from '@tanstack/react-query';
 import { fetchAdminStats } from '../api/auth';
 import { OwnerDashboard } from './admin/OwnerDashboard';
+import { SurveillanceDashboard } from './admin/SurveillanceDashboard';
 
 export function Toolbar() {
   const {
@@ -46,6 +47,7 @@ export function Toolbar() {
   });
 
   const [ownerDashOpen, setOwnerDashOpen] = useState(false);
+  const [surveillanceOpen, setSurveillanceOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [dropdownPos, setDropdownPos] = useState({ top: 0, right: 0 });
   const profileRef = useRef<HTMLDivElement>(null);
@@ -310,20 +312,31 @@ export function Toolbar() {
 
         {/* Platform Owner dashboard button */}
         {isOwner && (
-          <button
-            onClick={() => setOwnerDashOpen(true)}
-            title="Platform Owner Dashboard"
-            className="relative flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-colors"
-          >
-            <Shield className="w-3.5 h-3.5" />
-            Owners
-            {(adminStats?.pending ?? 0) > 0 && (
-              <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-bold leading-none">
-                <Clock className="w-2.5 h-2.5" />
-                {adminStats!.pending}
-              </span>
-            )}
-          </button>
+          <>
+            <button
+              onClick={() => setSurveillanceOpen(true)}
+              title="Workflow Surveillance — monitor all running, scheduled, and flagged workflows"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 transition-colors"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              Surveillance
+            </button>
+
+            <button
+              onClick={() => setOwnerDashOpen(true)}
+              title="Platform Owner Dashboard"
+              className="relative flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-colors"
+            >
+              <Shield className="w-3.5 h-3.5" />
+              Owners
+              {(adminStats?.pending ?? 0) > 0 && (
+                <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-bold leading-none">
+                  <Clock className="w-2.5 h-2.5" />
+                  {adminStats!.pending}
+                </span>
+              )}
+            </button>
+          </>
         )}
 
         <div className="w-px h-5 glass-divider" />
@@ -350,6 +363,7 @@ export function Toolbar() {
     </header>
 
     {ownerDashOpen && <OwnerDashboard onClose={() => setOwnerDashOpen(false)} />}
+    {surveillanceOpen && <SurveillanceDashboard onClose={() => setSurveillanceOpen(false)} />}
 
     <CredentialsModal open={credentialsOpen} onClose={() => setCredentialsOpen(false)} />
     <VersionHistoryModal open={versionHistoryOpen} onClose={() => setVersionHistoryOpen(false)} />

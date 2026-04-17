@@ -44,6 +44,7 @@ import { teamsDataRoutes } from './routes/teamsDataRoutes';
 import { basecampDataRoutes } from './routes/basecampDataRoutes';
 import { authRoutes } from './routes/authRoutes';
 import { adminRoutes } from './routes/adminRoutes';
+import { surveillanceRoutes } from './routes/surveillanceRoutes';
 import { projectRoutes } from './routes/projectRoutes';
 import { fileRoutes } from './routes/fileRoutes';
 import { UserAuthService } from './services/UserAuthService';
@@ -179,7 +180,8 @@ async function bootstrap() {
     await fastify.register(fileRoutes,   { prefix: '/api' });
     // Auth & admin (no prefix-level auth guard — each route manages its own)
     await fastify.register(authRoutes,  { prefix: '/api', userAuth });
-    await fastify.register(adminRoutes, { prefix: '/api' });
+    await fastify.register(adminRoutes,      { prefix: '/api' });
+    await fastify.register(surveillanceRoutes, { prefix: '/api', scheduler });
 
     // 6. Health check
     fastify.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }));

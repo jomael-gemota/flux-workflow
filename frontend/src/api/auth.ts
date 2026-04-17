@@ -59,3 +59,84 @@ export function deleteUser(id: string): Promise<{ deleted: boolean }> {
 export function fetchAdminStats(): Promise<{ total: number; pending: number; approved: number }> {
     return request('/admin/stats');
 }
+
+// ── Surveillance ───────────────────────────────────────────────────────────
+
+export type VulnSeverity = 'low' | 'medium' | 'high';
+
+export interface Vulnerability {
+    code: string;
+    severity: VulnSeverity;
+    message: string;
+}
+
+export interface SurveillanceOwner {
+    id: string;
+    name: string;
+    email: string;
+    avatar: string | null;
+    role: string;
+}
+
+export interface SurveillanceExecStatus {
+    isRunning: boolean;
+    lastExecution: {
+        executionId: string;
+        status: string;
+        startedAt: string;
+        completedAt: string | null;
+        triggeredBy: string;
+    } | null;
+    successRate: number | null;
+    totalRuns: number;
+    recentFailures: number;
+}
+
+export interface SurveillanceScheduleTask {
+    nodeId: string;
+    cronExpression: string;
+    nextRun: string | null;
+}
+
+export interface SurveillanceWorkflow {
+    workflowId: string;
+    name: string;
+    version: number;
+    nodeCount: number;
+    createdAt: string;
+    updatedAt: string;
+    owner: SurveillanceOwner | null;
+    execStatus: SurveillanceExecStatus;
+    schedule: { tasks: SurveillanceScheduleTask[] } | null;
+    vulnerabilities: Vulnerability[];
+    triggerTypes: string[];
+}
+
+export interface SurveillanceSummary {
+    totalWorkflows: number;
+    runningNow: number;
+    scheduledActive: number;
+    withIssues: number;
+}
+
+export interface SurveillanceResponse {
+    workflows: SurveillanceWorkflow[];
+    total: number;
+    page: number;
+    pages: number;
+    summary: SurveillanceSummary;
+}
+
+export function fetchSurveillance(params: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    filter?: 'all' | 'running' | 'scheduled' | 'issues';
+}): Promise<SurveillanceResponse> {
+    const qs = new URLSearchParams();
+    if (params.page   != null) qs.set('page',   String(params.page));
+    if (params.limit  != null) qs.set('limit',  String(params.limit));
+    if (params.search)         qs.set('search', params.search);
+    if (params.filter)         qs.set('filter', params.filter);
+    return request(`/admin/surveillance?${qs.toString()}`);
+}
