@@ -11,6 +11,7 @@ import { ConfirmModal } from '../ui/ConfirmModal';
 import { useSaveWorkflow } from '../../hooks/useSaveWorkflow';
 import { useGmailLabels, useGmailMessageLabels, isExpression } from '../../hooks/useGmailData';
 import { useGDriveItems } from '../../hooks/useGDriveData';
+import { useGSheetsSheets } from '../../hooks/useGSheetsData';
 import { useSlackChannels, useSlackUsers } from '../../hooks/useSlackData';
 import { stageFile } from '../../api/client';
 import { useTeamsTeams, useTeamsChannels, useTeamsUsers } from '../../hooks/useTeamsData';
@@ -8884,38 +8885,60 @@ const TRIGGER_TYPE_OPTIONS = [
   { value: 'webhook',   label: 'Webhook' },
   { value: 'cron',      label: 'Schedule / Cron' },
   { value: 'app_event', label: 'App Event' },
-  { value: 'email',     label: 'Email (Gmail)' },
 ];
 
 const WEBHOOK_METHOD_OPTIONS = ['POST', 'GET', 'PUT'].map((m) => ({ value: m, label: m }));
 
 const APP_EVENT_APP_OPTIONS = [
-  { value: '', label: 'Select an app…' },
+  { value: '',        label: 'Select an app…' },
   { value: 'basecamp', label: 'Basecamp' },
-  { value: 'slack',    label: 'Slack' },
-  { value: 'teams',    label: 'Microsoft Teams' },
-  { value: 'gmail',    label: 'Gmail' },
+  { value: 'gdrive',  label: 'Google Drive' },
+  { value: 'gsheets', label: 'Google Sheets' },
+  { value: 'slack',   label: 'Slack' },
+  { value: 'teams',   label: 'Microsoft Teams' },
+  { value: 'gmail',   label: 'Gmail' },
 ];
 
 const APP_EVENT_TYPE_OPTIONS: Record<string, { value: string; label: string }[]> = {
   basecamp: [
-    { value: '', label: 'Select an event…' },
-    { value: 'new_todo',     label: 'New To-Do created' },
-    { value: 'new_message',  label: 'New Message posted' },
-    { value: 'new_comment',  label: 'New Comment posted' },
+    { value: '',               label: 'Select an event…' },
+    { value: 'new_todo',       label: 'New To-Do created' },
+    { value: 'new_message',    label: 'New Message posted' },
+    { value: 'new_comment',    label: 'New Comment posted' },
     { value: 'todo_completed', label: 'To-Do completed' },
   ],
+  gdrive: [
+    { value: '',               label: 'Select an event…' },
+    { value: 'file_changed',   label: 'On changes to a specific file' },
+    { value: 'folder_changed', label: 'On changes involving a specific folder' },
+  ],
+  gsheets: [
+    { value: '',                    label: 'Select an event…' },
+    { value: 'row_added',           label: 'On row added' },
+    { value: 'row_updated',         label: 'On row updated' },
+    { value: 'row_added_or_updated', label: 'On row added or updated' },
+  ],
   slack: [
-    { value: '', label: 'Select an event…' },
-    { value: 'new_message',  label: 'New message in channel' },
-    { value: 'new_reaction', label: 'New reaction added' },
+    { value: '',                   label: 'Select an event…' },
+    { value: 'any_event',          label: 'On any event' },
+    { value: 'app_mention',        label: 'On bot app mention' },
+    { value: 'file_public',        label: 'On file made public' },
+    { value: 'file_shared',        label: 'On file shared' },
+    { value: 'new_message',        label: 'On new message posted to channel' },
+    { value: 'new_public_channel', label: 'On new public channel created' },
+    { value: 'new_user',           label: 'On new user' },
+    { value: 'reaction_added',     label: 'On reaction added' },
   ],
   teams: [
-    { value: '', label: 'Select an event…' },
-    { value: 'new_message',  label: 'New message in channel' },
+    { value: '',                  label: 'Select an event…' },
+    { value: 'new_channel',       label: 'On new channel' },
+    { value: 'new_channel_message', label: 'On new channel message' },
+    { value: 'new_chat',          label: 'On new chat' },
+    { value: 'new_chat_message',  label: 'On new chat message' },
+    { value: 'new_team_member',   label: 'On new team member' },
   ],
   gmail: [
-    { value: '', label: 'Select an event…' },
+    { value: '',          label: 'Select an event…' },
     { value: 'new_email', label: 'New email received' },
   ],
 };
@@ -8933,12 +8956,6 @@ const CRON_PRESETS = [
   { value: '0 0 1 * *',       label: 'First of month at midnight' },
 ];
 
-const LABEL_FILTER_OPTIONS = [
-  { value: 'INBOX',     label: 'Inbox' },
-  { value: 'UNREAD',    label: 'Unread' },
-  { value: 'STARRED',   label: 'Starred' },
-  { value: 'IMPORTANT', label: 'Important' },
-];
 
 function describeCron(expr: string): string {
   const preset = CRON_PRESETS.find((p) => p.value === expr);
@@ -8950,20 +8967,32 @@ function TriggerConfig({
   onChange,
   workflowId,
   nodeId,
+  otherNodes,
+  testResults,
 }: ConfigProps & { workflowId: string; nodeId: string }) {
-  const triggerType = (cfg.triggerType as string) || 'manual';
+  const triggerType   = (cfg.triggerType   as string) || 'manual';
+  const appType       = (cfg.appType       as string) || '';
+  const credentialId  = (cfg.credentialId  as string) || '';
+  const eventType     = (cfg.eventType     as string) || '';
+  const spreadsheetId = (cfg.spreadsheetId as string) || '';
+  const teamId        = (cfg.teamId        as string) || '';
+
   const credentials = useCredentialList();
 
-  const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
-  const webhookUrl = workflowId && nodeId
-    ? `${baseUrl}/webhooks/${workflowId}/trigger/${nodeId}`
-    : '';
+  // Data hooks — always called (hooks can't be conditional), but each
+  // passes '' when not applicable so React Query keeps them disabled.
+  const slackChs    = useSlackChannels(appType === 'slack'  ? credentialId : '');
+  const teamsTeams  = useTeamsTeams   (appType === 'teams'  ? credentialId : '');
+  const teamsChans  = useTeamsChannels(appType === 'teams'  ? credentialId : '', teamId);
+  const gsheetsTabs = useGSheetsSheets(appType === 'gsheets' ? credentialId : '', spreadsheetId);
 
+  const baseUrl    = typeof window !== 'undefined' ? window.location.origin : '';
+  const webhookUrl = workflowId && nodeId ? `${baseUrl}/webhooks/${workflowId}/trigger/${nodeId}` : '';
   const [copiedWebhook, setCopiedWebhook] = useState(false);
 
   const credentialOptions = (provider: string) => {
     const filtered = (credentials.data ?? []).filter((c) => {
-      if (provider === 'gmail') return c.provider === 'google';
+      if (provider === 'gmail' || provider === 'gdrive' || provider === 'gsheets') return c.provider === 'google';
       return c.provider === provider;
     });
     return [
@@ -8971,6 +9000,37 @@ function TriggerConfig({
       ...filtered.map((c) => ({ value: c.id, label: c.label || c.provider })),
     ];
   };
+
+  const inputCls = 'w-full rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2 py-1.5 text-xs text-gray-900 dark:text-white placeholder-slate-500';
+  const labelCls = 'block text-xs font-medium text-slate-500 dark:text-slate-400';
+  const hintCls  = 'text-[10px] text-slate-400 dark:text-slate-500';
+
+  const resetAppFields = {
+    eventType: '', credentialId: '', fileId: '', fileIdPath: '', folderId: '', folderIdPath: '',
+    spreadsheetId: '', spreadsheetPath: '', spreadsheetName: '', owner: '', searchFolderId: '',
+    searchFolderPath: '', sheetName: '', teamId: '', channelId: '', slackChannelId: '',
+  };
+  const resetCredFields = {
+    eventType: '', fileId: '', fileIdPath: '', folderId: '', folderIdPath: '',
+    spreadsheetId: '', spreadsheetPath: '', spreadsheetName: '', owner: '', searchFolderId: '',
+    searchFolderPath: '', sheetName: '', teamId: '', channelId: '', slackChannelId: '',
+  };
+  const resetEventFields = {
+    fileId: '', fileIdPath: '', folderId: '', folderIdPath: '',
+    spreadsheetId: '', spreadsheetPath: '', spreadsheetName: '', owner: '', searchFolderId: '',
+    searchFolderPath: '', sheetName: '', teamId: '', channelId: '', slackChannelId: '',
+  };
+
+  // Shared: Teams team button-list item row
+  const teamsTeamItems  = teamsTeams.teams.map((t) => ({ id: t.id, display: t.displayName }));
+  const teamsChanItems  = teamsChans.channels.map((c) => ({
+    id: c.id,
+    display: c.membershipType === 'private' ? `🔒 ${c.displayName}` : c.displayName,
+  }));
+  const slackChanItems  = slackChs.channels.map((c) => ({
+    id: c.id,
+    display: c.isPrivate ? `🔒 ${c.name}` : `#${c.name}`,
+  }));
 
   return (
     <div className="space-y-3">
@@ -8994,41 +9054,19 @@ function TriggerConfig({
       {/* ── Webhook ── */}
       {triggerType === 'webhook' && (
         <div className="space-y-3">
-          <Select
-            label="HTTP Method"
-            value={(cfg.webhookMethod as string) || 'POST'}
-            onChange={(e) => onChange({ webhookMethod: e.target.value })}
-            options={WEBHOOK_METHOD_OPTIONS}
-          />
-
+          <Select label="HTTP Method" value={(cfg.webhookMethod as string) || 'POST'} onChange={(e) => onChange({ webhookMethod: e.target.value })} options={WEBHOOK_METHOD_OPTIONS} />
           <div className="space-y-1">
-            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Webhook URL</label>
+            <label className={labelCls}>Webhook URL</label>
             <div className="flex items-center gap-1.5">
-              <input
-                type="text"
-                readOnly
-                value={webhookUrl || 'Save workflow first to generate URL'}
-                className="flex-1 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2 py-1.5 text-xs text-slate-700 dark:text-slate-300 font-mono select-all"
-              />
+              <input type="text" readOnly value={webhookUrl || 'Save workflow first to generate URL'} className="flex-1 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2 py-1.5 text-xs text-slate-700 dark:text-slate-300 font-mono select-all" />
               {webhookUrl && (
-                <button
-                  type="button"
-                  className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400"
-                  onClick={() => {
-                    navigator.clipboard.writeText(webhookUrl);
-                    setCopiedWebhook(true);
-                    setTimeout(() => setCopiedWebhook(false), 2000);
-                  }}
-                >
+                <button type="button" className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400"
+                  onClick={() => { navigator.clipboard.writeText(webhookUrl); setCopiedWebhook(true); setTimeout(() => setCopiedWebhook(false), 2000); }}>
                   {copiedWebhook ? <Check size={13} className="text-green-400" /> : <Copy size={13} />}
                 </button>
               )}
             </div>
-            {webhookUrl && (
-              <p className="text-[10px] text-slate-400 dark:text-slate-500">
-                Send a {(cfg.webhookMethod as string) || 'POST'} request to this URL to trigger the workflow.
-              </p>
-            )}
+            {webhookUrl && <p className={hintCls}>Send a {(cfg.webhookMethod as string) || 'POST'} request to this URL to trigger the workflow.</p>}
           </div>
         </div>
       )}
@@ -9036,38 +9074,15 @@ function TriggerConfig({
       {/* ── Cron / Schedule ── */}
       {triggerType === 'cron' && (
         <div className="space-y-3">
-          <Select
-            label="Preset"
-            value=""
-            onChange={(e) => { if (e.target.value) onChange({ cronExpression: e.target.value }); }}
-            options={CRON_PRESETS}
-          />
-
+          <Select label="Preset" value="" onChange={(e) => { if (e.target.value) onChange({ cronExpression: e.target.value }); }} options={CRON_PRESETS} />
           <div className="space-y-1">
-            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Cron Expression</label>
-            <input
-              type="text"
-              value={(cfg.cronExpression as string) || ''}
-              onChange={(e) => onChange({ cronExpression: e.target.value })}
-              placeholder="* * * * *"
-              className="w-full rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2 py-1.5 text-xs text-gray-900 dark:text-white font-mono placeholder-slate-600"
-            />
-            {Boolean(cfg.cronExpression) && (
-              <p className="text-[10px] text-slate-400 dark:text-slate-500">
-                {describeCron(cfg.cronExpression as string) || 'Custom expression'}
-              </p>
-            )}
+            <label className={labelCls}>Cron Expression</label>
+            <input type="text" value={(cfg.cronExpression as string) || ''} onChange={(e) => onChange({ cronExpression: e.target.value })} placeholder="* * * * *" className={`${inputCls} font-mono`} />
+            {Boolean(cfg.cronExpression) && <p className={hintCls}>{describeCron(cfg.cronExpression as string) || 'Custom expression'}</p>}
           </div>
-
           <div className="space-y-1">
-            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Timezone (optional)</label>
-            <input
-              type="text"
-              value={(cfg.cronTimezone as string) || ''}
-              onChange={(e) => onChange({ cronTimezone: e.target.value })}
-              placeholder="e.g. America/New_York"
-              className="w-full rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2 py-1.5 text-xs text-gray-900 dark:text-white placeholder-slate-600"
-            />
+            <label className={labelCls}>Timezone (optional)</label>
+            <input type="text" value={(cfg.cronTimezone as string) || ''} onChange={(e) => onChange({ cronTimezone: e.target.value })} placeholder="e.g. America/New_York" className={inputCls} />
           </div>
         </div>
       )}
@@ -9075,77 +9090,181 @@ function TriggerConfig({
       {/* ── App Event ── */}
       {triggerType === 'app_event' && (
         <div className="space-y-3">
-          <Select
-            label="App"
-            value={(cfg.appType as string) || ''}
-            onChange={(e) => onChange({ appType: e.target.value, eventType: '', credentialId: '' })}
+
+          {/* Step 1 — App */}
+          <Select label="App" value={appType}
+            onChange={(e) => onChange({ appType: e.target.value, ...resetAppFields })}
             options={APP_EVENT_APP_OPTIONS}
           />
 
-          {Boolean(cfg.appType) && (
+          {/* Step 2 — Credential (shown as soon as app is chosen) */}
+          {Boolean(appType) && (
+            <Select label="Credential" value={credentialId}
+              onChange={(e) => onChange({ credentialId: e.target.value, ...resetCredFields })}
+              options={credentialOptions(appType)}
+            />
+          )}
+
+          {/* Step 3 — Event (shown after credential is chosen) */}
+          {Boolean(appType) && Boolean(credentialId) && (
+            <Select label="Event" value={eventType}
+              onChange={(e) => onChange({ eventType: e.target.value, ...resetEventFields })}
+              options={APP_EVENT_TYPE_OPTIONS[appType] ?? [{ value: '', label: 'Select an event…' }]}
+            />
+          )}
+
+          {/* Step 4 — App-specific extra fields (shown after event is chosen) */}
+          {Boolean(appType) && Boolean(credentialId) && Boolean(eventType) && (
             <>
-              <Select
-                label="Event"
-                value={(cfg.eventType as string) || ''}
-                onChange={(e) => onChange({ eventType: e.target.value })}
-                options={APP_EVENT_TYPE_OPTIONS[cfg.appType as string] ?? [{ value: '', label: 'Select an event…' }]}
-              />
 
-              <Select
-                label="Credential"
-                value={(cfg.credentialId as string) || ''}
-                onChange={(e) => onChange({ credentialId: e.target.value })}
-                options={credentialOptions(cfg.appType as string)}
-              />
+              {/* ── Google Drive — navigable folder/file browser ── */}
+              {appType === 'gdrive' && eventType === 'file_changed' && (
+                <GDriveFolderBrowser
+                  credentialId={credentialId}
+                  value={String(cfg.fileId ?? '')}
+                  valuePath={String(cfg.fileIdPath ?? '')}
+                  onChange={(id, path) => onChange({ fileId: id, fileIdPath: path })}
+                  label="File to watch"
+                  placeholder="Browse and select a file"
+                  foldersOnly={false}
+                />
+              )}
 
+              {appType === 'gdrive' && eventType === 'folder_changed' && (
+                <GDriveFolderBrowser
+                  credentialId={credentialId}
+                  value={String(cfg.folderId ?? '')}
+                  valuePath={String(cfg.folderIdPath ?? '')}
+                  onChange={(id, path) => onChange({ folderId: id, folderIdPath: path })}
+                  label="Folder to watch"
+                  placeholder="Browse and select a folder"
+                  foldersOnly={true}
+                />
+              )}
+
+              {/* ── Google Sheets — spreadsheet browser + sheet tab picker ── */}
+              {appType === 'gsheets' && (
+                <>
+                  <GSheetsSpreadsheetPicker
+                    cfg={cfg}
+                    onChange={onChange}
+                    label="Spreadsheet"
+                    otherNodes={otherNodes}
+                    testResults={testResults}
+                  />
+
+                  {Boolean(spreadsheetId) && (
+                    <div className="space-y-1">
+                      <span className={labelCls}>Sheet Tab <span className="font-normal text-slate-400">(optional)</span></span>
+                      {gsheetsTabs.isLoading ? (
+                        <div className="flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500 py-1">
+                          <Loader2 className="w-3 h-3 animate-spin" /> Loading sheets…
+                        </div>
+                      ) : gsheetsTabs.isError ? (
+                        <p className="text-[10px] text-red-400">Failed to load sheet tabs.</p>
+                      ) : (
+                        <div className="max-h-36 overflow-y-auto rounded-md border border-slate-600 bg-slate-100 dark:bg-slate-800 divide-y divide-slate-700">
+                          {[{ id: '', display: 'First / all sheets' }, ...gsheetsTabs.sheets.map((s) => ({ id: s.title, display: s.title }))].map((item) => (
+                            <button key={item.id} type="button"
+                              onClick={() => onChange({ sheetName: item.id })}
+                              className={`w-full text-left px-2.5 py-1.5 text-xs transition-colors ${
+                                (cfg.sheetName ?? '') === item.id
+                                  ? 'bg-blue-200 dark:bg-blue-600/30 text-blue-700 dark:text-blue-300'
+                                  : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                              }`}>{item.display}</button>
+                          ))}
+                        </div>
+                      )}
+                      {Boolean(cfg.sheetName) && (
+                        <p className={hintCls}>Selected tab: <span className="text-slate-700 dark:text-slate-300">{String(cfg.sheetName)}</span></p>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* ── Microsoft Teams — team picker (button list) ── */}
+              {appType === 'teams' && (eventType === 'new_channel' || eventType === 'new_channel_message' || eventType === 'new_team_member') && (
+                <div className="space-y-1">
+                  <span className={labelCls}>Team <span className="font-normal text-slate-400">(optional — leave blank to watch all teams)</span></span>
+                  {teamsTeams.isLoading ? (
+                    <div className="flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500 py-1">
+                      <Loader2 className="w-3 h-3 animate-spin" /> Loading teams…
+                    </div>
+                  ) : teamsTeams.isError ? (
+                    <p className="text-[10px] text-red-400">Failed to load teams.</p>
+                  ) : (
+                    <div className="max-h-36 overflow-y-auto rounded-md border border-slate-600 bg-slate-100 dark:bg-slate-800 divide-y divide-slate-700">
+                      {[{ id: '', display: 'All joined teams' }, ...teamsTeamItems].map((item) => (
+                        <button key={item.id} type="button"
+                          onClick={() => onChange({ teamId: item.id, channelId: '' })}
+                          className={`w-full text-left px-2.5 py-1.5 text-xs transition-colors ${
+                            teamId === item.id
+                              ? 'bg-blue-200 dark:bg-blue-600/30 text-blue-700 dark:text-blue-300'
+                              : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                          }`}>{item.display}</button>
+                      ))}
+                    </div>
+                  )}
+                  {teamId && <p className={hintCls}>Selected: <span className="text-slate-700 dark:text-slate-300">{teamsTeams.teams.find((t) => t.id === teamId)?.displayName ?? teamId}</span></p>}
+                </div>
+              )}
+
+              {/* ── Microsoft Teams — channel picker (button list, only when team is set) ── */}
+              {appType === 'teams' && eventType === 'new_channel_message' && Boolean(teamId) && (
+                <div className="space-y-1">
+                  <span className={labelCls}>Channel</span>
+                  {teamsChans.isLoading ? (
+                    <div className="flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500 py-1">
+                      <Loader2 className="w-3 h-3 animate-spin" /> Loading channels…
+                    </div>
+                  ) : teamsChans.isError ? (
+                    <p className="text-[10px] text-red-400">Failed to load channels.</p>
+                  ) : (
+                    <div className="max-h-36 overflow-y-auto rounded-md border border-slate-600 bg-slate-100 dark:bg-slate-800 divide-y divide-slate-700">
+                      {teamsChanItems.length === 0 && <p className="text-[10px] text-slate-400 px-2.5 py-2">No channels found.</p>}
+                      {teamsChanItems.map((item) => (
+                        <button key={item.id} type="button"
+                          onClick={() => onChange({ channelId: item.id })}
+                          className={`w-full text-left px-2.5 py-1.5 text-xs transition-colors ${
+                            (cfg.channelId ?? '') === item.id
+                              ? 'bg-blue-200 dark:bg-blue-600/30 text-blue-700 dark:text-blue-300'
+                              : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                          }`}>{item.display}</button>
+                      ))}
+                    </div>
+                  )}
+                  {Boolean(cfg.channelId) && <p className={hintCls}>Selected: <span className="text-slate-700 dark:text-slate-300">{teamsChans.channels.find((c) => c.id === String(cfg.channelId))?.displayName ?? String(cfg.channelId)}</span></p>}
+                </div>
+              )}
+
+              {/* ── Slack — channel picker (SlackResourceSelect, searchable) ── */}
+              {appType === 'slack' && (eventType === 'new_message' || eventType === 'any_event' || eventType === 'app_mention' || eventType === 'reaction_added') && (
+                <SlackResourceSelect
+                  label="Channel (optional — leave blank to watch all)"
+                  value={(cfg.slackChannelId as string) || ''}
+                  onChange={(v) => onChange({ slackChannelId: v })}
+                  items={slackChanItems}
+                  isLoading={slackChs.isLoading}
+                  isError={slackChs.isError}
+                  placeholder="Leave blank or enter channel ID"
+                  renderItem={(item) => item.display}
+                  hasCredential={Boolean(credentialId)}
+                  otherNodes={otherNodes}
+                  testResults={testResults}
+                />
+              )}
+
+              {/* Step 5 — Poll interval */}
               <div className="space-y-1">
-                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
-                  Poll Interval (minutes)
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  max={1440}
-                  value={(cfg.pollIntervalMinutes as number) || 5}
+                <label className={labelCls}>Poll Interval (minutes)</label>
+                <input type="number" min={1} max={1440} value={(cfg.pollIntervalMinutes as number) || 5}
                   onChange={(e) => onChange({ pollIntervalMinutes: Number(e.target.value) })}
-                  className="w-full rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2 py-1.5 text-xs text-gray-900 dark:text-white"
+                  className={inputCls}
                 />
               </div>
             </>
           )}
-        </div>
-      )}
-
-      {/* ── Email (Gmail) ── */}
-      {triggerType === 'email' && (
-        <div className="space-y-3">
-          <Select
-            label="Gmail Credential"
-            value={(cfg.credentialId as string) || ''}
-            onChange={(e) => onChange({ credentialId: e.target.value })}
-            options={credentialOptions('gmail')}
-          />
-
-          <Select
-            label="Label Filter"
-            value={(cfg.labelFilter as string) || 'INBOX'}
-            onChange={(e) => onChange({ labelFilter: e.target.value })}
-            options={LABEL_FILTER_OPTIONS}
-          />
-
-          <div className="space-y-1">
-            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
-              Poll Interval (minutes)
-            </label>
-            <input
-              type="number"
-              min={1}
-              max={1440}
-              value={(cfg.pollIntervalMinutes as number) || 5}
-              onChange={(e) => onChange({ pollIntervalMinutes: Number(e.target.value) })}
-              className="w-full rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2 py-1.5 text-xs text-gray-900 dark:text-white"
-            />
-          </div>
         </div>
       )}
     </div>

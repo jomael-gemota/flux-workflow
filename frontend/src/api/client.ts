@@ -286,6 +286,32 @@ export function getGDriveFile(credentialId: string, fileId: string) {
   );
 }
 
+// ── Google Sheets data ────────────────────────────────────────
+
+export interface GSheetsSpreadsheet {
+  id: string;
+  name: string;
+  modifiedTime: string | null;
+}
+
+export interface GSheetsSheet {
+  id: number;
+  title: string;
+  index: number;
+}
+
+export function listGSheetsSpreadsheets(credentialId: string) {
+  return request<{ spreadsheets: GSheetsSpreadsheet[] }>(
+    `/gsheets/spreadsheets?credentialId=${encodeURIComponent(credentialId)}`
+  );
+}
+
+export function listGSheetsSheets(credentialId: string, spreadsheetId: string) {
+  return request<{ sheets: GSheetsSheet[] }>(
+    `/gsheets/sheets?credentialId=${encodeURIComponent(credentialId)}&spreadsheetId=${encodeURIComponent(spreadsheetId)}`
+  );
+}
+
 // ── Gmail data ────────────────────────────────────────────────
 
 export interface GmailLabel {

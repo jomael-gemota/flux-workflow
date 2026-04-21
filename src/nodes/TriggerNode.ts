@@ -14,12 +14,24 @@ interface TriggerConfig {
     cronTimezone?: string;
 
     // app_event
-    appType?: 'basecamp' | 'slack' | 'teams' | 'gmail';
+    appType?: 'basecamp' | 'slack' | 'teams' | 'gmail' | 'gdrive' | 'gsheets';
     eventType?: string;
     credentialId?: string;
     pollIntervalMinutes?: number;
+    // basecamp
     projectId?: string;
     todolistId?: string;
+    // google drive
+    fileId?: string;
+    folderId?: string;
+    // google sheets
+    spreadsheetId?: string;
+    sheetName?: string;
+    // teams
+    teamId?: string;
+    channelId?: string;
+    // slack
+    slackChannelId?: string;
 
     // email (gmail)
     labelFilter?: string;
