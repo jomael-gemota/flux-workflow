@@ -9422,18 +9422,7 @@ function TriggerConfig({
                     )}
 
                     {/* Instant — fully automatic, no user setup needed */}
-                    {mode === 'instant' && (() => {
-                      const nativePush = new Set(['gsheets', 'gdrive', 'basecamp']);
-                      const hasNative  = nativePush.has(cfg.appType as string);
-                      const appLabel   = cfg.appType === 'gsheets' ? 'Google Sheets'
-                                       : cfg.appType === 'gdrive'   ? 'Google Drive'
-                                       : cfg.appType === 'basecamp' ? 'Basecamp'
-                                       : cfg.appType === 'slack'    ? 'Slack'
-                                       : cfg.appType === 'teams'    ? 'Teams'
-                                       : 'the app';
-
-                      return null;
-                    })()}
+                    {mode === 'instant' && null}
                   </div>
                 );
               })()}
