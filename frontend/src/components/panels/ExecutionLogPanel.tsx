@@ -609,14 +609,13 @@ export function ExecutionLogPanel() {
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
     await Promise.all([
-      qc.invalidateQueries({ queryKey: ['executions', 'log', workflowId] }),
-      qc.invalidateQueries({ queryKey: ['executions', workflowId] }),
+      qc.refetchQueries({ queryKey: ['executions', 'log', workflowId] }),
+      qc.refetchQueries({ queryKey: ['executions', workflowId] }),
       selectedExecId
-        ? qc.invalidateQueries({ queryKey: ['executions', 'detail', selectedExecId] })
+        ? qc.refetchQueries({ queryKey: ['executions', 'detail', selectedExecId] })
         : Promise.resolve(),
     ]);
-    // Keep the spinner visible just long enough for the user to notice
-    setTimeout(() => setIsRefreshing(false), 600);
+    setIsRefreshing(false);
   }, [qc, workflowId, selectedExecId]);
 
   const selectedNodeResult =
@@ -661,9 +660,10 @@ export function ExecutionLogPanel() {
           onClick={handleRefresh}
           disabled={isRefreshing}
           title="Refresh logs"
-          className="text-slate-400 dark:text-slate-500 hover:text-blue-500 dark:hover:text-blue-400 transition-colors shrink-0 disabled:opacity-50"
+          className="flex items-center gap-1 text-[11px] font-medium text-slate-400 dark:text-slate-500 hover:text-blue-500 dark:hover:text-blue-400 transition-colors shrink-0 disabled:opacity-50"
         >
-          <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
+          {isRefreshing ? 'Syncing…' : 'Refresh'}
         </button>
 
         <button
@@ -676,7 +676,15 @@ export function ExecutionLogPanel() {
       </div>
 
       {/* ── Body: two-column split ───────────────────────────────────────── */}
-      <div className="flex flex-1 min-h-0">
+      <div className="relative flex flex-1 min-h-0">
+
+        {/* Loading overlay shown while refreshing */}
+        {isRefreshing && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-white/60 dark:bg-slate-900/60 backdrop-blur-[2px]">
+            <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
+            <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Syncing logs…</p>
+          </div>
+        )}
         {/* Left panel — resizable execution list or node list */}
         <div
           className="shrink-0 overflow-hidden flex flex-col"
