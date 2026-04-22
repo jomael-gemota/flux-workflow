@@ -36,6 +36,46 @@ interface BasecampConfig {
     text?: string;
 }
 
+/**
+ * Normalise a date string to YYYY-MM-DD as required by the Basecamp API.
+ * Handles the most common spreadsheet formats (M/D/YYYY, MM/DD/YYYY) as well
+ * as values that are already in the correct format.  Returns an empty string
+ * when the input is empty or cannot be parsed.
+ */
+function normalizeDueDate(raw: string): string {
+    const trimmed = raw.trim();
+    if (!trimmed) return '';
+
+    // Already YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+
+    // M/D/YYYY or MM/DD/YYYY (typical US spreadsheet / Google Sheets format)
+    const usSlash = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (usSlash) {
+        const [, m, d, y] = usSlash;
+        return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+    }
+
+    // D-M-YYYY or M-D-YYYY with dashes (e.g. 4-23-2026)
+    const dashDate = trimmed.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+    if (dashDate) {
+        const [, m, d, y] = dashDate;
+        return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+    }
+
+    // Fallback: let JavaScript parse it (handles "April 23, 2026", ISO strings, etc.)
+    // Use UTC to avoid timezone-shift issues when extracting the date parts.
+    const parsed = new Date(trimmed);
+    if (!isNaN(parsed.getTime())) {
+        const y = parsed.getUTCFullYear();
+        const mo = String(parsed.getUTCMonth() + 1).padStart(2, '0');
+        const d  = String(parsed.getUTCDate()).padStart(2, '0');
+        return `${y}-${mo}-${d}`;
+    }
+
+    return trimmed; // Return as-is; let the API reject with a clear error
+}
+
 export class BasecampNode implements NodeExecutor {
     private auth: BasecampAuthService;
     private resolver = new ExpressionResolver();
@@ -69,7 +109,7 @@ export class BasecampNode implements NodeExecutor {
             if (!content)    throw new Error('Basecamp create_todo: content is required');
 
             const description = this.resolver.resolveTemplate(config.description ?? '', context);
-            const dueOn       = this.resolver.resolveTemplate(config.dueOn ?? '', context);
+            const dueOn       = normalizeDueDate(this.resolver.resolveTemplate(config.dueOn ?? '', context));
             const rawAssignees = this.resolver.resolveTemplate(config.assigneeIds ?? '', context);
             const assigneeIds = rawAssignees
                 ? rawAssignees.split(',').map((id) => Number(id.trim())).filter(Boolean)

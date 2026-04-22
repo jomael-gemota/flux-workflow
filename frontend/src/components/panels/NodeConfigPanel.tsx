@@ -8878,7 +8878,8 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
             placeholder="Additional details…"
             nodes={otherNodes}
             testResults={testResults}
-            rows={3}
+            rows={4}
+            resizable
           />
           <ExpressionInput
             label="Due Date (optional, YYYY-MM-DD)"

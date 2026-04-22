@@ -453,16 +453,24 @@ function ExecutionList({
 function NodeList({
   results,
   nodeNameMap,
-  selectedNodeId,
-  onSelectNode,
+  selectedResultIdx,
+  onSelectResult,
   onBack,
 }: {
   results: NodeResult[];
   nodeNameMap: Record<string, string>;
-  selectedNodeId: string | null;
-  onSelectNode: (id: string) => void;
+  selectedResultIdx: number | null;
+  onSelectResult: (idx: number) => void;
   onBack: () => void;
 }) {
+  // Count how many times each display name appears so we can add #1, #2… suffixes
+  const nameCounts = results.reduce<Record<string, number>>((acc, r) => {
+    const n = nodeNameMap[r.nodeId] ?? r.nodeId;
+    acc[n] = (acc[n] ?? 0) + 1;
+    return acc;
+  }, {});
+  const nameOccurrence: Record<string, number> = {};
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <button
@@ -479,14 +487,20 @@ function NodeList({
             No node results recorded.
           </p>
         ) : (
-          results.map((r) => {
-            const name = nodeNameMap[r.nodeId] ?? r.nodeId;
-            const isSelected = r.nodeId === selectedNodeId;
+          results.map((r, idx) => {
+            const baseName = nodeNameMap[r.nodeId] ?? r.nodeId;
+            const isDuplicate = (nameCounts[baseName] ?? 1) > 1;
+            nameOccurrence[baseName] = (nameOccurrence[baseName] ?? 0) + 1;
+            const displayName = isDuplicate
+              ? `${baseName} #${nameOccurrence[baseName]}`
+              : baseName;
+
+            const isSelected = idx === selectedResultIdx;
             const isRunnerError = r.nodeId === '__runner__';
             return (
               <button
-                key={r.nodeId}
-                onClick={() => onSelectNode(r.nodeId)}
+                key={`${r.nodeId}-${idx}`}
+                onClick={() => onSelectResult(idx)}
                 className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left border-b border-slate-200/60 dark:border-slate-800/60 transition-colors ${
                   isSelected
                     ? 'bg-blue-50 dark:bg-blue-600/15 border-l-2 border-l-blue-500'
@@ -498,7 +512,7 @@ function NodeList({
                 <NodeStatusIcon status={r.status} />
                 <div className="flex-1 min-w-0">
                   <p className={`text-[11px] font-medium truncate ${isRunnerError ? 'text-red-600 dark:text-red-300' : 'text-slate-600 dark:text-slate-300'}`}>
-                    {name}
+                    {displayName}
                   </p>
                   {r.durationMs > 0 && (
                     <p className="text-[10px] text-slate-400 dark:text-slate-600">{fmtDuration(r.durationMs)}</p>
@@ -566,8 +580,8 @@ export function ExecutionLogPanel() {
 
   // Which execution is being viewed in detail
   const [selectedExecId, setSelectedExecId] = useState<string | null>(lastExecutionId);
-  // Which node is selected within that execution
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  // Which result index is selected within that execution (index-based to handle duplicate node IDs)
+  const [selectedResultIdx, setSelectedResultIdx] = useState<number | null>(null);
 
   // Fetch the selected execution's full details (for node list + output)
   const { data: selectedExec, isLoading: execLoading } = useExecution(selectedExecId);
@@ -579,17 +593,16 @@ export function ExecutionLogPanel() {
   useEffect(() => {
     if (lastExecutionId) {
       setSelectedExecId(lastExecutionId);
-      setSelectedNodeId(null);
+      setSelectedResultIdx(null);
     }
   }, [lastExecutionId]);
 
   // When execution details load, auto-select the first node result
   // (especially useful for __runner__ errors which are the only result)
   useEffect(() => {
-    if (selectedExec && !selectedNodeId) {
-      const firstResult = selectedExec.results[0];
-      if (firstResult) {
-        setSelectedNodeId(firstResult.nodeId);
+    if (selectedExec && selectedResultIdx === null) {
+      if (selectedExec.results.length > 0) {
+        setSelectedResultIdx(0);
       }
     }
   }, [selectedExec?.executionId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -618,8 +631,11 @@ export function ExecutionLogPanel() {
     setIsRefreshing(false);
   }, [qc, workflowId, selectedExecId]);
 
+  // Derive the selected result by index (accurate even when two nodes share the same nodeId)
   const selectedNodeResult =
-    selectedExec?.results.find((r) => r.nodeId === selectedNodeId) ?? null;
+    selectedResultIdx !== null
+      ? (selectedExec?.results[selectedResultIdx] ?? null)
+      : null;
 
   if (!workflowId || workflowId.startsWith('__new__')) {
   return (
@@ -699,11 +715,11 @@ export function ExecutionLogPanel() {
               <NodeList
                 results={selectedExec.results as NodeResult[]}
                 nodeNameMap={nodeNameMap}
-                selectedNodeId={selectedNodeId}
-                onSelectNode={(id) => setSelectedNodeId(id)}
+                selectedResultIdx={selectedResultIdx}
+                onSelectResult={(idx) => setSelectedResultIdx(idx)}
                 onBack={() => {
                   setSelectedExecId(null);
-                  setSelectedNodeId(null);
+                  setSelectedResultIdx(null);
                 }}
               />
             ) : null
@@ -720,7 +736,7 @@ export function ExecutionLogPanel() {
                 const deletedAll = ids.length === 0;
                 if (deletedAll || (selectedExecId && ids.includes(selectedExecId))) {
                   setSelectedExecId(null);
-                  setSelectedNodeId(null);
+                  setSelectedResultIdx(null);
                 }
               }}
             />
@@ -742,16 +758,16 @@ export function ExecutionLogPanel() {
           {!selectedExecId && (
             <EmptyRight message="Select a run from the list to view its output." />
           )}
-          {selectedExecId && !selectedNodeId && (
+          {selectedExecId && selectedResultIdx === null && (
             <EmptyRight message="Select a node on the left to see its output." />
           )}
-          {selectedExecId && selectedNodeId && selectedNodeResult && (
+          {selectedExecId && selectedResultIdx !== null && selectedNodeResult && (
             <OutputViewer
               result={selectedNodeResult}
               nodeName={nodeNameMap[selectedNodeResult.nodeId]}
             />
           )}
-          {selectedExecId && selectedNodeId && !selectedNodeResult && !execLoading && (
+          {selectedExecId && selectedResultIdx !== null && !selectedNodeResult && !execLoading && (
             <EmptyRight message="Node result not found in this execution." />
           )}
         </div>
