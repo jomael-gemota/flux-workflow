@@ -730,7 +730,7 @@ export function ExecutionLogPanel() {
               nodeNameMap={nodeNameMap}
               onSelect={(id) => {
                 setSelectedExecId(id);
-                setSelectedNodeId(null);
+                setSelectedResultIdx(null);
               }}
               onDeleted={(ids) => {
                 const deletedAll = ids.length === 0;
