@@ -6620,7 +6620,7 @@ function SlackResourceSelect({
           <input type="text" value={filter} onChange={(e) => setFilter(e.target.value)}
             placeholder="Search…"
             className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-violet-500 placeholder-slate-500" />
-          <div className="max-h-36 overflow-y-auto rounded-md border border-slate-600 bg-slate-100 dark:bg-slate-800 divide-y divide-slate-700">
+          <div className="max-h-36 overflow-y-auto rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 divide-y divide-slate-200 dark:divide-slate-700">
             {filtered.length === 0 && (
               <p className="text-[10px] text-slate-400 dark:text-slate-500 px-2.5 py-2">No results.</p>
             )}
@@ -6815,7 +6815,7 @@ function SlackMultiPicker({
           <input type="text" value={filter} onChange={(e) => setFilter(e.target.value)}
             placeholder="Search to add…"
             className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-violet-500 placeholder-slate-500" />
-          <div className="max-h-36 overflow-y-auto rounded-md border border-slate-600 bg-slate-100 dark:bg-slate-800 divide-y divide-slate-700">
+          <div className="max-h-36 overflow-y-auto rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 divide-y divide-slate-200 dark:divide-slate-700">
             {filtered.length === 0 && (
               <p className="text-[10px] text-slate-400 dark:text-slate-500 px-2.5 py-2">
                 {items.length === 0 ? 'No items available.' : 'All items selected or no results.'}
@@ -8262,7 +8262,7 @@ function TeamsConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
             ) : errorTeams ? (
               <p className="text-[10px] text-red-400">Failed to load teams.</p>
             ) : (
-              <div className="max-h-36 overflow-y-auto rounded-md border border-slate-600 bg-slate-100 dark:bg-slate-800 divide-y divide-slate-700">
+              <div className="max-h-36 overflow-y-auto rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 divide-y divide-slate-200 dark:divide-slate-700">
                 {teamItems.length === 0 && (
                   <p className="text-[10px] text-slate-400 dark:text-slate-500 px-2.5 py-2">No teams found.</p>
                 )}
@@ -8300,7 +8300,7 @@ function TeamsConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
               ) : errorChannels ? (
                 <p className="text-[10px] text-red-400">Failed to load channels.</p>
               ) : (
-                <div className="max-h-36 overflow-y-auto rounded-md border border-slate-600 bg-slate-100 dark:bg-slate-800 divide-y divide-slate-700">
+                <div className="max-h-36 overflow-y-auto rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 divide-y divide-slate-200 dark:divide-slate-700">
                   {channelItems.length === 0 && (
                     <p className="text-[10px] text-slate-400 dark:text-slate-500 px-2.5 py-2">No channels found.</p>
                   )}
@@ -8554,7 +8554,7 @@ function BasecampAssigneePicker({
         className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-green-500 placeholder-slate-500"
       />
 
-      <div className="max-h-64 overflow-y-auto rounded-md border border-slate-600 bg-slate-100 dark:bg-slate-800">
+      <div className="max-h-64 overflow-y-auto rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800">
         {filtered.length === 0 && (
           <p className="text-[10px] text-slate-400 dark:text-slate-500 px-2.5 py-2">No people match "{filter}"</p>
         )}
@@ -8708,7 +8708,7 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
           ) : errorProjects ? (
             <p className="text-[10px] text-red-400">Failed to load projects.</p>
           ) : (
-            <div className="max-h-36 overflow-y-auto rounded-md border border-slate-600 bg-slate-100 dark:bg-slate-800 divide-y divide-slate-700">
+            <div className="max-h-36 overflow-y-auto rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 divide-y divide-slate-200 dark:divide-slate-700">
               {projects.length === 0 && (
                 <p className="text-[10px] text-slate-400 dark:text-slate-500 px-2.5 py-2">No projects found.</p>
               )}
@@ -8719,7 +8719,7 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
                   onClick={() => onChange({ projectId: String(p.id), todolistId: '', groupId: '', todoId: '' })}
                   className={`w-full text-left px-2.5 py-1.5 text-xs transition-colors ${
                     String(p.id) === projectId
-                      ? 'bg-green-600/30 text-green-300'
+                      ? 'bg-green-100 dark:bg-green-600/30 text-green-800 dark:text-green-300 font-medium'
                       : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                   }`}
                 >
@@ -8782,7 +8782,7 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
           ) : errorTodolists ? (
             <p className="text-[10px] text-red-400">Failed to load to-do lists.</p>
           ) : (
-            <div className="max-h-36 overflow-y-auto rounded-md border border-slate-600 bg-slate-100 dark:bg-slate-800 divide-y divide-slate-700">
+            <div className="max-h-36 overflow-y-auto rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 divide-y divide-slate-200 dark:divide-slate-700">
               {todolists.length === 0 && (
                 <p className="text-[10px] text-slate-400 dark:text-slate-500 px-2.5 py-2">No to-do lists found.</p>
               )}
@@ -8793,7 +8793,7 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
                   onClick={() => onChange({ todolistId: String(tl.id), groupId: '', todoId: '' })}
                   className={`w-full text-left px-2.5 py-1.5 text-xs transition-colors ${
                     String(tl.id) === todolistId
-                      ? 'bg-green-600/30 text-green-300'
+                      ? 'bg-green-100 dark:bg-green-600/30 text-green-800 dark:text-green-300 font-medium'
                       : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                   }`}
                 >
@@ -8824,13 +8824,13 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
             <p className="text-[10px] text-slate-600 italic">No groups in this to-do list (all to-dos are ungrouped)</p>
           )}
           {!loadingGroups && todoGroups.length > 0 && (
-            <div className="max-h-36 overflow-y-auto rounded-md border border-slate-600 bg-slate-100 dark:bg-slate-800">
+            <div className="max-h-36 overflow-y-auto rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 divide-y divide-slate-200 dark:divide-slate-700">
               <button
                 type="button"
                 onClick={() => onChange({ groupId: '' })}
                 className={`w-full text-left px-2.5 py-1.5 text-xs transition-colors ${
                   !groupId
-                    ? 'bg-green-600/30 text-green-300'
+                    ? 'bg-green-100 dark:bg-green-600/30 text-green-800 dark:text-green-300 font-medium'
                     : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                 }`}
               >
@@ -8843,7 +8843,7 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
                   onClick={() => onChange({ groupId: String(g.id) })}
                   className={`w-full text-left px-2.5 py-1.5 text-xs transition-colors ${
                     String(g.id) === groupId
-                      ? 'bg-green-600/30 text-green-300'
+                      ? 'bg-green-100 dark:bg-green-600/30 text-green-800 dark:text-green-300 font-medium'
                       : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                   }`}
                 >
@@ -8961,7 +8961,7 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
               ) : errorTodos ? (
                 <p className="text-[10px] text-red-400">Failed to load to-dos.</p>
               ) : (
-                <div className="max-h-64 overflow-y-auto rounded-md border border-slate-600 bg-slate-100 dark:bg-slate-800">
+                <div className="max-h-64 overflow-y-auto rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800">
                   {todos.length === 0 && (
                     <p className="text-[10px] text-slate-400 dark:text-slate-500 px-2.5 py-2">No to-dos found.</p>
                   )}
@@ -8972,7 +8972,7 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
                     return (
                       <>
                         {ungrouped.length > 0 && groupNames.length > 0 && (
-                          <div className="px-2.5 py-1 text-[10px] font-semibold text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-900/50 uppercase tracking-wider">
+                          <div className="px-2.5 py-1 text-[10px] font-semibold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-900/50 uppercase tracking-wider border-b border-slate-200 dark:border-slate-700/50">
                             Ungrouped
                           </div>
                         )}
@@ -8983,7 +8983,7 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
                             onClick={() => onChange({ todoId: String(t.id) })}
                             className={`w-full text-left px-2.5 py-1.5 text-xs transition-colors flex items-center gap-1.5 ${
                               String(t.id) === String(cfg.todoId ?? '')
-                                ? 'bg-green-600/30 text-green-300'
+                                ? 'bg-green-100 dark:bg-green-600/30 text-green-800 dark:text-green-300 font-medium'
                                 : t.completed ? 'text-slate-400 dark:text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                             }`}
                           >
@@ -8993,7 +8993,7 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
                         ))}
                         {groupNames.map((gn) => (
                           <div key={gn}>
-                            <div className="px-2.5 py-1 text-[10px] font-semibold text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-900/50 uppercase tracking-wider">
+                            <div className="px-2.5 py-1 text-[10px] font-semibold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-900/50 uppercase tracking-wider border-b border-slate-200 dark:border-slate-700/50">
                               {gn}
                             </div>
                             {grouped.filter((t) => t.groupName === gn).map((t) => (
@@ -9003,7 +9003,7 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
                                 onClick={() => onChange({ todoId: String(t.id) })}
                                 className={`w-full text-left px-2.5 py-1.5 text-xs transition-colors pl-4 flex items-center gap-1.5 ${
                                   String(t.id) === String(cfg.todoId ?? '')
-                                    ? 'bg-green-600/30 text-green-300'
+                                    ? 'bg-green-100 dark:bg-green-600/30 text-green-800 dark:text-green-300 font-medium'
                                     : t.completed ? 'text-slate-400 dark:text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                                 }`}
                               >
@@ -9404,7 +9404,7 @@ function TriggerConfig({
                       ) : gsheetsTabs.isError ? (
                         <p className="text-[10px] text-red-400">Failed to load sheet tabs.</p>
                       ) : (
-                        <div className="max-h-36 overflow-y-auto rounded-md border border-slate-600 bg-slate-100 dark:bg-slate-800 divide-y divide-slate-700">
+                        <div className="max-h-36 overflow-y-auto rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 divide-y divide-slate-200 dark:divide-slate-700">
                           {[{ id: '', display: 'First / all sheets' }, ...gsheetsTabs.sheets.map((s) => ({ id: s.title, display: s.title }))].map((item) => (
                             <button key={item.id} type="button"
                               onClick={() => onChange({ sheetName: item.id })}
@@ -9435,7 +9435,7 @@ function TriggerConfig({
                   ) : teamsTeams.isError ? (
                     <p className="text-[10px] text-red-400">Failed to load teams.</p>
                   ) : (
-                    <div className="max-h-36 overflow-y-auto rounded-md border border-slate-600 bg-slate-100 dark:bg-slate-800 divide-y divide-slate-700">
+                    <div className="max-h-36 overflow-y-auto rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 divide-y divide-slate-200 dark:divide-slate-700">
                       {[{ id: '', display: 'All joined teams' }, ...teamsTeamItems].map((item) => (
                         <button key={item.id} type="button"
                           onClick={() => onChange({ teamId: item.id, channelId: '' })}
@@ -9462,7 +9462,7 @@ function TriggerConfig({
                   ) : teamsChans.isError ? (
                     <p className="text-[10px] text-red-400">Failed to load channels.</p>
                   ) : (
-                    <div className="max-h-36 overflow-y-auto rounded-md border border-slate-600 bg-slate-100 dark:bg-slate-800 divide-y divide-slate-700">
+                    <div className="max-h-36 overflow-y-auto rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 divide-y divide-slate-200 dark:divide-slate-700">
                       {teamsChanItems.length === 0 && <p className="text-[10px] text-slate-400 px-2.5 py-2">No channels found.</p>}
                       {teamsChanItems.map((item) => (
                         <button key={item.id} type="button"
@@ -9509,7 +9509,7 @@ function TriggerConfig({
                     ) : bcProjects.isError ? (
                       <p className="text-[10px] text-red-400">Failed to load projects.</p>
                     ) : (
-                      <div className="max-h-36 overflow-y-auto rounded-md border border-slate-600 bg-slate-100 dark:bg-slate-800 divide-y divide-slate-700">
+                      <div className="max-h-36 overflow-y-auto rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 divide-y divide-slate-200 dark:divide-slate-700">
                         {(bcProjects.data ?? []).length === 0 && (
                           <p className="text-[10px] text-slate-400 dark:text-slate-500 px-2.5 py-2">No projects found.</p>
                         )}
@@ -9518,7 +9518,7 @@ function TriggerConfig({
                             onClick={() => onChange({ projectId: String(p.id), todolistId: '' })}
                             className={`w-full text-left px-2.5 py-1.5 text-xs transition-colors ${
                               String(p.id) === projectId
-                                ? 'bg-green-600/30 text-green-300'
+                                ? 'bg-green-100 dark:bg-green-600/30 text-green-800 dark:text-green-300 font-medium'
                                 : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                             }`}>
                             {p.name}
@@ -9542,7 +9542,7 @@ function TriggerConfig({
                       ) : bcTodolists.isError ? (
                         <p className="text-[10px] text-red-400">Failed to load to-do lists.</p>
                       ) : (
-                        <div className="max-h-36 overflow-y-auto rounded-md border border-slate-600 bg-slate-100 dark:bg-slate-800 divide-y divide-slate-700">
+                        <div className="max-h-36 overflow-y-auto rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 divide-y divide-slate-200 dark:divide-slate-700">
                           {(bcTodolists.data ?? []).length === 0 && (
                             <p className="text-[10px] text-slate-400 dark:text-slate-500 px-2.5 py-2">No to-do lists found.</p>
                           )}
@@ -9551,7 +9551,7 @@ function TriggerConfig({
                               onClick={() => onChange({ todolistId: String(tl.id) })}
                               className={`w-full text-left px-2.5 py-1.5 text-xs transition-colors ${
                                 String(tl.id) === todolistId
-                                  ? 'bg-green-600/30 text-green-300'
+                                  ? 'bg-green-100 dark:bg-green-600/30 text-green-800 dark:text-green-300 font-medium'
                                   : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                               }`}>
                               {tl.name}
