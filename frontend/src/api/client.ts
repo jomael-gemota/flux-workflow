@@ -480,3 +480,34 @@ export function listBasecampPeople(credentialId: string, projectId?: string) {
   if (projectId) url += `&projectId=${encodeURIComponent(projectId)}`;
   return request<BasecampPerson[]>(url);
 }
+
+// ── Email Notifications ────────────────────────────────────────────────────
+
+export interface NotificationSettings {
+  enabled: boolean;
+  notifyOnFailure: boolean;
+  notifyOnPartial: boolean;
+  notifyOnSuccess: boolean;
+  recipients: string[];
+  /** Email of the authenticated user — always present in recipients and cannot be removed */
+  ownerEmail: string;
+  smtpConfigured: boolean;
+}
+
+export function getNotificationSettings() {
+  return request<NotificationSettings>('/notifications/settings');
+}
+
+export function updateNotificationSettings(patch: Partial<Omit<NotificationSettings, 'smtpConfigured' | 'ownerEmail'>>) {
+  return request<NotificationSettings>('/notifications/settings', {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  });
+}
+
+export function sendTestEmail(email: string) {
+  return request<{ sent: boolean }>('/notifications/test', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}

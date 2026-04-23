@@ -49,6 +49,9 @@ import { surveillanceRoutes } from './routes/surveillanceRoutes';
 import { projectRoutes } from './routes/projectRoutes';
 import { fileRoutes } from './routes/fileRoutes';
 import { UserAuthService } from './services/UserAuthService';
+import { EmailNotificationService } from './services/EmailNotificationService';
+import { NotificationSettingsRepository } from './repositories/NotificationSettingsRepository';
+import { notificationRoutes } from './routes/notificationRoutes';
 
 import { connectDatabase } from './db/database';
 import { getBaseUrl } from './utils/baseUrl';
@@ -107,13 +110,15 @@ async function bootstrap() {
     registry.register('slack',    new SlackNode(slackAuth));
     registry.register('teams',    new TeamsNode(teamsAuth));
     registry.register('basecamp', new BasecampNode(basecampAuth));
-    const workflowService = new WorkflowService(runner, workflowRepo, executionRepo);
+    const notificationSettingsRepo = new NotificationSettingsRepository();
+    const emailNotificationService = new EmailNotificationService(notificationSettingsRepo);
+    const workflowService = new WorkflowService(runner, workflowRepo, executionRepo, emailNotificationService);
 
 	await runSeeds(workflowRepo);
 
     // 3. Start background worker (only when Redis is available)
     if (process.env.REDIS_URL) {
-        createWorkflowWorker(runner, workflowRepo, executionRepo);
+        createWorkflowWorker(runner, workflowRepo, executionRepo, emailNotificationService);
     } else {
         // console.log('ℹ️  No REDIS_URL set — running without background worker (synchronous mode)');
     }
@@ -201,6 +206,7 @@ async function bootstrap() {
     await fastify.register(slackDataRoutes,      { prefix: '/api', slackAuth });
     await fastify.register(teamsDataRoutes,      { prefix: '/api', teamsAuth });
     await fastify.register(basecampDataRoutes,   { prefix: '/api', basecampAuth });
+    await fastify.register(notificationRoutes, { prefix: '/api', notificationSettingsRepo, emailNotificationService });
     await fastify.register(projectRoutes, { prefix: '/api' });
     await fastify.register(fileRoutes,   { prefix: '/api' });
     // Auth & admin (no prefix-level auth guard — each route manages its own)

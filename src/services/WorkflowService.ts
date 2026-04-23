@@ -6,12 +6,14 @@ import { ExecutionSummary } from '../types/api.types';
 import { NodeResult } from '../types/workflow.types';
 import { getWorkflowQueue } from '../queue/WorkflowQueue';
 import { executionEventBus } from '../events/ExecutionEventBus';
+import { EmailNotificationService } from './EmailNotificationService';
 
 export class WorkflowService {
     constructor(
         private runner: WorkflowRunner,
         private workflowRepo: WorkflowRepository,
-        private executionRepo: ExecutionRepository
+        private executionRepo: ExecutionRepository,
+        private emailNotificationService?: EmailNotificationService,
     ) {}
 
     async trigger(
@@ -73,6 +75,20 @@ export class WorkflowService {
             executionEventBus.emitComplete({ executionId, workflowId, status: finalStatus });
             await this.executionRepo.complete(executionId, finalStatus, result.results);
 
+            if (finalStatus === 'failure' || finalStatus === 'partial' || finalStatus === 'success') {
+                this.emailNotificationService?.notifyOnCompletion({
+                    executionId,
+                    workflowId,
+                    workflowName: workflow.name,
+                    workflowVersion: workflow.version,
+                    status: finalStatus,
+                    triggeredBy,
+                    startedAt,
+                    completedAt,
+                    results: result.results,
+                }).catch((err) => console.error('[WorkflowService] Email notification error:', err));
+            }
+
             return {
                 executionId,
                 workflowId,
@@ -82,23 +98,37 @@ export class WorkflowService {
                 results: result.results,
             };
         } catch (err: unknown) {
+            const completedAt = new Date();
             const message = err instanceof Error ? err.message : String(err);
             const syntheticResult: NodeResult = {
                 nodeId: '__runner__',
                 status: 'failure',
                 output: null,
                 error: message,
-                durationMs: Date.now() - startedAt.getTime(),
+                durationMs: completedAt.getTime() - startedAt.getTime(),
             };
             executionEventBus.emitNodeResult(executionId, syntheticResult);
             executionEventBus.emitComplete({ executionId, workflowId, status: 'failure' });
             await this.executionRepo.complete(executionId, 'failure', [syntheticResult]);
+
+            this.emailNotificationService?.notifyOnCompletion({
+                executionId,
+                workflowId,
+                workflowName: workflow.name,
+                workflowVersion: workflow.version,
+                status: 'failure',
+                triggeredBy,
+                startedAt,
+                completedAt,
+                results: [syntheticResult],
+            }).catch((err) => console.error('[WorkflowService] Email notification error:', err));
+
             return {
                 executionId,
                 workflowId,
                 status: 'failure',
                 startedAt,
-                completedAt: new Date(),
+                completedAt,
                 results: [syntheticResult],
             };
         }

@@ -1,4 +1,4 @@
-import { Save, Play, Loader2, LogOut, PanelRight, KeyRound, Sun, Moon, Check, Shield, Clock, ChevronDown, HelpCircle, History, Eye } from 'lucide-react';
+import { Save, Play, Loader2, LogOut, PanelRight, KeyRound, Sun, Moon, Check, Shield, Clock, ChevronDown, HelpCircle, History, Eye, Bell } from 'lucide-react';
 import { Button } from './ui/Button';
 import { useWorkflowStore } from '../store/workflowStore';
 import { useTriggerWorkflow } from '../hooks/useWorkflows';
@@ -8,10 +8,12 @@ import { createPortal } from 'react-dom';
 import { CredentialsModal } from './ui/CredentialsModal';
 import { ConfirmModal } from './ui/ConfirmModal';
 import { VersionHistoryModal } from './ui/VersionHistoryModal';
+import { NotificationSettingsModal } from './ui/NotificationSettingsModal';
 import { useAuthStore } from '../store/authStore';
 import { useTourStore } from '../store/tourStore';
 import { useQuery } from '@tanstack/react-query';
 import { fetchAdminStats } from '../api/auth';
+import { getNotificationSettings } from '../api/client';
 import { OwnerDashboard } from './admin/OwnerDashboard';
 import { SurveillanceDashboard } from './admin/SurveillanceDashboard';
 
@@ -46,6 +48,13 @@ export function Toolbar() {
     staleTime: 30_000,
   });
 
+  // Notification settings — for the bell active state indicator
+  const { data: notificationSettings } = useQuery({
+    queryKey: ['notification-settings'],
+    queryFn: getNotificationSettings,
+    staleTime: 60_000,
+  });
+
   const [ownerDashOpen, setOwnerDashOpen] = useState(false);
   const [surveillanceOpen, setSurveillanceOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -56,6 +65,7 @@ export function Toolbar() {
   const [nameValue, setNameValue] = useState('');
   const [credentialsOpen, setCredentialsOpen] = useState(false);
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [alertModal, setAlertModal] = useState<{ open: boolean; title: string; message: string }>({
     open: false, title: '', message: '',
   });
@@ -272,6 +282,22 @@ export function Toolbar() {
           Credentials
         </button>
 
+        <button
+          onClick={() => setNotificationsOpen(true)}
+          title="Email notification settings"
+          className={`relative flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+            notificationSettings?.enabled
+              ? 'text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10'
+              : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-black/5 dark:hover:bg-white/10'
+          }`}
+        >
+          <Bell className="w-3.5 h-3.5" />
+          Notifications
+          {notificationSettings?.enabled && (
+            <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-blue-500" />
+          )}
+        </button>
+
         <div className="w-px h-5 glass-divider" />
 
         <button
@@ -367,6 +393,7 @@ export function Toolbar() {
 
     <CredentialsModal open={credentialsOpen} onClose={() => setCredentialsOpen(false)} />
     <VersionHistoryModal open={versionHistoryOpen} onClose={() => setVersionHistoryOpen(false)} />
+    <NotificationSettingsModal open={notificationsOpen} onClose={() => setNotificationsOpen(false)} />
 
     {/* Profile dropdown — rendered via portal so it escapes overflow:hidden parents */}
     {profileOpen && createPortal(
