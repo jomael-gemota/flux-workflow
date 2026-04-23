@@ -115,8 +115,11 @@ export class BasecampNode implements NodeExecutor {
             let description = this.resolver.resolveTemplate(config.description ?? '', context);
             const dueOn       = normalizeDueDate(this.resolver.resolveTemplate(config.dueOn ?? '', context));
             const rawAssignees = this.resolver.resolveTemplate(config.assigneeIds ?? '', context);
-            const assigneeIds = rawAssignees
-                ? rawAssignees.split(',').map((id) => Number(id.trim())).filter(Boolean)
+            // Strip JSON array brackets in case the variable resolved to e.g. "[123,456]"
+            const normalizedAssignees = rawAssignees.replace(/^\[|\]$/g, '');
+            // Split on any mix of commas, semicolons, or whitespace as delimiters
+            const assigneeIds = normalizedAssignees
+                ? normalizedAssignees.split(/[\s,;]+/).map((id) => Number(id.trim())).filter(Boolean)
                 : [];
 
             // ── optional file attachment ───────────────────────────────────────

@@ -8492,6 +8492,8 @@ function BasecampAssigneePicker({
   otherNodes: ConfigProps['otherNodes'];
   testResults: ConfigProps['testResults'];
 }) {
+  const isExprVal = (v: string) => /\{\{/.test(v);
+  const [mode, setMode] = useState<'select' | 'expr'>(() => isExprVal(assigneeIds) ? 'expr' : 'select');
   const [filter, setFilter] = useState('');
   const currentIds = assigneeIds.split(',').map((s) => s.trim()).filter(Boolean);
   const selectedCount = currentIds.length;
@@ -8516,6 +8518,7 @@ function BasecampAssigneePicker({
     );
   }
 
+  // No people loaded — always show expression input (no toggle needed)
   if (people.length === 0) {
     return (
       <div className="space-y-1">
@@ -8523,7 +8526,7 @@ function BasecampAssigneePicker({
         <ExpressionInput
           value={assigneeIds}
           onChange={onChange}
-          placeholder="Comma-separated person IDs"
+          placeholder="Comma-separated person IDs or {{nodes.x.assigneeId}}"
           nodes={otherNodes}
           testResults={testResults}
         />
@@ -8548,67 +8551,96 @@ function BasecampAssigneePicker({
     <div className="space-y-1">
       <div className="flex items-center justify-between">
         <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Assignees (optional)</label>
-        <span className="text-[10px] text-slate-400 dark:text-slate-500">{people.length} people</span>
+        <div className="flex items-center gap-2">
+          {mode === 'select' && selectedCount > 0 && (
+            <span className="text-[10px] text-green-400">{selectedCount} selected</span>
+          )}
+          {mode === 'select' && selectedCount === 0 && (
+            <span className="text-[10px] text-slate-400 dark:text-slate-500">{people.length} people</span>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              const next = mode === 'select' ? 'expr' : 'select';
+              setMode(next);
+              if (next === 'select') onChange('');
+            }}
+            className="flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded transition-colors text-blue-400 hover:text-white hover:bg-blue-700"
+            title="Toggle between picking from the list and entering a variable expression"
+          >
+            <Braces className="w-2.5 h-2.5" />
+            {mode === 'select' ? 'Use variable' : 'Select from list'}
+          </button>
+        </div>
       </div>
 
-      {selectedCount > 0 && (
-        <p className="text-[10px] text-green-400">{selectedCount} assignee{selectedCount !== 1 ? 's' : ''} selected</p>
-      )}
+      {mode === 'expr' ? (
+        <ExpressionInput
+          value={assigneeIds}
+          onChange={onChange}
+          placeholder="{{nodes.x.assigneeId}} or comma-separated IDs"
+          nodes={otherNodes}
+          testResults={testResults}
+          hint="Enter a variable expression or comma-separated Basecamp person IDs."
+        />
+      ) : (
+        <>
+          <input
+            type="text"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Search by name, email, or company…"
+            className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-green-500 placeholder-slate-500"
+          />
 
-      <input
-        type="text"
-        value={filter}
-        onChange={(e) => setFilter(e.target.value)}
-        placeholder="Search by name, email, or company…"
-        className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-green-500 placeholder-slate-500"
-      />
-
-      <div className="max-h-64 overflow-y-auto rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800">
-        {filtered.length === 0 && (
-          <p className="text-[10px] text-slate-400 dark:text-slate-500 px-2.5 py-2">No people match "{filter}"</p>
-        )}
-        {companies.map((company) => {
-          const group = filtered.filter((p) => (p.company ?? '') === company);
-          return (
-            <div key={company || '__none__'}>
-              {companies.length > 1 && (
-                <div className="px-2.5 py-1 bg-slate-200 dark:bg-slate-700/50 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-[1]">
-                  <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                    {company || 'No company'}
-                  </span>
-                  <span className="text-[10px] text-slate-400 dark:text-slate-500 ml-1.5">({group.length})</span>
+          <div className="max-h-64 overflow-y-auto rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800">
+            {filtered.length === 0 && (
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 px-2.5 py-2">No people match "{filter}"</p>
+            )}
+            {companies.map((company) => {
+              const group = filtered.filter((p) => (p.company ?? '') === company);
+              return (
+                <div key={company || '__none__'}>
+                  {companies.length > 1 && (
+                    <div className="px-2.5 py-1 bg-slate-200 dark:bg-slate-700/50 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-[1]">
+                      <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                        {company || 'No company'}
+                      </span>
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500 ml-1.5">({group.length})</span>
+                    </div>
+                  )}
+                  {group.map((p) => {
+                    const isSelected = currentIds.includes(String(p.id));
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => {
+                          const next = isSelected
+                            ? currentIds.filter((id) => id !== String(p.id))
+                            : [...currentIds, String(p.id)];
+                          onChange(next.join(','));
+                        }}
+                        className={`w-full text-left px-2.5 py-1.5 text-xs transition-colors flex items-center gap-2 border-b border-slate-200 dark:border-slate-700/50 last:border-0 ${
+                          isSelected ? 'bg-green-600/20 text-green-300' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                        }`}
+                      >
+                        <span className={`w-3 h-3 rounded border flex items-center justify-center shrink-0 ${
+                          isSelected ? 'bg-green-600 border-green-500' : 'border-slate-500'
+                        }`}>
+                          {isSelected && <Check className="w-2 h-2 text-gray-900 dark:text-white" />}
+                        </span>
+                        <span className="truncate">{p.name}</span>
+                        {p.email && <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate ml-auto">{p.email}</span>}
+                      </button>
+                    );
+                  })}
                 </div>
-              )}
-              {group.map((p) => {
-                const isSelected = currentIds.includes(String(p.id));
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => {
-                      const next = isSelected
-                        ? currentIds.filter((id) => id !== String(p.id))
-                        : [...currentIds, String(p.id)];
-                      onChange(next.join(','));
-                    }}
-                    className={`w-full text-left px-2.5 py-1.5 text-xs transition-colors flex items-center gap-2 border-b border-slate-200 dark:border-slate-700/50 last:border-0 ${
-                      isSelected ? 'bg-green-600/20 text-green-300' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-                    }`}
-                  >
-                    <span className={`w-3 h-3 rounded border flex items-center justify-center shrink-0 ${
-                      isSelected ? 'bg-green-600 border-green-500' : 'border-slate-500'
-                    }`}>
-                      {isSelected && <Check className="w-2 h-2 text-gray-900 dark:text-white" />}
-                    </span>
-                    <span className="truncate">{p.name}</span>
-                    {p.email && <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate ml-auto">{p.email}</span>}
-                  </button>
-                );
-              })}
-            </div>
-          );
-        })}
-      </div>
+              );
+            })}
+          </div>
+        </>
+      )}
     </div>
   );
 }
