@@ -27,6 +27,10 @@ interface BasecampConfig {
     description?: string;
     assigneeIds?: string;
     dueOn?: string;
+    // create_todo — file attachment (populated from a GDrive download node)
+    attachmentContent?: string;  // expression resolving to base64 file content
+    attachmentName?: string;     // expression resolving to filename
+    attachmentMimeType?: string; // expression resolving to MIME type
     // post_message
     subject?: string;
     // list_todos
@@ -108,12 +112,56 @@ export class BasecampNode implements NodeExecutor {
             if (!todolistId) throw new Error('Basecamp create_todo: todolistId is required');
             if (!content)    throw new Error('Basecamp create_todo: content is required');
 
-            const description = this.resolver.resolveTemplate(config.description ?? '', context);
+            let description = this.resolver.resolveTemplate(config.description ?? '', context);
             const dueOn       = normalizeDueDate(this.resolver.resolveTemplate(config.dueOn ?? '', context));
             const rawAssignees = this.resolver.resolveTemplate(config.assigneeIds ?? '', context);
             const assigneeIds = rawAssignees
                 ? rawAssignees.split(',').map((id) => Number(id.trim())).filter(Boolean)
                 : [];
+
+            // ── optional file attachment ───────────────────────────────────────
+            // When attachment fields are configured (typically from a preceding
+            // GDrive download node), upload the file to Basecamp's Attachments
+            // API first, then embed the returned sgid in the description as a
+            // rich-text <bc-attachment> tag.
+            const rawAttachmentContent  = config.attachmentContent
+                ? this.resolver.resolveTemplate(config.attachmentContent, context)
+                : '';
+            const attachmentName     = config.attachmentName
+                ? this.resolver.resolveTemplate(config.attachmentName, context).trim()
+                : 'attachment';
+            const attachmentMimeType = config.attachmentMimeType
+                ? this.resolver.resolveTemplate(config.attachmentMimeType, context).trim()
+                : 'application/octet-stream';
+
+            if (rawAttachmentContent) {
+                // The GDrive download node returns content as base64 for binary
+                // files.  Decode to raw bytes before uploading.
+                const fileBuffer = Buffer.from(rawAttachmentContent, 'base64');
+
+                const uploadRes = await fetch(`${baseUrl}/attachments.json?name=${encodeURIComponent(attachmentName)}`, {
+                    method:  'POST',
+                    headers: {
+                        Authorization:    `Bearer ${token}`,
+                        'Content-Type':   attachmentMimeType,
+                        'Content-Length': String(fileBuffer.length),
+                        'User-Agent':     USER_AGENT,
+                    },
+                    body: fileBuffer,
+                });
+                if (!uploadRes.ok) {
+                    throw new Error(`Basecamp attachment upload failed (${uploadRes.status}): ${await uploadRes.text()}`);
+                }
+                const uploaded = await uploadRes.json() as { attachable_sgid: string };
+                const sgid = uploaded.attachable_sgid;
+
+                // Append the attachment tag to the description (rich text / HTML)
+                const attachTag = `<bc-attachment sgid="${sgid}" caption="${attachmentName}"></bc-attachment>`;
+                description = description
+                    ? `${description}\n${attachTag}`
+                    : attachTag;
+            }
+            // ──────────────────────────────────────────────────────────────────
 
             const body: Record<string, unknown> = { content };
             if (description) body.description = description;

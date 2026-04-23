@@ -40,6 +40,7 @@ interface GDriveConfig {
     // ── download ──────────────────────────────────────────────────────────────
     downloadFolderId?: string;      // folder to search in
     downloadFileName?: string;      // filename to match
+    driveUrl?: string;              // full Drive share URL — file ID extracted automatically
 
     // ── create_file ───────────────────────────────────────────────────────────
     fileName?: string;
@@ -97,6 +98,26 @@ function guessMime(filename: string): string {
 
 /** Escape single quotes for Drive query strings. */
 const driveEscape = (s: string) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
+/**
+ * Extract a Google Drive file ID from a URL or return the raw value when it
+ * is already a plain ID.  Handles the common share-URL patterns:
+ *   https://drive.google.com/file/d/FILE_ID/view
+ *   https://drive.google.com/open?id=FILE_ID
+ *   https://drive.google.com/uc?id=FILE_ID
+ *   https://docs.google.com/document/d/FILE_ID/edit
+ */
+function extractDriveFileId(input: string): string {
+    const trimmed = input.trim();
+    // /file/d/<id>/ and /document/d/<id>/ and similar
+    const slashD = trimmed.match(/\/d\/([a-zA-Z0-9_-]{10,})/);
+    if (slashD) return slashD[1];
+    // ?id=<id> or &id=<id>
+    const queryId = trimmed.match(/[?&]id=([a-zA-Z0-9_-]{10,})/);
+    if (queryId) return queryId[1];
+    // Assume plain file ID
+    return trimmed;
+};
 
 export class GDriveNode implements NodeExecutor {
     private googleAuth: GoogleAuthService;
@@ -325,12 +346,17 @@ export class GDriveNode implements NodeExecutor {
         if (action === 'download') {
             let fileId: string;
 
-            if (config.downloadFileName) {
+            if (config.driveUrl) {
+                // Accept a full Drive share URL — extract the file ID automatically
+                const rawUrl = this.resolver.resolveTemplate(config.driveUrl, context).trim();
+                fileId = extractDriveFileId(rawUrl);
+                if (!fileId) throw new Error('Google Drive download: could not extract a file ID from the provided Drive URL');
+            } else if (config.downloadFileName) {
                 // Find file by folder + filename
-                const dlFolderId   = config.downloadFolderId
+                const dlFolderId = config.downloadFolderId
                     ? this.resolver.resolveTemplate(config.downloadFolderId, context)
                     : 'root';
-                const dlFileName   = this.resolver.resolveTemplate(config.downloadFileName, context).trim();
+                const dlFileName = this.resolver.resolveTemplate(config.downloadFileName, context).trim();
                 const q = `'${driveEscape(dlFolderId)}' in parents and name contains '${driveEscape(dlFileName)}' and trashed = false`;
 
                 const searchRes = await drive.files.list({
@@ -345,28 +371,47 @@ export class GDriveNode implements NodeExecutor {
                 fileId = config.fileId
                     ? this.resolver.resolveTemplate(config.fileId, context)
                     : '';
-                if (!fileId) throw new Error('Google Drive download: provide a folder + filename or a File ID');
+                if (!fileId) throw new Error('Google Drive download: provide a Drive URL, a folder + filename, or a File ID');
             }
 
-            const meta = await drive.files.get({ fileId, fields: 'id,name,mimeType' });
+            const meta = await drive.files.get({ fileId, fields: 'id,name,mimeType,size' });
+            const mimeType = meta.data.mimeType ?? 'application/octet-stream';
 
-            const googleMimeTypes: Record<string, string> = {
+            // Google Workspace native types must be exported as text
+            const googleExportMimes: Record<string, string> = {
                 'application/vnd.google-apps.document':     'text/plain',
                 'application/vnd.google-apps.spreadsheet':  'text/csv',
                 'application/vnd.google-apps.presentation': 'text/plain',
             };
-            const exportMime = googleMimeTypes[meta.data.mimeType ?? ''];
+            const exportMime = googleExportMimes[mimeType];
 
-            let content: string;
             if (exportMime) {
                 const res = await drive.files.export({ fileId, mimeType: exportMime }, { responseType: 'text' });
-                content = res.data as string;
-            } else {
-                const res = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'text' });
-                content = res.data as string;
+                return {
+                    fileId,
+                    name:     meta.data.name,
+                    mimeType: exportMime,
+                    content:  res.data as string,
+                    encoding: 'text',
+                };
             }
 
-            return { fileId, name: meta.data.name, mimeType: meta.data.mimeType, content };
+            // Binary file — download as an ArrayBuffer and encode to base64 so the
+            // content can be safely passed between nodes and used by the Basecamp
+            // Attachments API (which expects raw bytes, reconstructed from base64).
+            const res = await drive.files.get(
+                { fileId, alt: 'media' },
+                { responseType: 'arraybuffer' },
+            );
+            const buffer = Buffer.from(res.data as ArrayBuffer);
+            return {
+                fileId,
+                name:     meta.data.name,
+                mimeType,
+                size:     buffer.length,
+                content:  buffer.toString('base64'),
+                encoding: 'base64',
+            };
         }
 
         // ── create_file ───────────────────────────────────────────────────────

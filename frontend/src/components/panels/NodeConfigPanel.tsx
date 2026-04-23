@@ -6042,6 +6042,15 @@ function GDriveConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
       {/* ── Download File ─────────────────────────────────────── */}
       {action === 'download' && (
         <>
+          <ExpressionInput
+            label="Drive URL"
+            value={String(cfg.driveUrl ?? '')}
+            onChange={(v) => onChange({ driveUrl: v })}
+            placeholder="https://drive.google.com/file/d/…/view"
+            nodes={otherNodes}
+            testResults={testResults}
+            hint="Paste a Google Drive share link or file ID. The file ID is extracted automatically. Leave blank to search by folder + filename below."
+          />
           <GDriveFolderBrowser
             credentialId={credentialId}
             value={String(cfg.downloadFolderId ?? '')}
@@ -8899,6 +8908,35 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
             otherNodes={otherNodes}
             testResults={testResults}
           />
+          {/* File attachment (from a GDrive download node) */}
+          <div className="space-y-2 pt-1">
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">File Attachment (optional)</p>
+            <ExpressionInput
+              label="File Content (base64)"
+              value={String(cfg.attachmentContent ?? '')}
+              onChange={(v) => onChange({ attachmentContent: v })}
+              placeholder="{{nodes.<gdrive-node>.content}}"
+              nodes={otherNodes}
+              testResults={testResults}
+              hint="Connect a Google Drive download node and reference its 'content' output here."
+            />
+            <ExpressionInput
+              label="File Name"
+              value={String(cfg.attachmentName ?? '')}
+              onChange={(v) => onChange({ attachmentName: v })}
+              placeholder="{{nodes.<gdrive-node>.name}}"
+              nodes={otherNodes}
+              testResults={testResults}
+            />
+            <ExpressionInput
+              label="MIME Type"
+              value={String(cfg.attachmentMimeType ?? '')}
+              onChange={(v) => onChange({ attachmentMimeType: v })}
+              placeholder="{{nodes.<gdrive-node>.mimeType}}"
+              nodes={otherNodes}
+              testResults={testResults}
+            />
+          </div>
         </>
       )}
 
