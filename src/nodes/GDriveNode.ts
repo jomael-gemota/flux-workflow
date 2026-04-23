@@ -41,6 +41,7 @@ interface GDriveConfig {
     downloadFolderId?: string;      // folder to search in
     downloadFileName?: string;      // filename to match
     driveUrl?: string;              // full Drive share URL — file ID extracted automatically
+    skipIfEmpty?: boolean;          // when true, return {skipped:true} instead of throwing when no file input or file not found
 
     // ── create_file ───────────────────────────────────────────────────────────
     fileName?: string;
@@ -344,19 +345,28 @@ export class GDriveNode implements NodeExecutor {
         // ── download ──────────────────────────────────────────────────────────
 
         if (action === 'download') {
+            const skipIfEmpty = Boolean(config.skipIfEmpty);
+            /** Return a neutral "skipped" result instead of failing. */
+            const skipped = () => ({ skipped: true, content: '', name: '', mimeType: '', encoding: 'base64' as const });
+
             let fileId: string;
 
             if (config.driveUrl) {
                 // Accept a full Drive share URL — extract the file ID automatically
                 const rawUrl = this.resolver.resolveTemplate(config.driveUrl, context).trim();
+                if (!rawUrl && skipIfEmpty) return skipped();
                 fileId = extractDriveFileId(rawUrl);
-                if (!fileId) throw new Error('Google Drive download: could not extract a file ID from the provided Drive URL');
+                if (!fileId) {
+                    if (skipIfEmpty) return skipped();
+                    throw new Error('Google Drive download: could not extract a file ID from the provided Drive URL');
+                }
             } else if (config.downloadFileName) {
                 // Find file by folder + filename
                 const dlFolderId = config.downloadFolderId
                     ? this.resolver.resolveTemplate(config.downloadFolderId, context)
                     : 'root';
                 const dlFileName = this.resolver.resolveTemplate(config.downloadFileName, context).trim();
+                if (!dlFileName && skipIfEmpty) return skipped();
                 const q = `'${driveEscape(dlFolderId)}' in parents and name contains '${driveEscape(dlFileName)}' and trashed = false`;
 
                 const searchRes = await drive.files.list({
@@ -365,13 +375,19 @@ export class GDriveNode implements NodeExecutor {
                     fields:   'files(id,name,mimeType)',
                 });
                 const found = searchRes.data.files?.[0];
-                if (!found) throw new Error(`Google Drive download: no file matching "${dlFileName}" in the specified folder`);
+                if (!found) {
+                    if (skipIfEmpty) return skipped();
+                    throw new Error(`Google Drive download: no file matching "${dlFileName}" in the specified folder`);
+                }
                 fileId = found.id!;
             } else {
                 fileId = config.fileId
                     ? this.resolver.resolveTemplate(config.fileId, context)
                     : '';
-                if (!fileId) throw new Error('Google Drive download: provide a Drive URL, a folder + filename, or a File ID');
+                if (!fileId) {
+                    if (skipIfEmpty) return skipped();
+                    throw new Error('Google Drive download: provide a Drive URL, a folder + filename, or a File ID');
+                }
             }
 
             const meta = await drive.files.get({ fileId, fields: 'id,name,mimeType,size' });

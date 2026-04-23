@@ -80,6 +80,7 @@ const NODE_OUTPUT_FIELDS: Record<string, OutputField[]> = {
     { key: 'name',         label: 'File name' },
     { key: 'webViewLink',  label: 'File open link' },
     { key: 'content',      label: 'File text content (download)' },
+    { key: 'skipped',      label: 'Skipped flag — true when no file was found and Skip if no file found is on' },
     { key: 'folderId',     label: 'Folder ID (create_folder)' },
     { key: 'permissionId', label: 'Permission ID (share)' },
     { key: 'deleted',      label: 'Deleted flag (delete)' },
@@ -6079,6 +6080,22 @@ function GDriveConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
             onChange={(v) => onChange({ downloadFileName: v })} placeholder="monthly_report.xlsx"
             nodes={otherNodes} testResults={testResults}
             hint="The first file whose name contains this text will be downloaded." />
+          <label className="flex items-start gap-2.5 cursor-pointer group pt-0.5">
+            <input
+              type="checkbox"
+              checked={Boolean(cfg.skipIfEmpty)}
+              onChange={(e) => onChange({ skipIfEmpty: e.target.checked })}
+              className="mt-0.5 w-3.5 h-3.5 rounded border-slate-400 text-blue-500 focus:ring-blue-500 shrink-0"
+            />
+            <span className="space-y-0.5">
+              <span className="block text-xs font-medium text-slate-600 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">
+                Skip if no file found
+              </span>
+              <span className="block text-[10px] text-slate-400 dark:text-slate-500">
+                When enabled, this step is silently skipped (returning empty output) instead of stopping the workflow if the file input is blank or the file doesn't exist. Useful when the file attachment is optional, e.g. a Google Form with an optional upload field.
+              </span>
+            </span>
+          </label>
         </>
       )}
 
