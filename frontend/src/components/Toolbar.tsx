@@ -256,7 +256,7 @@ export function Toolbar() {
           ) : (
             <Play className="w-3 h-3" />
           )}
-          Trigger
+          Run Workflow
         </Button>
 
         <Button

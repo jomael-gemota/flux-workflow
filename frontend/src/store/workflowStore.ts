@@ -71,8 +71,9 @@ interface WorkflowStore {
   configOpen: boolean;
   setConfigOpen: (open: boolean) => void;
 
-  // Canvas interactivity lock (persisted)
-  isInteractive: boolean;
+  // Canvas interactivity lock — persisted per workflow ID
+  interactiveLocks: Record<string, boolean>;
+  isInteractive: boolean; // derived: interactiveLocks[activeWorkflow.id] ?? true
   setIsInteractive: (v: boolean) => void;
 
   // Last triggered execution
@@ -133,7 +134,11 @@ export const useWorkflowStore = create<WorkflowStore>((set) => ({
   },
 
   activeWorkflow: null,
-  setActiveWorkflow: (wf) => set({ activeWorkflow: wf }),
+  setActiveWorkflow: (wf) => set((state) => ({
+    activeWorkflow: wf,
+    // Derive the lock state for the newly active workflow
+    isInteractive: wf ? (state.interactiveLocks[wf.id] ?? true) : true,
+  })),
 
   nodes: [],
   edges: [],
@@ -161,12 +166,21 @@ export const useWorkflowStore = create<WorkflowStore>((set) => ({
     set({ configOpen: open });
   },
 
-  isInteractive: (() => {
-    try { return localStorage.getItem('wap_canvas_interactive') !== 'false'; } catch { return true; }
+  interactiveLocks: (() => {
+    try {
+      const raw = localStorage.getItem('wap_canvas_locks');
+      return raw ? (JSON.parse(raw) as Record<string, boolean>) : {};
+    } catch { return {}; }
   })(),
+  isInteractive: true, // always start unlocked; setActiveWorkflow will update this
   setIsInteractive: (v) => {
-    try { localStorage.setItem('wap_canvas_interactive', String(v)); } catch { /* ignore */ }
-    set({ isInteractive: v });
+    set((state) => {
+      const workflowId = state.activeWorkflow?.id;
+      if (!workflowId) return { isInteractive: v };
+      const updated = { ...state.interactiveLocks, [workflowId]: v };
+      try { localStorage.setItem('wap_canvas_locks', JSON.stringify(updated)); } catch { /* ignore */ }
+      return { interactiveLocks: updated, isInteractive: v };
+    });
   },
 
   lastExecutionId: null,
@@ -198,7 +212,7 @@ export const useWorkflowStore = create<WorkflowStore>((set) => ({
     const newWf: WorkflowDefinition = {
       id: '__new__', name: name?.trim() || 'New Workflow', version: 1, nodes: [], entryNodeId: '',
     };
-    set({ activeWorkflow: newWf, nodes: [], edges: [], isDirty: false, selectedNodeId: null });
+    set({ activeWorkflow: newWf, nodes: [], edges: [], isDirty: false, selectedNodeId: null, isInteractive: true });
     if (projectId) sessionStorage.setItem('wap_new_wf_project', projectId);
   },
   pendingNewProjectName: null,
