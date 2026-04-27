@@ -85,6 +85,7 @@ export function BaseNode({
   const status = useWorkflowStore(
     (s) => (nodeId ? s.executionStatuses[nodeId] : undefined),
   );
+  const isInteractive = useWorkflowStore((s) => s.isInteractive);
 
   const squareBg      = nodeHeaderColor(nodeType);
   const inputs        = handles?.inputs  ?? [{}];
@@ -106,7 +107,7 @@ export function BaseNode({
       onMouseLeave={hideToolbar}
     >
       {/* ── Node toolbar (hover) ──────────────────────────────────────────── */}
-      {nodeId && (
+      {nodeId && isInteractive && (
         <NodeToolbarMenu
           nodeId={nodeId}
           nodeLabel={label}

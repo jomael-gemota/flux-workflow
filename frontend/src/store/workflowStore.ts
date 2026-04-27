@@ -71,6 +71,10 @@ interface WorkflowStore {
   configOpen: boolean;
   setConfigOpen: (open: boolean) => void;
 
+  // Canvas interactivity lock (persisted)
+  isInteractive: boolean;
+  setIsInteractive: (v: boolean) => void;
+
   // Last triggered execution
   lastExecutionId: string | null;
   setLastExecutionId: (id: string | null) => void;
@@ -155,6 +159,14 @@ export const useWorkflowStore = create<WorkflowStore>((set) => ({
   setConfigOpen: (open) => {
     try { localStorage.setItem('wap_panel_config_open', String(open)); } catch { /* ignore */ }
     set({ configOpen: open });
+  },
+
+  isInteractive: (() => {
+    try { return localStorage.getItem('wap_canvas_interactive') !== 'false'; } catch { return true; }
+  })(),
+  setIsInteractive: (v) => {
+    try { localStorage.setItem('wap_canvas_interactive', String(v)); } catch { /* ignore */ }
+    set({ isInteractive: v });
   },
 
   lastExecutionId: null,

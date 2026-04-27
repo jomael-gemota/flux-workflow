@@ -3,6 +3,7 @@ import {
   ReactFlow,
   Background,
   Controls,
+  ControlButton,
   MiniMap,
   addEdge,
   applyNodeChanges,
@@ -41,7 +42,7 @@ import { BasecampNodeWidget } from '../nodes/BasecampNodeWidget';
 import { TriggerNodeWidget } from '../nodes/TriggerNodeWidget';
 import { MessageFormatterNodeWidget } from '../nodes/MessageFormatterNodeWidget';
 import type { NodeType } from '../../types/workflow';
-import { Plus, FolderPlus, Workflow, X, AlertTriangle, Loader2 } from 'lucide-react';
+import { Plus, FolderPlus, Workflow, X, AlertTriangle, Loader2, Lock, Unlock } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import { NodeIcon } from '../nodes/NodeIcons';
@@ -144,6 +145,8 @@ export function WorkflowCanvas() {
     nodeDisableModal,
     setNodeDisableModal,
     setNodeDisabled,
+    isInteractive,
+    setIsInteractive,
   } = useWorkflowStore();
 
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -329,11 +332,12 @@ export function WorkflowCanvas() {
 
   const onNodeDoubleClick = useCallback(
     (_: React.MouseEvent, node: CanvasNode) => {
+      if (!isInteractive) return; // canvas is locked — ignore double-click
       if (node.type === 'stickyNote') return; // StickyNoteNode handles its own double-click
       setSelectedNodeId(node.id);
       setConfigOpen(true);
     },
-    [setSelectedNodeId, setConfigOpen]
+    [isInteractive, setSelectedNodeId, setConfigOpen]
   );
 
   const onPaneClick = useCallback(() => {
@@ -638,9 +642,9 @@ export function WorkflowCanvas() {
         edges={styledEdges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
-        onDrop={onDrop}
-        onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
+        onConnect={isInteractive ? onConnect : undefined}
+        onDrop={isInteractive ? onDrop : undefined}
+        onDragOver={isInteractive ? (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; } : undefined}
         onNodeClick={onNodeClick}
         onNodeDoubleClick={onNodeDoubleClick}
         onPaneClick={onPaneClick}
@@ -662,9 +666,12 @@ export function WorkflowCanvas() {
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         defaultEdgeOptions={{ type: 'execution' }}
-        deleteKeyCode="Delete"
-        multiSelectionKeyCode={['Meta', 'Control']}
-        selectionKeyCode="Shift"
+        nodesDraggable={isInteractive}
+        nodesConnectable={isInteractive}
+        elementsSelectable={isInteractive}
+        deleteKeyCode={isInteractive ? 'Delete' : null}
+        multiSelectionKeyCode={isInteractive ? ['Meta', 'Control'] : null}
+        selectionKeyCode={isInteractive ? 'Shift' : null}
         className={isDark ? '!bg-[#171717]' : '!bg-[#E9EEF6]'}
       >
         <Background
@@ -674,12 +681,23 @@ export function WorkflowCanvas() {
           size={1.5}
         />
         <Controls
+          showInteractive={false}
           className={
             isDark
               ? '!bg-slate-900/55 !backdrop-blur-md !border-white/15 !text-slate-300'
               : '!bg-white/80 !backdrop-blur-md !border-slate-200 !text-slate-600'
           }
-        />
+        >
+          <ControlButton
+            onClick={() => setIsInteractive(!isInteractive)}
+            title={isInteractive ? 'Lock canvas (disable editing)' : 'Unlock canvas (enable editing)'}
+          >
+            {isInteractive
+              ? <Unlock className="w-3.5 h-3.5" />
+              : <Lock className="w-3.5 h-3.5" />
+            }
+          </ControlButton>
+        </Controls>
         <MiniMap
           className={
             isDark
