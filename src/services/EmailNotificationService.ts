@@ -1,7 +1,7 @@
 import nodemailer, { type Transporter } from 'nodemailer';
 import type { NodeResult } from '../types/workflow.types';
 import { NotificationSettingsRepository } from '../repositories/NotificationSettingsRepository';
-import { logoDataUri, BRAND } from '../utils/emailTemplates';
+import { buildFluxMessageHtml } from '../utils/emailTemplates';
 
 export interface ExecutionNotificationPayload {
     executionId: string;
@@ -13,6 +13,7 @@ export interface ExecutionNotificationPayload {
     startedAt: Date;
     completedAt: Date;
     results: NodeResult[];
+    nodeNamesById?: Record<string, string>;
 }
 
 /** @deprecated use ExecutionNotificationPayload */
@@ -50,28 +51,57 @@ function formatDuration(ms: number): string {
     return `${s}s`;
 }
 
-function statusBadge(status: 'success' | 'failure' | 'skipped'): string {
+function statusBadge(status: 'success' | 'failure' | 'skipped', compact = false): string {
     const map: Record<string, { bg: string; color: string; label: string }> = {
-        success: { bg: '#d1fae5', color: '#065f46', label: 'SUCCESS' },
-        failure: { bg: '#fee2e2', color: '#991b1b', label: 'FAILURE' },
-        skipped: { bg: '#f1f5f9', color: '#475569', label: 'SKIPPED' },
+        success: { bg: '#dcfce7', color: '#166534', label: 'Succeeded' },
+        failure: { bg: '#fee2e2', color: '#991b1b', label: 'Failed' },
+        skipped: { bg: '#f1f5f9', color: '#475569', label: 'Skipped' },
     };
     const s = map[status] ?? map.failure;
-    return `<span style="display:inline-block;padding:2px 8px;border-radius:9999px;background:${s.bg};color:${s.color};font-size:11px;font-weight:700;letter-spacing:0.5px;">${s.label}</span>`;
+    const pad = compact ? '2px 8px' : '4px 10px';
+    return `<span style="display:inline-block;padding:${pad};border-radius:9999px;background:${s.bg};color:${s.color};font-size:12px;font-weight:700;">${s.label}</span>`;
 }
 
-function nodeResultRows(results: NodeResult[]): string {
+function statusHeading(status: ExecutionNotificationPayload['status']): string {
+    if (status === 'success') return 'Workflow completed successfully';
+    if (status === 'partial') return 'Workflow completed with issues';
+    return 'Workflow execution failed';
+}
+
+function triggeredByLabel(triggeredBy: string): string {
+    const map: Record<string, string> = {
+        api: 'API call',
+        webhook: 'Webhook',
+        schedule: 'Scheduled run',
+        manual: 'Manual trigger',
+        replay: 'Execution replay',
+    };
+    return map[triggeredBy] ?? triggeredBy;
+}
+
+function nodeDisplayName(nodeId: string, nodeNamesById?: Record<string, string>): string {
+    if (nodeId === '__runner__') return 'System startup';
+    const found = nodeNamesById?.[nodeId]?.trim();
+    return found || `Step ${nodeId}`;
+}
+
+function nodeDisplayCell(nodeId: string, nodeNamesById?: Record<string, string>): string {
+    const name = nodeDisplayName(nodeId, nodeNamesById);
+    if (name === nodeId) return `<strong style="font-size:13px;color:#111827;">${escHtml(name)}</strong>`;
+    return `<strong style="font-size:13px;color:#111827;">${escHtml(name)}</strong>
+            <div style="font-size:11px;color:#6b7280;margin-top:2px;">ID: ${escHtml(nodeId)}</div>`;
+}
+
+function nodeResultRows(results: NodeResult[], nodeNamesById?: Record<string, string>): string {
     return results
         .map((r) => {
-            const isRunner = r.nodeId === '__runner__';
-            const nodeLabel = isRunner ? '<em>Runner (startup)</em>' : `<code style="background:#f1f5f9;padding:1px 5px;border-radius:3px;font-size:12px;">${escHtml(r.nodeId)}</code>`;
             const errorCell = r.error
-                ? `<span style="color:#dc2626;font-family:monospace;font-size:12px;word-break:break-all;">${escHtml(r.error)}</span>`
-                : '<span style="color:#94a3b8;">—</span>';
+                ? `<span style="color:#b91c1c;font-size:12px;line-height:1.5;word-break:break-word;">${escHtml(r.error)}</span>`
+                : '<span style="color:#94a3b8;">No error details</span>';
             return `
         <tr style="border-bottom:1px solid #f1f5f9;">
-          <td style="padding:10px 12px;vertical-align:top;white-space:nowrap;">${nodeLabel}</td>
-          <td style="padding:10px 12px;vertical-align:top;text-align:center;">${statusBadge(r.status)}</td>
+          <td style="padding:10px 12px;vertical-align:top;">${nodeDisplayCell(r.nodeId, nodeNamesById)}</td>
+          <td style="padding:10px 12px;vertical-align:top;text-align:center;">${statusBadge(r.status, true)}</td>
           <td style="padding:10px 12px;vertical-align:top;text-align:right;white-space:nowrap;color:#64748b;font-size:12px;">${formatDuration(r.durationMs)}</td>
           <td style="padding:10px 12px;vertical-align:top;">${errorCell}</td>
         </tr>`;
@@ -88,289 +118,100 @@ function escHtml(str: string): string {
 }
 
 function buildEmailHtml(p: ExecutionNotificationPayload): string {
-    const appUrl = process.env.APP_URL ?? 'http://localhost:3000';
-    const failedNodes  = p.results.filter((r) => r.status === 'failure');
+    const failedNodes = p.results.filter((r) => r.status === 'failure');
     const successNodes = p.results.filter((r) => r.status === 'success');
     const skippedNodes = p.results.filter((r) => r.status === 'skipped');
-    const wallClock    = p.completedAt.getTime() - p.startedAt.getTime();
-
-    // Status-specific accent color (for the alert strip, not the brand header)
-    const statusTheme = {
-        success: { accent: '#16a34a', stripBg: '#f0fdf4', stripBorder: '#bbf7d0', label: '✓ Workflow Completed Successfully' },
-        partial: { accent: '#c2410c', stripBg: '#fff7ed', stripBorder: '#fed7aa', label: '⚠ Workflow Partially Failed'         },
-        failure: { accent: '#dc2626', stripBg: '#fff1f2', stripBorder: '#fecaca', label: '✕ Workflow Failed'                   },
-    };
-    const theme = statusTheme[p.status] ?? statusTheme.failure;
-
-    const triggeredByLabel: Record<string, string> = {
-        api:      'API Call',
-        webhook:  'Webhook',
-        schedule: 'Scheduled Run',
-        manual:   'Manual Trigger',
-        replay:   'Execution Replay',
-    };
-
+    const wallClock = p.completedAt.getTime() - p.startedAt.getTime();
     const localTime = p.startedAt.toLocaleString('en-US', {
         year: 'numeric', month: 'long', day: 'numeric',
         hour: '2-digit', minute: '2-digit', second: '2-digit',
         timeZoneName: 'short',
     });
+    const statusColor =
+        p.status === 'success' ? '#166534'
+            : p.status === 'partial' ? '#9a3412'
+                : '#991b1b';
+    const statusBackground =
+        p.status === 'success' ? '#f0fdf4'
+            : p.status === 'partial' ? '#fff7ed'
+                : '#fef2f2';
+    const statusBorder =
+        p.status === 'success' ? '#bbf7d0'
+            : p.status === 'partial' ? '#fed7aa'
+                : '#fecaca';
+    const statusMessage =
+        p.status === 'success'
+            ? `All ${successNodes.length} step${successNodes.length === 1 ? '' : 's'} completed successfully.`
+            : p.status === 'partial'
+                ? `${failedNodes.length} of ${p.results.length} steps failed.`
+                : `${failedNodes.length} step${failedNodes.length === 1 ? '' : 's'} failed and the workflow stopped.`;
 
-    const logo = logoDataUri();
-    const logoImg = logo
-        ? `<img src="${logo}" alt="Flux Workflow" width="40" height="40"
-               style="width:40px;height:40px;border-radius:10px;object-fit:contain;display:block;" />`
-        : `<div style="width:40px;height:40px;border-radius:10px;background:rgba(255,255,255,0.2);
-               text-align:center;line-height:40px;font-size:20px;">⚡</div>`;
-
-    const logoSmall = logo
-        ? `<img src="${logo}" alt="" width="20" height="20"
-               style="width:20px;height:20px;border-radius:5px;object-fit:contain;display:block;" />`
-        : '⚡';
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Flux Workflow — Execution ${p.status === 'success' ? 'Succeeded' : 'Alert'}</title>
-</head>
-<body style="margin:0;padding:0;background:#f0f0f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;color:#111827;">
-
-  <table width="100%" cellpadding="0" cellspacing="0" role="presentation"
-         style="background:#f0f0f5;padding:40px 16px;">
-    <tr><td align="center">
-
-      <!-- Card -->
-      <table width="600" cellpadding="0" cellspacing="0" role="presentation"
-             style="background:#ffffff;border-radius:16px;overflow:hidden;
-                    box-shadow:0 8px 40px rgba(99,102,241,0.12),0 2px 8px rgba(0,0,0,0.06);
-                    max-width:600px;width:100%;">
-
-        <!-- ── Brand header (always indigo — platform identity) ─────── -->
+    const summaryRows = [
+        ['Workflow', escHtml(p.workflowName)],
+        ['Status', `<span style="color:${statusColor};font-weight:700;">${escHtml(statusHeading(p.status))}</span>`],
+        ['Steps', `${successNodes.length} succeeded, ${failedNodes.length} failed, ${skippedNodes.length} skipped`],
+        ['Triggered by', escHtml(triggeredByLabel(p.triggeredBy))],
+        ['Date and time', escHtml(localTime)],
+        ['Duration', escHtml(formatDuration(wallClock))],
+        ['Version', `v${p.workflowVersion}`],
+    ].map(([label, value]) => `
         <tr>
-          <td style="background:linear-gradient(135deg,${BRAND.light} 0%,${BRAND.primary} 45%,${BRAND.dark} 100%);
-                     padding:32px 36px 28px;">
-            <table width="100%" cellpadding="0" cellspacing="0">
-              <tr>
-                <td style="vertical-align:middle;">
-                  <table cellpadding="0" cellspacing="0">
-                    <tr>
-                      <td style="vertical-align:middle;padding-right:12px;">${logoImg}</td>
-                      <td style="vertical-align:middle;">
-                        <div style="font-size:14px;font-weight:700;color:rgba(255,255,255,0.95);line-height:1;">
-                          Flux Workflow
-                        </div>
-                        <div style="font-size:10px;color:rgba(255,255,255,0.55);letter-spacing:1px;text-transform:uppercase;margin-top:2px;">
-                          Execution Alert
-                        </div>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-                <td style="text-align:right;vertical-align:middle;">
-                  <div style="font-size:11px;color:rgba(255,255,255,0.5);font-family:monospace;">
-                    v${p.workflowVersion}
-                  </div>
-                </td>
-              </tr>
-            </table>
-
-            <!-- Workflow name + status label -->
-            <div style="margin-top:24px;padding-top:24px;border-top:1px solid rgba(255,255,255,0.2);">
-              <div style="font-size:11px;font-weight:600;color:rgba(255,255,255,0.6);
-                          text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px;">
-                ${escHtml(p.workflowName)}
-              </div>
-              <h1 style="margin:0;font-size:24px;font-weight:700;color:#ffffff;line-height:1.3;letter-spacing:-0.3px;">
-                ${theme.label}
-              </h1>
-            </div>
-          </td>
+          <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;background:#f9fafb;font-size:12px;font-weight:600;color:#374151;width:34%;">${label}</td>
+          <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#111827;">${value}</td>
         </tr>
+    `).join('');
 
-        <!-- ── Status strip (color-coded by outcome) ───────────────── -->
-        <tr>
-          <td style="background:${theme.stripBg};padding:14px 36px;border-bottom:1px solid ${theme.stripBorder};">
-            <table width="100%" cellpadding="0" cellspacing="0">
-              <tr>
-                <td style="font-size:13px;color:${theme.accent};font-weight:600;">
-                  ${p.status === 'failure' ? `${failedNodes.length} node${failedNodes.length !== 1 ? 's' : ''} failed` :
-                    p.status === 'partial' ? `${failedNodes.length} of ${p.results.length} nodes failed` :
-                    `All ${successNodes.length} nodes completed successfully`}
-                </td>
-                <td style="text-align:right;font-size:12px;color:${theme.accent};opacity:0.75;">
-                  ${formatDuration(wallClock)} total
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
+    const bodyContent = `
+      <div style="font-size:15px;color:#374151;line-height:1.7;">
+        <p style="margin:0 0 14px;">
+          This is an automated update for <strong>${escHtml(p.workflowName)}</strong>.
+        </p>
+      </div>
 
-        <!-- ── Summary grid ─────────────────────────────────────────── -->
-        <tr>
-          <td style="padding:28px 36px 0;">
-            <table width="100%" cellpadding="0" cellspacing="0"
-                   style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
-              <tr style="background:#f9fafb;">
-                <td style="padding:12px 16px;border-right:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb;">
-                  <div style="font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;color:#9ca3af;margin-bottom:4px;">Workflow</div>
-                  <div style="font-size:13px;font-weight:600;color:#111827;">${escHtml(p.workflowName)}</div>
-                </td>
-                <td style="padding:12px 16px;border-bottom:1px solid #e5e7eb;">
-                  <div style="font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;color:#9ca3af;margin-bottom:4px;">Status</div>
-                  <div style="font-size:13px;font-weight:700;color:${theme.accent};">${p.status.toUpperCase()}</div>
-                </td>
-              </tr>
-              <tr style="background:#ffffff;">
-                <td style="padding:12px 16px;border-right:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb;">
-                  <div style="font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;color:#9ca3af;margin-bottom:4px;">Date &amp; Time</div>
-                  <div style="font-size:13px;color:#111827;">${localTime}</div>
-                </td>
-                <td style="padding:12px 16px;border-bottom:1px solid #e5e7eb;">
-                  <div style="font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;color:#9ca3af;margin-bottom:4px;">Triggered By</div>
-                  <div style="font-size:13px;color:#111827;">${escHtml(triggeredByLabel[p.triggeredBy] ?? p.triggeredBy)}</div>
-                </td>
-              </tr>
-              <tr style="background:#f9fafb;">
-                <td style="padding:12px 16px;border-right:1px solid #e5e7eb;">
-                  <div style="font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;color:#9ca3af;margin-bottom:4px;">Workflow ID</div>
-                  <div style="font-size:12px;font-family:monospace;color:#6b7280;word-break:break-all;">${escHtml(p.workflowId)}</div>
-                </td>
-                <td style="padding:12px 16px;">
-                  <div style="font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;color:#9ca3af;margin-bottom:4px;">Execution ID</div>
-                  <div style="font-size:12px;font-family:monospace;color:#6b7280;word-break:break-all;">${escHtml(p.executionId)}</div>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
+      <div style="margin:0 0 18px;padding:12px 14px;border-radius:10px;background:${statusBackground};border:1px solid ${statusBorder};">
+        <div style="font-size:14px;font-weight:700;color:${statusColor};margin:0 0 4px;">${escHtml(statusHeading(p.status))}</div>
+        <div style="font-size:13px;color:${statusColor};line-height:1.5;">${escHtml(statusMessage)}</div>
+      </div>
 
-        <!-- ── Stats row ────────────────────────────────────────────── -->
-        <tr>
-          <td style="padding:16px 36px 0;">
-            <table width="100%" cellpadding="0" cellspacing="0"
-                   style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
-              <tr>
-                <td style="padding:14px 12px;text-align:center;border-right:1px solid #e5e7eb;">
-                  <div style="font-size:22px;font-weight:700;color:#dc2626;">${failedNodes.length}</div>
-                  <div style="font-size:10px;color:#9ca3af;margin-top:2px;text-transform:uppercase;letter-spacing:0.5px;">Failed</div>
-                </td>
-                <td style="padding:14px 12px;text-align:center;border-right:1px solid #e5e7eb;">
-                  <div style="font-size:22px;font-weight:700;color:#16a34a;">${successNodes.length}</div>
-                  <div style="font-size:10px;color:#9ca3af;margin-top:2px;text-transform:uppercase;letter-spacing:0.5px;">Succeeded</div>
-                </td>
-                <td style="padding:14px 12px;text-align:center;border-right:1px solid #e5e7eb;">
-                  <div style="font-size:22px;font-weight:700;color:#9ca3af;">${skippedNodes.length}</div>
-                  <div style="font-size:10px;color:#9ca3af;margin-top:2px;text-transform:uppercase;letter-spacing:0.5px;">Skipped</div>
-                </td>
-                <td style="padding:14px 12px;text-align:center;border-right:1px solid #e5e7eb;">
-                  <div style="font-size:22px;font-weight:700;color:#374151;">${p.results.length}</div>
-                  <div style="font-size:10px;color:#9ca3af;margin-top:2px;text-transform:uppercase;letter-spacing:0.5px;">Total</div>
-                </td>
-                <td style="padding:14px 12px;text-align:center;">
-                  <div style="font-size:22px;font-weight:700;color:#374151;">${formatDuration(wallClock)}</div>
-                  <div style="font-size:10px;color:#9ca3af;margin-top:2px;text-transform:uppercase;letter-spacing:0.5px;">Duration</div>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-
-        <!-- ── Failed nodes section ─────────────────────────────────── -->
-        ${failedNodes.length > 0 ? `
-        <tr>
-          <td style="padding:24px 36px 0;">
-            <div style="font-size:12px;font-weight:700;color:#dc2626;margin-bottom:10px;
-                        text-transform:uppercase;letter-spacing:0.5px;">
-              ✕ Failed Nodes (${failedNodes.length})
-            </div>
-            <table width="100%" cellpadding="0" cellspacing="0"
-                   style="border:1px solid #fecaca;border-radius:10px;overflow:hidden;">
-              <thead>
-                <tr style="background:#fef2f2;">
-                  <th style="padding:10px 12px;text-align:left;font-size:10px;font-weight:700;color:#9ca3af;letter-spacing:0.5px;text-transform:uppercase;border-bottom:1px solid #fecaca;">Node ID</th>
-                  <th style="padding:10px 12px;text-align:center;font-size:10px;font-weight:700;color:#9ca3af;letter-spacing:0.5px;text-transform:uppercase;border-bottom:1px solid #fecaca;">Status</th>
-                  <th style="padding:10px 12px;text-align:right;font-size:10px;font-weight:700;color:#9ca3af;letter-spacing:0.5px;text-transform:uppercase;border-bottom:1px solid #fecaca;">Duration</th>
-                  <th style="padding:10px 12px;text-align:left;font-size:10px;font-weight:700;color:#9ca3af;letter-spacing:0.5px;text-transform:uppercase;border-bottom:1px solid #fecaca;">Error Message</th>
-                </tr>
-              </thead>
-              <tbody>${nodeResultRows(failedNodes)}</tbody>
-            </table>
-          </td>
-        </tr>` : ''}
-
-        <!-- ── Full execution log ───────────────────────────────────── -->
-        <tr>
-          <td style="padding:24px 36px 0;">
-            <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:10px;
-                        text-transform:uppercase;letter-spacing:0.5px;">Full Execution Log</div>
-            <table width="100%" cellpadding="0" cellspacing="0"
-                   style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
-              <thead>
-                <tr style="background:#f9fafb;">
-                  <th style="padding:10px 12px;text-align:left;font-size:10px;font-weight:700;color:#9ca3af;letter-spacing:0.5px;text-transform:uppercase;border-bottom:1px solid #e5e7eb;">Node ID</th>
-                  <th style="padding:10px 12px;text-align:center;font-size:10px;font-weight:700;color:#9ca3af;letter-spacing:0.5px;text-transform:uppercase;border-bottom:1px solid #e5e7eb;">Status</th>
-                  <th style="padding:10px 12px;text-align:right;font-size:10px;font-weight:700;color:#9ca3af;letter-spacing:0.5px;text-transform:uppercase;border-bottom:1px solid #e5e7eb;">Duration</th>
-                  <th style="padding:10px 12px;text-align:left;font-size:10px;font-weight:700;color:#9ca3af;letter-spacing:0.5px;text-transform:uppercase;border-bottom:1px solid #e5e7eb;">Error</th>
-                </tr>
-              </thead>
-              <tbody>${nodeResultRows(p.results)}</tbody>
-            </table>
-          </td>
-        </tr>
-
-        <!-- ── CTA button ───────────────────────────────────────────── -->
-        <tr>
-          <td style="padding:28px 36px;">
-            <table cellpadding="0" cellspacing="0" role="presentation">
-              <tr>
-                <td style="border-radius:8px;background:${BRAND.primary};">
-                  <a href="${escHtml(appUrl)}"
-                     style="display:inline-block;padding:12px 24px;color:#ffffff;
-                            font-size:13px;font-weight:600;text-decoration:none;border-radius:8px;">
-                    Open Flux Workflow ↗
-                  </a>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-
-        <!-- ── Footer ──────────────────────────────────────────────── -->
-        <tr>
-          <td style="padding:0 36px;">
-            <div style="height:1px;background:linear-gradient(90deg,transparent,#e5e7eb,transparent);"></div>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:18px 36px 26px;">
-            <table width="100%" cellpadding="0" cellspacing="0">
-              <tr>
-                <td style="vertical-align:middle;">
-                  <p style="margin:0;font-size:11px;color:#9ca3af;line-height:1.6;">
-                    This alert was sent automatically by <strong style="color:#6b7280;">Flux Workflow</strong>.<br />
-                    To manage notification settings, open the platform and go to
-                    <strong>Notifications</strong> in the toolbar.
-                  </p>
-                </td>
-                <td style="text-align:right;vertical-align:middle;padding-left:12px;">
-                  <div style="width:24px;height:24px;border-radius:6px;overflow:hidden;display:inline-block;">
-                    ${logoSmall}
-                  </div>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-
+      <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;border-collapse:separate;border-spacing:0;">
+        ${summaryRows}
       </table>
 
-      <div style="height:32px;"></div>
-    </td></tr>
-  </table>
-</body>
-</html>`;
+      <div style="margin-top:20px;font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.4px;">
+        Step Summary
+      </div>
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:8px;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;border-collapse:separate;border-spacing:0;">
+        <thead>
+          <tr style="background:#f9fafb;">
+            <th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:#6b7280;border-bottom:1px solid #e5e7eb;">Step</th>
+            <th style="padding:10px 12px;text-align:center;font-size:11px;font-weight:700;color:#6b7280;border-bottom:1px solid #e5e7eb;">Result</th>
+            <th style="padding:10px 12px;text-align:right;font-size:11px;font-weight:700;color:#6b7280;border-bottom:1px solid #e5e7eb;">Time</th>
+            <th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;color:#6b7280;border-bottom:1px solid #e5e7eb;">Details</th>
+          </tr>
+        </thead>
+        <tbody>${nodeResultRows(p.results, p.nodeNamesById)}</tbody>
+      </table>
+
+      <div style="margin-top:20px;font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.4px;">
+        Reference IDs
+      </div>
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:8px;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;border-collapse:separate;border-spacing:0;">
+        <tr>
+          <td style="padding:10px 12px;background:#f9fafb;font-size:12px;font-weight:600;color:#374151;width:34%;border-bottom:1px solid #e5e7eb;">Workflow ID</td>
+          <td style="padding:10px 12px;font-size:12px;color:#6b7280;word-break:break-word;border-bottom:1px solid #e5e7eb;">${escHtml(p.workflowId)}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 12px;background:#f9fafb;font-size:12px;font-weight:600;color:#374151;">Execution ID</td>
+          <td style="padding:10px 12px;font-size:12px;color:#6b7280;word-break:break-word;">${escHtml(p.executionId)}</td>
+        </tr>
+      </table>
+    `;
+
+    return buildFluxMessageHtml(
+        `${statusHeading(p.status)}: ${p.workflowName}`,
+        bodyContent,
+        true,
+    );
 }
 
 function buildEmailText(p: ExecutionNotificationPayload): string {
@@ -390,7 +231,7 @@ function buildEmailText(p: ExecutionNotificationPayload): string {
         `Workflow ID:   ${p.workflowId}`,
         `Execution ID:  ${p.executionId}`,
         `Status:        ${p.status.toUpperCase()}`,
-        `Triggered By:  ${p.triggeredBy}`,
+        `Triggered By:  ${triggeredByLabel(p.triggeredBy)}`,
         `Date & Time:   ${localTime}`,
         `Duration:      ${formatDuration(wallClock)}`,
         '',
@@ -402,7 +243,7 @@ function buildEmailText(p: ExecutionNotificationPayload): string {
         lines.push('FAILED NODES');
         lines.push('-'.repeat(40));
         for (const n of failedNodes) {
-            lines.push(`  Node: ${n.nodeId}`);
+            lines.push(`  Step: ${nodeDisplayName(n.nodeId, p.nodeNamesById)} (ID: ${n.nodeId})`);
             lines.push(`  Duration: ${formatDuration(n.durationMs)}`);
             lines.push(`  Error: ${n.error ?? 'unknown'}`);
             lines.push('');
@@ -412,7 +253,8 @@ function buildEmailText(p: ExecutionNotificationPayload): string {
     lines.push('FULL EXECUTION LOG');
     lines.push('-'.repeat(40));
     for (const r of p.results) {
-        lines.push(`  ${r.nodeId.padEnd(30)} ${r.status.toUpperCase().padEnd(10)} ${formatDuration(r.durationMs)}${r.error ? `  ← ${r.error}` : ''}`);
+        const label = `${nodeDisplayName(r.nodeId, p.nodeNamesById)} (ID: ${r.nodeId})`;
+        lines.push(`  ${label} — ${r.status.toUpperCase()} — ${formatDuration(r.durationMs)}${r.error ? ` — ${r.error}` : ''}`);
     }
 
     return lines.join('\n');
@@ -441,7 +283,6 @@ export class EmailNotificationService {
         const transporter = createTransporter();
         const from = `"${process.env.SMTP_FROM_NAME ?? 'Flux Workflow'}" <${process.env.SMTP_FROM_ADDRESS}>`;
 
-        const { buildFluxMessageHtml } = await import('../utils/emailTemplates');
         const testHtml = buildFluxMessageHtml(
             'Test Email Successful',
             `<p style="font-size:15px;color:#374151;margin:0 0 16px;">

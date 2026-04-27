@@ -21,6 +21,7 @@ export function createWorkflowWorker(
 
             const workflow = await workflowRepo.findById(workflowId);
             if (!workflow) throw new Error(`Workflow ${workflowId} not found`);
+            const nodeNamesById = Object.fromEntries(workflow.nodes.map((node) => [node.id, node.name]));
 
             await executionRepo.markRunning(executionId);
             const startedAt = new Date();
@@ -51,6 +52,7 @@ export function createWorkflowWorker(
                     startedAt,
                     completedAt,
                     results,
+                    nodeNamesById,
                 }).catch((err) => console.error('[Worker] Email notification error:', err));
             }
         },
@@ -87,6 +89,7 @@ export function createWorkflowWorker(
                     startedAt: completedAt,
                     completedAt,
                     results: [syntheticResult],
+                    nodeNamesById: Object.fromEntries(workflow.nodes.map((node) => [node.id, node.name])),
                 }).catch(() => {});
             }
         }

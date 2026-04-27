@@ -24,6 +24,7 @@ export class WorkflowService {
     ): Promise<ExecutionSummary> {
         const workflow = await this.workflowRepo.findById(workflowId);
         if (!workflow) throw new Error(`Workflow ${workflowId} not found`);
+        const nodeNamesById = Object.fromEntries(workflow.nodes.map((node) => [node.id, node.name]));
 
         const startedAt = new Date();
         const executionId = crypto.randomUUID();
@@ -86,6 +87,7 @@ export class WorkflowService {
                     startedAt,
                     completedAt,
                     results: result.results,
+                    nodeNamesById,
                 }).catch((err) => console.error('[WorkflowService] Email notification error:', err));
             }
 
@@ -121,6 +123,7 @@ export class WorkflowService {
                 startedAt,
                 completedAt,
                 results: [syntheticResult],
+                nodeNamesById,
             }).catch((err) => console.error('[WorkflowService] Email notification error:', err));
 
             return {
