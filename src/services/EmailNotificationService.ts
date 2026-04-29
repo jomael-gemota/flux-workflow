@@ -445,21 +445,6 @@ function buildEmailHtml(p: ExecutionNotificationPayload, recipientTimeZone: stri
         p.status === 'success' ? '#166534'
             : p.status === 'partial' ? '#9a3412'
                 : '#991b1b';
-    const statusBackground =
-        p.status === 'success' ? '#f0fdf4'
-            : p.status === 'partial' ? '#fff7ed'
-                : '#fef2f2';
-    const statusBorder =
-        p.status === 'success' ? '#bbf7d0'
-            : p.status === 'partial' ? '#fed7aa'
-                : '#fecaca';
-    const statusMessage =
-        p.status === 'success'
-            ? `All ${successNodes.length} step${successNodes.length === 1 ? '' : 's'} completed successfully.`
-            : p.status === 'partial'
-                ? `${failedNodes.length} of ${p.results.length} steps failed.`
-                : `${failedNodes.length} step${failedNodes.length === 1 ? '' : 's'} failed and the workflow stopped.`;
-
     const notReachedCount = p.nodeNamesById
         ? Object.keys(p.nodeNamesById).filter((id) => !p.results.some((r) => r.nodeId === id)).length
         : 0;
@@ -490,13 +475,6 @@ function buildEmailHtml(p: ExecutionNotificationPayload, recipientTimeZone: stri
         <p style="margin:0 0 14px;">
           This is an automated update for <strong>${escHtml(p.workflowName)}</strong>.
         </p>
-      </div>
-
-      <div style="margin:0 0 18px;padding:12px 14px;border-radius:10px;background:${statusBackground};border:1px solid ${statusBorder};">
-        <div style="font-size:14px;font-weight:700;color:${statusColor};margin:0 0 4px;">
-          <span>${escHtml(statusHeading(p.status))}</span>
-        </div>
-        <div style="font-size:13px;color:${statusColor};line-height:1.5;">${escHtml(statusMessage)}</div>
       </div>
 
       <div style="margin-top:20px;font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.4px;">
