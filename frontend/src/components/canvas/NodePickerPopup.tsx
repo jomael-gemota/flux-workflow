@@ -271,10 +271,10 @@ export function NodePickerPopup({ onSelect, onAddStickyNote, open: controlledOpe
         type="button"
         onClick={() => setOpen(!open)}
         title="Add a node"
-        className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold shadow-lg transition-all duration-200 select-none border ${
+        className={`flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-semibold shadow-lg transition-all duration-200 select-none border ${
           open
             ? 'bg-blue-600 border-blue-500 text-white shadow-blue-600/25'
-            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-900 dark:hover:text-white shadow-black/10 dark:shadow-black/40'
+            : 'bg-white dark:bg-slate-900/60 border-slate-200 dark:border-white/15 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-500 hover:text-slate-900 dark:hover:text-white shadow-black/10 dark:shadow-black/40'
         }`}
       >
         <Plus
@@ -289,8 +289,8 @@ export function NodePickerPopup({ onSelect, onAddStickyNote, open: controlledOpe
           type="button"
           onClick={onAddStickyNote}
           title="Add a sticky note"
-          className="mt-1.5 flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold shadow-lg transition-all duration-200 select-none border
-                     bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700
+          className="mt-1.5 flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-semibold shadow-lg transition-all duration-200 select-none border
+                     bg-white dark:bg-slate-900/60 border-slate-200 dark:border-white/15
                      text-slate-700 dark:text-slate-200
                      hover:bg-amber-50 dark:hover:bg-amber-500/10
                      hover:border-amber-300 dark:hover:border-amber-600
@@ -305,9 +305,9 @@ export function NodePickerPopup({ onSelect, onAddStickyNote, open: controlledOpe
       {/* ── Floating panel ───────────────────────────────────────────────── */}
       {open && (
         <div
-          className="mt-2 w-72 flex flex-col rounded-2xl overflow-hidden
-                     bg-white dark:bg-slate-900
-                     border border-slate-200 dark:border-slate-700
+          className="mt-2 w-72 flex flex-col rounded-md overflow-hidden
+                     bg-white dark:bg-slate-900/95
+                     border border-slate-200 dark:border-white/15
                      shadow-2xl shadow-black/10 dark:shadow-black/60"
           style={{ maxHeight: 'calc(100vh - 130px)' }}
         >

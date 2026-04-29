@@ -12,12 +12,12 @@ import { getNotificationSettingsForWorkflow } from '../../api/client';
 // ── Tooltip ────────────────────────────────────────────────────────────────────
 function Tooltip({ label }: { label: string }) {
   return (
-    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2.5 pointer-events-none z-50">
-      <span className="block px-2.5 py-1 rounded-lg bg-slate-900/90 dark:bg-slate-700/95 backdrop-blur-sm text-white text-[11px] font-medium whitespace-nowrap opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100 transition-all duration-150 shadow-lg">
+    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 pointer-events-none z-50 flex flex-col items-center opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100 transition-all duration-150">
+      <span className="block px-2.5 py-1 rounded-md bg-slate-900/90 dark:bg-slate-700/95 backdrop-blur-sm text-white text-[11px] font-medium whitespace-nowrap shadow-lg">
         {label}
       </span>
-      {/* Arrow */}
-      <span className="block w-2 h-2 bg-slate-900/90 dark:bg-slate-700/95 rotate-45 mx-auto -mt-1" />
+      {/* Arrow — part of the same opacity group so it's never visible on its own */}
+      <span className="block w-2 h-2 bg-slate-900/90 dark:bg-slate-700/95 rotate-45 -mt-1 shrink-0" />
     </div>
   );
 }
@@ -41,7 +41,7 @@ function DockButton({ id, onClick, disabled, label, children, active, dot }: Doc
         id={id}
         onClick={onClick}
         disabled={disabled}
-        className={`relative flex items-center justify-center w-10 h-10 rounded-xl transition-all duration-150 ${
+        className={`relative flex items-center justify-center w-10 h-10 rounded-md transition-all duration-150 ${
           disabled
             ? 'text-slate-300 dark:text-slate-600 cursor-not-allowed'
             : active
@@ -191,7 +191,7 @@ export function CanvasActionDock() {
       </div>
 
       {/* ── Floating action dock ── */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 px-2 py-2 bg-white/90 dark:bg-slate-800/90 backdrop-blur-md rounded-2xl shadow-xl border border-black/[0.08] dark:border-white/[0.08]">
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 px-2 py-2 bg-white/90 dark:bg-slate-900/60 backdrop-blur-md rounded-md shadow-lg border border-slate-200 dark:border-white/15">
 
         {/* Save Workflow */}
         <DockButton
