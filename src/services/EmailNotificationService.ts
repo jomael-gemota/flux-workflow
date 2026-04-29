@@ -16,6 +16,8 @@ export interface ExecutionNotificationPayload {
     nodeNamesById?: Record<string, string>;
     nodeTypesById?: Record<string, string>;
     nodeProvidersById?: Record<string, string>;
+    /** MongoDB ObjectId string of the workflow owner — used to load per-user notification settings. */
+    ownerUserId?: string;
 }
 
 /** @deprecated use ExecutionNotificationPayload */
@@ -602,7 +604,11 @@ export class EmailNotificationService {
 
     /** Called after every execution completes — sends alert if conditions are met */
     async notifyOnCompletion(payload: ExecutionNotificationPayload): Promise<void> {
-        const settings = await this.settingsRepo.get();
+        // Skip silently if there is no owner to scope the settings lookup to.
+        // This can only happen for legacy workflows that predate per-user settings.
+        if (!payload.ownerUserId) return;
+
+        const settings = await this.settingsRepo.get(payload.ownerUserId);
 
         if (!settings.enabled) return;
         if (!settings.recipients.length) return;

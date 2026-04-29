@@ -1,8 +1,10 @@
 import { Schema, model, Document } from 'mongoose';
 
 export interface NotificationSettingsDocument extends Document {
-    /** Singleton key — always "global" */
+    /** Logical record type — always "settings". Combined with userId forms the unique key. */
     key: string;
+    /** MongoDB ObjectId string of the owning user. One settings document per user. */
+    userId: string;
     enabled: boolean;
     /** Notify when the entire workflow fails (status === 'failure') */
     notifyOnFailure: boolean;
@@ -17,7 +19,8 @@ export interface NotificationSettingsDocument extends Document {
 
 const NotificationSettingsSchema = new Schema<NotificationSettingsDocument>(
     {
-        key:             { type: String, required: true, unique: true, default: 'global' },
+        key:             { type: String, required: true, default: 'settings' },
+        userId:          { type: String, required: true },
         enabled:         { type: Boolean, required: true, default: false },
         notifyOnFailure: { type: Boolean, required: true, default: true },
         notifyOnPartial: { type: Boolean, required: true, default: true },
@@ -26,6 +29,9 @@ const NotificationSettingsSchema = new Schema<NotificationSettingsDocument>(
     },
     { timestamps: true }
 );
+
+// Each user has exactly one settings document.
+NotificationSettingsSchema.index({ key: 1, userId: 1 }, { unique: true });
 
 export const NotificationSettingsModel = model<NotificationSettingsDocument>(
     'NotificationSettings',

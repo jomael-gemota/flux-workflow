@@ -21,6 +21,7 @@ export function createWorkflowWorker(
 
             const workflow = await workflowRepo.findById(workflowId);
             if (!workflow) throw new Error(`Workflow ${workflowId} not found`);
+            const ownerUserId = await workflowRepo.findOwnerUserId(workflowId);
             const nodeNamesById = Object.fromEntries(workflow.nodes.map((node) => [node.id, node.name]));
             const nodeTypesById = Object.fromEntries(workflow.nodes.map((node) => [node.id, node.type]));
             const nodeProvidersById = Object.fromEntries(
@@ -59,6 +60,7 @@ export function createWorkflowWorker(
                     nodeNamesById,
                     nodeTypesById,
                     nodeProvidersById,
+                    ownerUserId,
                 }).catch((err) => console.error('[Worker] Email notification error:', err));
             }
         },
@@ -85,6 +87,7 @@ export function createWorkflowWorker(
             // Best-effort notification for hard job failures (workflow not found, etc.)
             const workflow = await workflowRepo.findById(job.data.workflowId).catch(() => null);
             if (workflow) {
+                const failOwnerUserId = await workflowRepo.findOwnerUserId(job.data.workflowId).catch(() => undefined);
                 emailNotificationService.notifyOnCompletion({
                     executionId: job.data.executionId,
                     workflowId: job.data.workflowId,
@@ -98,6 +101,7 @@ export function createWorkflowWorker(
                     nodeNamesById: Object.fromEntries(workflow.nodes.map((node) => [node.id, node.name])),
                     nodeTypesById: Object.fromEntries(workflow.nodes.map((node) => [node.id, node.type])),
                     nodeProvidersById: Object.fromEntries(workflow.nodes.map((node) => [node.id, (node.config as { provider?: string })?.provider ?? ''])),
+                    ownerUserId: failOwnerUserId,
                 }).catch(() => {});
             }
         }

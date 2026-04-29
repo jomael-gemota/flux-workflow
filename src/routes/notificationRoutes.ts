@@ -36,13 +36,14 @@ export async function notificationRoutes(
         { preHandler: [requireAuth] },
         async (req) => {
             const user = (req as any).user as JwtPayload;
-            const settings = await notificationSettingsRepo.get();
+            const settings = await notificationSettingsRepo.get(user.sub);
 
             // Ensure the owner is in the recipients list on first load
             if (user.email && !settings.recipients.includes(user.email.toLowerCase())) {
-                await notificationSettingsRepo.update({
-                    recipients: [user.email.toLowerCase(), ...settings.recipients],
-                });
+                await notificationSettingsRepo.update(
+                    { recipients: [user.email.toLowerCase(), ...settings.recipients] },
+                    user.sub,
+                );
                 settings.recipients = [user.email.toLowerCase(), ...settings.recipients];
             }
 
@@ -84,7 +85,7 @@ export async function notificationRoutes(
                 patch.recipients = cleaned;
             }
 
-            const updated = await notificationSettingsRepo.update(patch as any);
+            const updated = await notificationSettingsRepo.update(patch as any, user.sub);
             return settingsResponse(updated, user.email);
         },
     );

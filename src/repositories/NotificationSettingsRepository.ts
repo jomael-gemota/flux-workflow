@@ -1,25 +1,32 @@
 import { NotificationSettingsModel, type NotificationSettingsDocument } from '../db/models/NotificationSettingsModel';
 
-const SINGLETON_KEY = 'global';
+const RECORD_KEY = 'settings';
 
 export class NotificationSettingsRepository {
-    async get(): Promise<NotificationSettingsDocument> {
-        const existing = await NotificationSettingsModel.findOne({ key: SINGLETON_KEY });
+    /**
+     * Return the notification settings for a specific user, auto-creating a
+     * fresh default record on first access so callers never receive null.
+     */
+    async get(userId: string): Promise<NotificationSettingsDocument> {
+        const existing = await NotificationSettingsModel.findOne({ key: RECORD_KEY, userId });
         if (existing) return existing;
-        // Auto-create the singleton on first access
-        return NotificationSettingsModel.create({ key: SINGLETON_KEY });
+        return NotificationSettingsModel.create({ key: RECORD_KEY, userId });
     }
 
-    async update(patch: {
-        enabled?: boolean;
-        notifyOnFailure?: boolean;
-        notifyOnPartial?: boolean;
-        recipients?: string[];
-    }): Promise<NotificationSettingsDocument> {
+    async update(
+        patch: {
+            enabled?: boolean;
+            notifyOnFailure?: boolean;
+            notifyOnPartial?: boolean;
+            notifyOnSuccess?: boolean;
+            recipients?: string[];
+        },
+        userId: string,
+    ): Promise<NotificationSettingsDocument> {
         const doc = await NotificationSettingsModel.findOneAndUpdate(
-            { key: SINGLETON_KEY },
+            { key: RECORD_KEY, userId },
             { $set: patch },
-            { new: true, upsert: true }
+            { new: true, upsert: true },
         );
         return doc!;
     }

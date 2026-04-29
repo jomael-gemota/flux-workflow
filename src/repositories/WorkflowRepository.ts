@@ -109,6 +109,12 @@ export class WorkflowRepository {
         return doc ? (doc.definition as WorkflowDefinition) : null;
     }
 
+    /** Returns the userId (MongoDB ObjectId string) of the workflow's owner, or undefined for legacy workflows. */
+    async findOwnerUserId(workflowId: string): Promise<string | undefined> {
+        const doc = await WorkflowModel.findOne({ workflowId }).select('userId');
+        return doc?.userId ?? undefined;
+    }
+
     async findWebhookSecret(id: string): Promise<string | null> {
         const doc = await WorkflowModel.findOne({ workflowId: id }).select('webhookSecret');
         return doc?.webhookSecret ?? null;
