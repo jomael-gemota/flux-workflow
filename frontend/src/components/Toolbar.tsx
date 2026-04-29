@@ -13,7 +13,7 @@ import { useAuthStore } from '../store/authStore';
 import { useTourStore } from '../store/tourStore';
 import { useQuery } from '@tanstack/react-query';
 import { fetchAdminStats } from '../api/auth';
-import { getNotificationSettings } from '../api/client';
+import { getNotificationSettingsForWorkflow } from '../api/client';
 import { OwnerDashboard } from './admin/OwnerDashboard';
 import { SurveillanceDashboard } from './admin/SurveillanceDashboard';
 
@@ -48,10 +48,14 @@ export function Toolbar() {
     staleTime: 30_000,
   });
 
-  // Notification settings — for the bell active state indicator
+  // Notification settings — reflects the active workflow's enabled state for the bell indicator
+  const activeWorkflowId = activeWorkflow?.id && !activeWorkflow.id.startsWith('__new__')
+    ? activeWorkflow.id
+    : undefined;
   const { data: notificationSettings } = useQuery({
-    queryKey: ['notification-settings'],
-    queryFn: getNotificationSettings,
+    queryKey: ['notification-settings', activeWorkflowId],
+    queryFn: () => getNotificationSettingsForWorkflow(activeWorkflowId!),
+    enabled: Boolean(activeWorkflowId),
     staleTime: 60_000,
   });
 
@@ -286,14 +290,14 @@ export function Toolbar() {
           onClick={() => setNotificationsOpen(true)}
           title="Email notification settings"
           className={`relative flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors ${
-            notificationSettings?.enabled
+            notificationSettings?.workflowOverride?.enabled
               ? 'text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10'
               : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-black/5 dark:hover:bg-white/10'
           }`}
         >
           <Bell className="w-3.5 h-3.5" />
           Notifications
-          {notificationSettings?.enabled && (
+          {notificationSettings?.workflowOverride?.enabled && (
             <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-blue-500" />
           )}
         </button>

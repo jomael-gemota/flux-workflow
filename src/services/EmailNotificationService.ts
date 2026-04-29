@@ -610,20 +610,22 @@ export class EmailNotificationService {
 
         const settings = await this.settingsRepo.get(payload.ownerUserId);
 
-        if (!settings.enabled) return;
-        if (payload.status === 'failure' && !settings.notifyOnFailure) return;
-        if (payload.status === 'partial' && !settings.notifyOnPartial) return;
-        if (payload.status === 'success' && !settings.notifyOnSuccess) return;
+        // Notifications are now fully per-workflow. If this workflow has no override
+        // configured (or it is disabled), skip silently.
+        const workflowOverride = (settings.workflowOverrides as Record<string, {
+            enabled: boolean;
+            notifyOnFailure: boolean;
+            notifyOnPartial: boolean;
+            notifyOnSuccess: boolean;
+            recipients: string[];
+        }>)?.[payload.workflowId];
 
-        // Resolve the effective recipient list:
-        // Use the workflow-specific override when it exists and has custom recipients
-        // enabled; otherwise fall back to the user's global list.
-        const workflowOverride = (settings.workflowOverrides as Record<string, { useCustomRecipients: boolean; recipients: string[] }>)?.[payload.workflowId];
-        const recipients =
-            workflowOverride?.useCustomRecipients && workflowOverride.recipients.length > 0
-                ? workflowOverride.recipients
-                : settings.recipients;
+        if (!workflowOverride?.enabled) return;
+        if (payload.status === 'failure' && !workflowOverride.notifyOnFailure) return;
+        if (payload.status === 'partial' && !workflowOverride.notifyOnPartial) return;
+        if (payload.status === 'success' && !workflowOverride.notifyOnSuccess) return;
 
+        const recipients = workflowOverride.recipients;
         if (!recipients.length) return;
 
         if (!isSmtpConfigured()) {

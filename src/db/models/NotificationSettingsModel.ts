@@ -1,11 +1,16 @@
 import { Schema, model, Document } from 'mongoose';
 
+/**
+ * Complete per-workflow notification configuration.
+ * Each workflow that has been configured gets its own entry in
+ * `NotificationSettingsDocument.workflowOverrides`.
+ * When no entry exists for a workflow, notifications are off for that workflow.
+ */
 export interface WorkflowNotifOverride {
-    /**
-     * When true the execution notification for this specific workflow is sent
-     * to `recipients` below instead of the user's global recipient list.
-     */
-    useCustomRecipients: boolean;
+    enabled: boolean;
+    notifyOnFailure: boolean;
+    notifyOnPartial: boolean;
+    notifyOnSuccess: boolean;
     recipients: string[];
 }
 

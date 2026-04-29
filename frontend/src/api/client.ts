@@ -483,51 +483,35 @@ export function listBasecampPeople(credentialId: string, projectId?: string) {
 
 // ── Email Notifications ────────────────────────────────────────────────────
 
-/** Per-workflow recipient override stored inside a user's notification settings. */
+/** Complete per-workflow notification configuration. */
 export interface WorkflowNotifOverride {
-  /** When true, `recipients` below is used instead of the global recipient list. */
-  useCustomRecipients: boolean;
-  recipients: string[];
-}
-
-export interface NotificationSettings {
   enabled: boolean;
   notifyOnFailure: boolean;
   notifyOnPartial: boolean;
   notifyOnSuccess: boolean;
-  /** Global default recipients — used for workflows without a custom override. */
   recipients: string[];
-  /** Email of the authenticated user — always present in recipients and cannot be removed. */
+}
+
+export interface NotificationSettings {
+  /** Email of the authenticated user — always pinned in recipients when enabled. */
   ownerEmail: string;
   smtpConfigured: boolean;
-  /** Only present when the request was made with a ?workflowId query param. */
-  workflowOverride?: WorkflowNotifOverride;
+  /** Per-workflow notification settings for the requested workflow. */
+  workflowOverride: WorkflowNotifOverride;
 }
 
-/** Fetch global settings. */
-export function getNotificationSettings() {
-  return request<NotificationSettings>('/notifications/settings');
-}
-
-/** Fetch global settings AND the per-workflow override for a specific workflow. */
+/** Fetch notification settings for a specific workflow. */
 export function getNotificationSettingsForWorkflow(workflowId: string) {
   return request<NotificationSettings>(`/notifications/settings?workflowId=${encodeURIComponent(workflowId)}`);
 }
 
-export function updateNotificationSettings(patch: Partial<Omit<NotificationSettings, 'smtpConfigured' | 'ownerEmail' | 'workflowOverride'>>) {
-  return request<NotificationSettings>('/notifications/settings', {
-    method: 'PATCH',
-    body: JSON.stringify(patch),
-  });
-}
-
-/** Save or clear the per-workflow recipient override. */
-export function updateWorkflowNotifRecipients(
+/** Save the complete per-workflow notification configuration. */
+export function updateWorkflowNotifSettings(
   workflowId: string,
   override: WorkflowNotifOverride,
 ) {
   return request<NotificationSettings>(
-    `/notifications/workflows/${encodeURIComponent(workflowId)}/recipients`,
+    `/notifications/workflows/${encodeURIComponent(workflowId)}/settings`,
     { method: 'PATCH', body: JSON.stringify(override) },
   );
 }
