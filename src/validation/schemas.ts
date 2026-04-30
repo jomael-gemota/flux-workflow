@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export const WorkflowNodeSchema = z.object({
     id: z.string().min(1),
-    type: z.enum(['trigger', 'llm', 'http', 'condition', 'switch', 'transform', 'output', 'formatter', 'gmail', 'gdrive', 'gdocs', 'gsheets', 'slack', 'teams', 'basecamp']),
+    type: z.enum(['trigger', 'llm', 'http', 'condition', 'switch', 'transform', 'extract', 'output', 'formatter', 'gmail', 'gdrive', 'gdocs', 'gsheets', 'slack', 'teams', 'basecamp']),
     name: z.string().min(1),
     config: z.record(z.string(), z.unknown()),
     next: z.array(z.string()),

@@ -31,6 +31,7 @@ import { LLMNodeWidget } from '../nodes/LLMNodeWidget';
 import { ConditionNodeWidget } from '../nodes/ConditionNodeWidget';
 import { SwitchNodeWidget } from '../nodes/SwitchNodeWidget';
 import { TransformNodeWidget } from '../nodes/TransformNodeWidget';
+import { ExtractNodeWidget } from '../nodes/ExtractNodeWidget';
 import { OutputNodeWidget } from '../nodes/OutputNodeWidget';
 import { GmailNodeWidget } from '../nodes/GmailNodeWidget';
 import { GDriveNodeWidget } from '../nodes/GDriveNodeWidget';
@@ -64,6 +65,7 @@ function WorkflowNodeRenderer(props: NodeProps) {
     case 'condition': return <ConditionNodeWidget {...p} />;
     case 'switch': return <SwitchNodeWidget {...p} />;
     case 'transform': return <TransformNodeWidget {...p} />;
+    case 'extract':   return <ExtractNodeWidget   {...p} />;
     case 'output': return <OutputNodeWidget {...p} />;
     case 'gmail':   return <GmailNodeWidget   {...p} />;
     case 'gdrive':  return <GDriveNodeWidget  {...p} />;
@@ -90,6 +92,7 @@ const DEFAULT_CONFIGS: Partial<Record<NodeType, Record<string, unknown>>> = {
   condition: { condition: { type: 'leaf', left: '', operator: 'eq', right: '' }, trueNext: '', falseNext: '' },
   switch: { cases: [], defaultNext: '' },
   transform: { mappings: {} },
+  extract: { source: '', preprocess: 'plain-text', fields: [], aiProvider: 'openai', aiModel: 'gpt-4o-mini', aiTemperature: 0 },
   output: { value: '' },
   gmail:   { action: 'send',   credentialId: '', to: '', subject: '', body: '' },
   gdrive:  { action: 'list',   credentialId: '', query: '' },

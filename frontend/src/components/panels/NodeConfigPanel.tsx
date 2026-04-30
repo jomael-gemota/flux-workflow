@@ -61,6 +61,7 @@ const NODE_OUTPUT_FIELDS: Record<string, OutputField[]> = {
     { key: 'nextNodeId', label: 'Next node ID' },
   ],
   transform: [{ key: '…', label: 'Use the key names you defined in Mappings' }],
+  extract: [{ key: '…', label: 'Use the key names you defined as Fields' }],
   formatter: [
     { key: 'formattedText', label: 'Formatted message text (ready to send)' },
     { key: 'medium',        label: 'Target medium (slack / teams / gmail / gdocs)' },
@@ -204,7 +205,7 @@ function ValuePreview({ value }: { value: unknown }) {
 
 const NODE_TYPE_LABEL: Record<string, string> = {
   http: 'HTTP', llm: 'AI', trigger: 'Trigger', condition: 'Condition',
-  switch: 'Switch', transform: 'Transform', output: 'Output',
+  switch: 'Switch', transform: 'Transform', extract: 'Extract', output: 'Output',
   formatter: 'Formatter',
   gmail: 'Gmail', gdrive: 'Drive', gdocs: 'Docs', gsheets: 'Sheets',
   basecamp: 'Basecamp',
@@ -2551,6 +2552,36 @@ function TransformResultDisplay({ result }: { result: NodeTestResult }) {
   );
 }
 
+function ExtractResultDisplay({ result }: { result: NodeTestResult }) {
+  const out = result.output;
+  if (typeof out !== 'object' || out === null || Array.isArray(out)) {
+    return <GenericResultDisplay result={result} />;
+  }
+  const entries = Object.entries(out as Record<string, unknown>);
+  const found   = entries.filter(([, v]) => v !== null && v !== '' && !(Array.isArray(v) && v.length === 0)).length;
+  return (
+    <div className="p-3 space-y-2">
+      <SectionLabel>
+        {found} / {entries.length} field{entries.length !== 1 ? 's' : ''} extracted
+      </SectionLabel>
+      <div className="rounded border border-slate-200 dark:border-slate-700 overflow-hidden">
+        {entries.map(([k, v], i) => {
+          const isMissing = v == null || v === '' || (Array.isArray(v) && v.length === 0);
+          return (
+            <div key={k} className={`flex items-start gap-3 px-3 py-2 text-[11px] border-b border-slate-100 dark:border-slate-700/50 last:border-b-0 ${
+              i % 2 === 0 ? 'bg-white dark:bg-slate-900/40' : 'bg-slate-50 dark:bg-slate-800/40'
+            }`}>
+              <span className="font-semibold text-blue-500 dark:text-blue-400 shrink-0 min-w-[110px] pt-0.5 font-mono">{k}</span>
+              <span className="text-slate-400 dark:text-slate-500 shrink-0 pt-0.5">→</span>
+              {isMissing ? <NoDataBadge /> : <SmartValue v={v} />}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── Trigger result ────────────────────────────────────────────────────────────
 
 function TriggerResultDisplay({ result }: { result: NodeTestResult }) {
@@ -2678,7 +2709,7 @@ function GenericResultDisplay({ result }: { result: NodeTestResult }) {
 
 // ── Main result wrapper — routes to the right display per node type ────────────
 
-const TYPED_NODES = new Set(['http','llm','condition','switch','gmail','gdrive','gdocs','gsheets','slack','teams','basecamp','transform','trigger']);
+const TYPED_NODES = new Set(['http','llm','condition','switch','gmail','gdrive','gdocs','gsheets','slack','teams','basecamp','transform','extract','trigger']);
 
 function TestResultDisplay({ result, nodeType }: { result: NodeTestResult; nodeType: string }) {
   const [showRaw, setShowRaw] = useState(false);
@@ -2762,6 +2793,7 @@ function TestResultDisplay({ result, nodeType }: { result: NodeTestResult; nodeT
               {nodeType === 'teams'     && <TeamsResultDisplay     result={result} />}
               {nodeType === 'basecamp'  && <BasecampResultDisplay  result={result} />}
               {nodeType === 'transform' && <TransformResultDisplay result={result} />}
+              {nodeType === 'extract'   && <ExtractResultDisplay   result={result} />}
               {nodeType === 'trigger'   && <TriggerResultDisplay   result={result} />}
               {!TYPED_NODES.has(nodeType) && <GenericResultDisplay result={result} />}
             </div>
@@ -3351,6 +3383,9 @@ export function NodeConfigPanel() {
       )}
       {nodeType === 'transform' && (
         <TransformConfig cfg={cfg} onChange={updateConfig} otherNodes={otherNodes} testResults={testResults} />
+      )}
+      {nodeType === 'extract' && (
+        <ExtractConfig cfg={cfg} onChange={updateConfig} otherNodes={otherNodes} testResults={testResults} />
       )}
       {nodeType === 'output' && (
         <OutputConfig cfg={cfg} onChange={updateConfig} otherNodes={otherNodes} testResults={testResults} />
@@ -4251,6 +4286,698 @@ function OutputConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
       testResults={testResults}
       hint="This value becomes the final result of the workflow execution."
     />
+  );
+}
+
+// ── Extract ────────────────────────────────────────────────────────────────────
+//
+// Pull named fields out of unstructured text (e.g. email bodies). Each field
+// becomes a key on the node's output, addressable downstream via
+// `{{nodes.<extractId>.<fieldName>}}`.
+
+type ExtractStrategyKind = 'regex' | 'between' | 'labeled' | 'jsonpath' | 'ai';
+
+interface ExtractStrategyShape {
+  kind: ExtractStrategyKind;
+  pattern?: string;
+  flags?: string;
+  group?: number;
+  before?: string;
+  after?: string;
+  label?: string;
+  stopAt?: string;
+  path?: string;
+  description?: string;
+  type?: 'string' | 'number' | 'boolean' | 'string[]';
+}
+
+interface ExtractFieldShape {
+  name: string;
+  source?: string;
+  strategy: ExtractStrategyShape;
+  multiple?: boolean;
+  required?: boolean;
+  default?: string;
+  transform?: 'trim' | 'lower' | 'upper' | 'normalize-email';
+}
+
+const EXTRACT_PREPROCESS_OPTIONS = [
+  { value: 'none',               label: 'None (raw text)' },
+  { value: 'plain-text',         label: 'Strip HTML to plain text' },
+  { value: 'strip-quoted-reply', label: 'Strip HTML + quoted reply chain' },
+  { value: 'strip-signature',    label: 'Strip HTML + signature block' },
+];
+
+const EXTRACT_STRATEGY_OPTIONS = [
+  { value: 'between',  label: 'Between anchors' },
+  { value: 'labeled',  label: 'After a label' },
+  { value: 'regex',    label: 'Regular expression' },
+  { value: 'jsonpath', label: 'JSONPath (structured input)' },
+  { value: 'ai',       label: 'AI (natural language)' },
+];
+
+const EXTRACT_TRANSFORM_OPTIONS = [
+  { value: '',                 label: 'No post-processing' },
+  { value: 'trim',             label: 'Trim whitespace' },
+  { value: 'lower',            label: 'Lowercase' },
+  { value: 'upper',            label: 'UPPERCASE' },
+  { value: 'normalize-email',  label: 'Normalize email (Name <addr> → addr, lowercase)' },
+];
+
+/** Slugify a free-text label into a JS identifier for the field "name". */
+function slugifyFieldName(s: string): string {
+  return s
+    .replace(/[^a-zA-Z0-9_\s]/g, '')
+    .trim()
+    .split(/\s+/)
+    .map((w, i) => (i === 0 ? w.toLowerCase() : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()))
+    .join('')
+    .slice(0, 32) || 'field';
+}
+
+/**
+ * Given a sample text and a [start, end] selection range, return reasonable
+ * default `before` / `after` anchors so a "between" rule can find the same
+ * value on future inputs.
+ *
+ *   before = the closest preceding 1–2 words and any "label: " marker on the
+ *            same line, capped at ~30 chars (so we don't anchor on the entire
+ *            previous paragraph).
+ *   after  = up to the next newline, or up to ~30 chars of trailing context if
+ *            there is no newline. May be the empty string when the value sits
+ *            at the very end of a line.
+ */
+function deriveAnchors(text: string, start: number, end: number): { before: string; after: string } {
+  if (start >= end || start < 0 || end > text.length) return { before: '', after: '' };
+
+  // Look back at most 60 chars but stop at newline or start of string
+  const lookBack = text.slice(Math.max(0, start - 60), start);
+  const lastNl = lookBack.lastIndexOf('\n');
+  let before = lastNl >= 0 ? lookBack.slice(lastNl + 1) : lookBack;
+  if (before.length > 30) before = before.slice(before.length - 30);
+
+  // Look forward to the next newline (or 30 chars). Empty `after` is fine —
+  // the runtime treats it as "end of line".
+  const lookFwd = text.slice(end, Math.min(text.length, end + 60));
+  const nlIdx = lookFwd.indexOf('\n');
+  let after = nlIdx >= 0 ? lookFwd.slice(0, nlIdx) : lookFwd;
+  if (after.length > 30) after = after.slice(0, 30);
+  // If the after slice would gobble up most of the value, prefer empty
+  // (i.e. "until end of line") so the rule is more permissive.
+  if (after.trim().length === 0) after = '';
+
+  return { before, after };
+}
+
+// ── Pure client-side extraction simulator (mirrors src/nodes/ExtractNode.ts) ───
+//
+// Used purely for the live preview. We re-implement the non-AI strategies in
+// the browser so the user gets instant feedback as they type rules, without a
+// network round-trip. AI fields just show "(runs at execution time)".
+
+function previewExtract(
+  field: ExtractFieldShape,
+  source: string,
+): { value: unknown; error?: string } {
+  if (!field.name) return { value: null };
+  const s = field.strategy;
+  try {
+    switch (s.kind) {
+      case 'regex': {
+        if (!s.pattern) return { value: null };
+        const flags = (s.flags ?? '') + (field.multiple && !(s.flags ?? '').includes('g') ? 'g' : '');
+        const re = new RegExp(s.pattern, flags);
+        const g = s.group ?? 1;
+        if (!field.multiple) {
+          const m = source.match(re);
+          if (!m) return { value: null };
+          return { value: m[g] ?? m[0] };
+        }
+        const all: string[] = [];
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(source)) !== null) {
+          all.push(m[g] ?? m[0]);
+          if (m.index === re.lastIndex) re.lastIndex++;
+        }
+        return { value: all };
+      }
+      case 'between': {
+        if (!s.before && !s.after) return { value: null };
+        const beforeRe = s.before ? escapeReg(s.before) : '';
+        const afterRe  = s.after  ? escapeReg(s.after)  : '$';
+        const flags    = field.multiple ? 'g' : undefined;
+        return previewExtract(
+          { ...field, strategy: { kind: 'regex', pattern: `${beforeRe}([\\s\\S]*?)(?=${afterRe})`, flags, group: 1 } },
+          source,
+        );
+      }
+      case 'labeled': {
+        if (!s.label) return { value: null };
+        const labelRe = escapeReg(s.label.replace(/:\s*$/, ''));
+        const stopRe  = s.stopAt ? escapeReg(s.stopAt) : '\\n|$';
+        const pattern = `${labelRe}\\s*[:\\-]?\\s*([^\\n]*?)(?=${stopRe})`;
+        return previewExtract(
+          { ...field, strategy: { kind: 'regex', pattern, flags: field.multiple ? 'gi' : 'i', group: 1 } },
+          source,
+        );
+      }
+      case 'jsonpath':
+        return { value: null, error: 'JSONPath preview is shown only at execution time.' };
+      case 'ai':
+        return { value: null, error: '(AI runs at execution time)' };
+      default:
+        return { value: null };
+    }
+  } catch (err) {
+    return { value: null, error: (err as Error).message };
+  }
+}
+
+function escapeReg(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function ExtractConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
+  const source     = String(cfg.source ?? '');
+  const preprocess = String(cfg.preprocess ?? 'plain-text');
+  const fields     = (Array.isArray(cfg.fields) ? cfg.fields : []) as ExtractFieldShape[];
+  const aiProvider    = String(cfg.aiProvider    ?? 'openai');
+  const aiModel       = String(cfg.aiModel       ?? 'gpt-4o-mini');
+  const aiTemperature = Number(cfg.aiTemperature ?? 0);
+
+  const hasAiField = fields.some((f) => f.strategy?.kind === 'ai');
+
+  // Sample text — auto-fills from the resolved source (when upstream nodes
+  // have test results) but stays user-editable so they can paste anything.
+  const [sampleText, setSampleText] = useState<string>('');
+  const [sampleAuto, setSampleAuto] = useState(true);
+  const sampleRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (!sampleAuto) return;
+    const resolved = resolveValue(source, testResults);
+    if (resolved == null) return;
+    // Run the same lightweight preprocessing the backend does so the preview
+    // matches what the node will actually see at runtime.
+    const cleaned = clientPreprocess(resolved, preprocess);
+    setSampleText(cleaned);
+  }, [source, preprocess, testResults, sampleAuto]);
+
+  function setFields(next: ExtractFieldShape[]) { onChange({ fields: next }); }
+
+  function addManualField() {
+    const idx = fields.length + 1;
+    setFields([
+      ...fields,
+      { name: `field${idx}`, strategy: { kind: 'between', before: '', after: '' } },
+    ]);
+  }
+
+  function addAiField() {
+    const idx = fields.length + 1;
+    setFields([
+      ...fields,
+      { name: `field${idx}`, strategy: { kind: 'ai', description: '', type: 'string' } },
+    ]);
+  }
+
+  function addFieldFromHighlight() {
+    const ta = sampleRef.current;
+    if (!ta) return;
+    const start = ta.selectionStart ?? 0;
+    const end   = ta.selectionEnd   ?? 0;
+    if (start === end) {
+      // Nothing selected — fall through to a manual blank field
+      addManualField();
+      return;
+    }
+    const selected = sampleText.slice(start, end);
+    const { before, after } = deriveAnchors(sampleText, start, end);
+    const guessed = slugifyFieldName(selected) || `field${fields.length + 1}`;
+
+    setFields([
+      ...fields,
+      {
+        name: guessed,
+        strategy: { kind: 'between', before, after },
+      },
+    ]);
+  }
+
+  function updateField(i: number, patch: Partial<ExtractFieldShape>) {
+    const next = fields.slice();
+    next[i] = { ...next[i], ...patch };
+    setFields(next);
+  }
+
+  function updateStrategy(i: number, patch: Partial<ExtractStrategyShape>) {
+    const next = fields.slice();
+    next[i] = { ...next[i], strategy: { ...next[i].strategy, ...patch } };
+    setFields(next);
+  }
+
+  function changeStrategyKind(i: number, kind: ExtractStrategyKind) {
+    const defaults: Record<ExtractStrategyKind, ExtractStrategyShape> = {
+      regex:    { kind: 'regex',    pattern: '' },
+      between:  { kind: 'between',  before: '', after: '' },
+      labeled:  { kind: 'labeled',  label: '' },
+      jsonpath: { kind: 'jsonpath', path: '$.' },
+      ai:       { kind: 'ai',       description: '', type: 'string' },
+    };
+    const next = fields.slice();
+    next[i] = { ...next[i], strategy: defaults[kind] };
+    setFields(next);
+  }
+
+  function removeField(i: number) {
+    setFields(fields.filter((_, j) => j !== i));
+  }
+
+  function moveField(i: number, dir: -1 | 1) {
+    const j = i + dir;
+    if (j < 0 || j >= fields.length) return;
+    const next = fields.slice();
+    [next[i], next[j]] = [next[j], next[i]];
+    setFields(next);
+  }
+
+  return (
+    <>
+      <ExpressionInput
+        label="Source"
+        value={source}
+        onChange={(v) => onChange({ source: v })}
+        placeholder="{{nodes.gmail-list.threads[0].messages[0].body}}"
+        nodes={otherNodes}
+        testResults={testResults}
+        hint="The text to extract fields from. Usually a previous Gmail / HTTP / LLM node's output."
+      />
+
+      <Select
+        label="Preprocess"
+        value={preprocess}
+        onChange={(e) => onChange({ preprocess: e.target.value })}
+        options={EXTRACT_PREPROCESS_OPTIONS}
+      />
+      <p className="text-[10px] text-slate-400 dark:text-slate-500 -mt-1">
+        Cleans up the source before any extraction runs. Helps a lot with HTML emails.
+      </p>
+
+      {/* Sample text + highlight-to-define */}
+      <div className="border-t border-slate-200 dark:border-slate-700" />
+      <div className="space-y-1">
+        <div className="flex items-center justify-between gap-1">
+          <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold">
+            Sample text
+          </p>
+          <label className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={sampleAuto}
+              onChange={(e) => setSampleAuto(e.target.checked)}
+              className="w-2.5 h-2.5"
+            />
+            Auto-fill from source
+          </label>
+        </div>
+        <textarea
+          ref={sampleRef}
+          rows={6}
+          value={sampleText}
+          onChange={(e) => { setSampleAuto(false); setSampleText(e.target.value); }}
+          placeholder="Paste a sample email body here, or test an upstream node so we can auto-fill it."
+          className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 font-mono whitespace-pre-wrap resize-y"
+        />
+        <div className="flex flex-wrap gap-1.5 pt-1">
+          <button
+            type="button"
+            onClick={addFieldFromHighlight}
+            className="text-[11px] text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-md px-2.5 py-1 font-medium transition-colors"
+            title="Select text in the sample first, then click to create a 'between' rule that finds it on future inputs."
+          >
+            + From highlighted selection
+          </button>
+          <button
+            type="button"
+            onClick={addManualField}
+            className="text-[11px] text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-md px-2.5 py-1 font-medium transition-colors"
+          >
+            + Manual rule
+          </button>
+          <button
+            type="button"
+            onClick={addAiField}
+            className="text-[11px] text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-900/30 hover:bg-purple-100 dark:hover:bg-purple-900/50 border border-purple-300 dark:border-purple-700/50 rounded-md px-2.5 py-1 font-medium transition-colors"
+          >
+            + AI field
+          </button>
+        </div>
+        <p className="text-[10px] text-slate-400 dark:text-slate-500">
+          Tip: highlight a value (an email, a name, an ID), then click <em>From highlighted selection</em>.
+          We'll create a rule that locates the same value on future inputs.
+        </p>
+      </div>
+
+      {/* Field list */}
+      <div className="border-t border-slate-200 dark:border-slate-700" />
+      <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold">
+        Fields ({fields.length})
+      </p>
+
+      {fields.length === 0 && (
+        <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">
+          No fields yet. Highlight text in the sample above to create one.
+        </p>
+      )}
+
+      {fields.map((f, i) => (
+        <ExtractFieldRow
+          key={i}
+          field={f}
+          sampleText={sampleText}
+          onChange={(patch) => updateField(i, patch)}
+          onChangeStrategy={(patch) => updateStrategy(i, patch)}
+          onChangeStrategyKind={(kind) => changeStrategyKind(i, kind)}
+          onRemove={() => removeField(i)}
+          onMoveUp={i > 0 ? () => moveField(i, -1) : undefined}
+          onMoveDown={i < fields.length - 1 ? () => moveField(i, 1) : undefined}
+        />
+      ))}
+
+      {hasAiField && (
+        <>
+          <div className="border-t border-slate-200 dark:border-slate-700" />
+          <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold">
+            AI Settings
+          </p>
+          <p className="text-[10px] text-slate-400 dark:text-slate-500 -mt-1">
+            All AI fields with the same source are extracted in a single LLM call.
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <Select
+              label="Provider"
+              value={aiProvider}
+              onChange={(e) => onChange({ aiProvider: e.target.value })}
+              options={[
+                { value: 'openai',    label: 'OpenAI' },
+                { value: 'anthropic', label: 'Anthropic' },
+                { value: 'gemini',    label: 'Gemini' },
+                { value: 'meta',      label: 'Meta' },
+              ]}
+            />
+            <div className="space-y-1">
+              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Model</label>
+              <input
+                type="text"
+                value={aiModel}
+                onChange={(e) => onChange({ aiModel: e.target.value })}
+                className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2 py-1 text-xs placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+              Temperature ({aiTemperature.toFixed(1)})
+            </label>
+            <input
+              type="range" min={0} max={1} step={0.1}
+              value={aiTemperature}
+              onChange={(e) => onChange({ aiTemperature: Number(e.target.value) })}
+              className="w-full"
+            />
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+function clientPreprocess(text: string, mode: string): string {
+  if (!text) return '';
+  let out = text;
+  if (mode === 'plain-text' || mode === 'strip-quoted-reply' || mode === 'strip-signature') {
+    out = out
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+      .replace(/<br\s*\/?>(\s*)/gi, '\n')
+      .replace(/<\/(p|div|h[1-6]|li|tr)>/gi, '\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+      .replace(/[ \t]+/g, ' ');
+  }
+  if (mode === 'strip-quoted-reply') {
+    const idx = [/^On .+ wrote:\s*$/im, /^From:\s.+$/im, /^>\s/m]
+      .map((re) => out.search(re)).filter((i) => i >= 0).reduce((a, b) => Math.min(a, b), out.length);
+    out = out.slice(0, idx).trimEnd();
+  } else if (mode === 'strip-signature') {
+    out = out.replace(/\n[-_=]{2,}\s*\n[\s\S]*$|\n--\s*\n[\s\S]*$/, '').trimEnd();
+  }
+  return out.replace(/\r\n/g, '\n');
+}
+
+function ExtractFieldRow({
+  field, sampleText, onChange, onChangeStrategy, onChangeStrategyKind, onRemove, onMoveUp, onMoveDown,
+}: {
+  field: ExtractFieldShape;
+  sampleText: string;
+  onChange: (patch: Partial<ExtractFieldShape>) => void;
+  onChangeStrategy: (patch: Partial<ExtractStrategyShape>) => void;
+  onChangeStrategyKind: (kind: ExtractStrategyKind) => void;
+  onRemove: () => void;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+}) {
+  const preview = useMemo(() => previewExtract(field, sampleText), [field, sampleText]);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+
+  return (
+    <div className="rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 p-2 space-y-1.5">
+      {/* Header: name + strategy + actions */}
+      <div className="flex items-center gap-1">
+        <input
+          className="flex-1 min-w-0 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
+          value={field.name}
+          onChange={(e) => onChange({ name: e.target.value })}
+          placeholder="fieldName"
+        />
+        <Select
+          value={field.strategy.kind}
+          onChange={(e) => onChangeStrategyKind(e.target.value as ExtractStrategyKind)}
+          options={EXTRACT_STRATEGY_OPTIONS}
+        />
+        <div className="flex items-center shrink-0">
+          {onMoveUp && (
+            <button onClick={onMoveUp} title="Move up" className="text-slate-400 dark:text-slate-500 hover:text-gray-700 dark:hover:text-white px-1 text-xs">↑</button>
+          )}
+          {onMoveDown && (
+            <button onClick={onMoveDown} title="Move down" className="text-slate-400 dark:text-slate-500 hover:text-gray-700 dark:hover:text-white px-1 text-xs">↓</button>
+          )}
+          <button onClick={onRemove} title="Remove field" className="text-slate-400 dark:text-slate-500 hover:text-red-400 px-1 text-sm">×</button>
+        </div>
+      </div>
+
+      {/* Strategy-specific inputs */}
+      {field.strategy.kind === 'between' && (
+        <div className="grid grid-cols-2 gap-1.5">
+          <LabeledMiniInput
+            label="before"
+            value={field.strategy.before ?? ''}
+            onChange={(v) => onChangeStrategy({ before: v })}
+            placeholder="Email: "
+          />
+          <LabeledMiniInput
+            label="after"
+            value={field.strategy.after ?? ''}
+            onChange={(v) => onChangeStrategy({ after: v })}
+            placeholder="(end of line)"
+          />
+        </div>
+      )}
+
+      {field.strategy.kind === 'labeled' && (
+        <div className="grid grid-cols-2 gap-1.5">
+          <LabeledMiniInput
+            label="label"
+            value={field.strategy.label ?? ''}
+            onChange={(v) => onChangeStrategy({ label: v })}
+            placeholder="Manager:"
+          />
+          <LabeledMiniInput
+            label="stop at"
+            value={field.strategy.stopAt ?? ''}
+            onChange={(v) => onChangeStrategy({ stopAt: v })}
+            placeholder="(end of line)"
+          />
+        </div>
+      )}
+
+      {field.strategy.kind === 'regex' && (
+        <div className="space-y-1">
+          <LabeledMiniInput
+            label="pattern"
+            value={field.strategy.pattern ?? ''}
+            onChange={(v) => onChangeStrategy({ pattern: v })}
+            placeholder="Email:\\s*(\\S+)"
+            mono
+          />
+          <div className="grid grid-cols-2 gap-1.5">
+            <LabeledMiniInput
+              label="flags"
+              value={field.strategy.flags ?? ''}
+              onChange={(v) => onChangeStrategy({ flags: v })}
+              placeholder="i"
+            />
+            <div className="space-y-0.5">
+              <label className="block text-[9px] uppercase tracking-wider font-semibold text-slate-400 dark:text-slate-500">capture group</label>
+              <input
+                type="number" min={0}
+                value={field.strategy.group ?? 1}
+                onChange={(e) => onChangeStrategy({ group: Number(e.target.value) })}
+                className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded px-2 py-1 text-xs text-gray-900 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {field.strategy.kind === 'jsonpath' && (
+        <LabeledMiniInput
+          label="path"
+          value={field.strategy.path ?? ''}
+          onChange={(v) => onChangeStrategy({ path: v })}
+          placeholder="$.user.email"
+          mono
+        />
+      )}
+
+      {field.strategy.kind === 'ai' && (
+        <div className="space-y-1.5">
+          <div className="space-y-0.5">
+            <label className="block text-[9px] uppercase tracking-wider font-semibold text-slate-400 dark:text-slate-500">describe what to extract</label>
+            <textarea
+              rows={2}
+              value={field.strategy.description ?? ''}
+              onChange={(e) => onChangeStrategy({ description: e.target.value })}
+              placeholder="The requester's email address"
+              className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded px-2 py-1 text-xs text-gray-900 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y"
+            />
+          </div>
+          <Select
+            label="output type"
+            value={field.strategy.type ?? 'string'}
+            onChange={(e) => onChangeStrategy({ type: e.target.value as 'string' | 'number' | 'boolean' | 'string[]' })}
+            options={[
+              { value: 'string',   label: 'string'    },
+              { value: 'number',   label: 'number'    },
+              { value: 'boolean',  label: 'boolean'   },
+              { value: 'string[]', label: 'string[]'  },
+            ]}
+          />
+        </div>
+      )}
+
+      {/* Live preview */}
+      <div className="px-1">
+        <PreviewBadge value={preview.value} error={preview.error} />
+      </div>
+
+      {/* Advanced toggles */}
+      <button
+        type="button"
+        onClick={() => setAdvancedOpen((o) => !o)}
+        className="text-[10px] text-slate-500 dark:text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 transition-colors"
+      >
+        {advancedOpen ? '▾' : '▸'} Advanced
+      </button>
+      {advancedOpen && (
+        <div className="grid grid-cols-2 gap-1.5 pt-1">
+          <label className="flex items-center gap-1.5 text-[10px] text-slate-600 dark:text-slate-300">
+            <input
+              type="checkbox"
+              checked={!!field.required}
+              onChange={(e) => onChange({ required: e.target.checked })}
+              className="w-3 h-3"
+            />
+            Required (fail if missing)
+          </label>
+          <label className="flex items-center gap-1.5 text-[10px] text-slate-600 dark:text-slate-300">
+            <input
+              type="checkbox"
+              checked={!!field.multiple}
+              onChange={(e) => onChange({ multiple: e.target.checked })}
+              className="w-3 h-3"
+            />
+            Match all (return array)
+          </label>
+          <LabeledMiniInput
+            label="default"
+            value={field.default ?? ''}
+            onChange={(v) => onChange({ default: v })}
+            placeholder="(empty)"
+          />
+          <Select
+            label="post-process"
+            value={field.transform ?? ''}
+            onChange={(e) => onChange({ transform: (e.target.value || undefined) as ExtractFieldShape['transform'] })}
+            options={EXTRACT_TRANSFORM_OPTIONS}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LabeledMiniInput({
+  label, value, onChange, placeholder, mono = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="space-y-0.5">
+      <label className="block text-[9px] uppercase tracking-wider font-semibold text-slate-400 dark:text-slate-500">{label}</label>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className={`w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded px-2 py-1 text-xs text-gray-900 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 ${mono ? 'font-mono' : ''}`}
+      />
+    </div>
+  );
+}
+
+function PreviewBadge({ value, error }: { value: unknown; error?: string }) {
+  if (error) {
+    return (
+      <p className="text-[10px] text-amber-600 dark:text-amber-400 italic">
+        {error}
+      </p>
+    );
+  }
+  if (value == null || value === '' || (Array.isArray(value) && value.length === 0)) {
+    return (
+      <p className="text-[10px] text-slate-400 dark:text-slate-500 italic">
+        no match
+      </p>
+    );
+  }
+  if (Array.isArray(value)) {
+    return (
+      <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono break-all">
+        [{value.length}] {value.slice(0, 3).map((v) => JSON.stringify(v)).join(', ')}{value.length > 3 ? ', …' : ''}
+      </p>
+    );
+  }
+  const str = String(value);
+  return (
+    <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono break-all">
+      → {str.length > 80 ? str.slice(0, 80) + '…' : str}
+    </p>
   );
 }
 

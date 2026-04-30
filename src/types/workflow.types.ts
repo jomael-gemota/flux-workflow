@@ -5,6 +5,7 @@ export type NodeType =
     | 'condition'
     | 'switch'
     | 'transform'
+    | 'extract'
     | 'output'
     | 'gmail'
     | 'gdrive'

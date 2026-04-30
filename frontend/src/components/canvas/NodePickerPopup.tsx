@@ -52,6 +52,7 @@ const CATEGORIES: PaletteCategory[] = [
     label: 'Data',
     nodes: [
       { type: 'transform', label: 'Transform',         description: 'Map & reshape values' },
+      { type: 'extract',   label: 'Extract',           description: 'Pull named fields out of email bodies & messy text' },
       { type: 'formatter', label: 'Message Formatter', description: 'Beautify data for Slack, Teams, Gmail or Docs' },
       { type: 'output',    label: 'Output',            description: 'Final workflow result' },
     ],

@@ -63,6 +63,7 @@ import { registerErrorHandler } from './errors/errorHandler';
 import { ConditionNode } from './nodes/ConditionNode';
 import { SwitchNode } from './nodes/SwitchNode';
 import { TransformNode } from './nodes/TransformNode';
+import { ExtractNode } from './nodes/ExtractNode';
 import { OutputNode } from './nodes/OutputNode';
 import { MessageFormatterNode } from './nodes/MessageFormatterNode';
 import { runSeeds } from './db/seeds';
@@ -88,6 +89,7 @@ async function bootstrap() {
 	registry.register('condition', new ConditionNode());
 	registry.register('switch', new SwitchNode());
     registry.register('transform', new TransformNode());
+    registry.register('extract', new ExtractNode());
     registry.register('output', new OutputNode());
     registry.register('formatter', new MessageFormatterNode());
     const runner = new WorkflowRunner(registry);
