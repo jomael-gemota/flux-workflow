@@ -138,10 +138,13 @@ const NODE_OUTPUT_FIELDS: Record<string, OutputField[]> = {
     { key: 'createdAt',   label: 'Creation timestamp ISO (create)' },
     { key: 'projectId',   label: 'Project ID used (create)' },
     { key: 'todolistId',  label: 'To-do list ID used (create)' },
-    { key: 'status',      label: 'Action status (created / posted / sent)' },
+    { key: 'status',      label: 'Action status (created / posted / sent / invited)' },
     { key: 'completed',   label: 'Completion flag (complete / uncomplete)' },
     { key: 'todos',       label: 'To-do list array (list_todos)' },
     { key: 'count',       label: 'To-do count (list_todos)' },
+    { key: 'name',        label: 'Invited person\'s name (invite_users)' },
+    { key: 'email',       label: 'Invited person\'s email address (invite_users)' },
+    { key: 'company',     label: 'Invited person\'s company name (invite_users)' },
   ],
   slack: [
     { key: 'ok',        label: 'Slack API success flag' },
@@ -2424,6 +2427,7 @@ function BasecampResultDisplay({ result }: { result: NodeTestResult }) {
     posted:    'Message posted to Basecamp',
     commented: 'Comment added',
     sent:      'Campfire message sent',
+    invited:   'Invitation sent',
   };
 
   const bannerText = single.status
@@ -2440,6 +2444,8 @@ function BasecampResultDisplay({ result }: { result: NodeTestResult }) {
     dueOn?: string; assignees?: Array<{ id: unknown; name: string; email?: string }>;
     createdAt?: string; projectId?: string; todolistId?: string;
     status?: string; completed?: boolean; todoId?: string;
+    // invite_users
+    name?: string; email?: string; company?: string;
   };
 
   return (
@@ -2464,6 +2470,9 @@ function BasecampResultDisplay({ result }: { result: NodeTestResult }) {
         {richSingle.todoId      && <InfoRow label="To-do ID"    value={richSingle.todoId} mono />}
         {richSingle.projectId   && <InfoRow label="Project ID"  value={richSingle.projectId} mono />}
         {richSingle.todolistId  && <InfoRow label="List ID"     value={richSingle.todolistId} mono />}
+        {richSingle.name        && <InfoRow label="Name"        value={richSingle.name} />}
+        {richSingle.email       && <InfoRow label="Email"       value={richSingle.email} mono />}
+        {richSingle.company     && <InfoRow label="Company"     value={richSingle.company} />}
       </div>
       {Array.isArray(richSingle.assignees) && richSingle.assignees.length > 0 && (
         <div className="space-y-1">
@@ -8906,6 +8915,7 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
           { value: 'post_comment',    label: 'Post Comment' },
           { value: 'send_campfire',   label: 'Send Campfire Message' },
           { value: 'list_todos',      label: 'List To-Dos' },
+          { value: 'invite_users',    label: 'Invite User to Organization' },
         ]}
       />
 
@@ -9378,6 +9388,48 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
             Include completed to-dos (including hidden)
           </label>
         </div>
+      )}
+
+      {/* ── invite_users fields ───────────────────────────────────────── */}
+      {action === 'invite_users' && (
+        <>
+          <p className="text-[10px] text-slate-400 dark:text-slate-500">
+            Sends an invitation email to the specified address. The user must accept before they become active. Requires admin privileges.
+          </p>
+          <ExpressionInput
+            label="Email Address"
+            value={String(cfg.inviteEmail ?? '')}
+            onChange={(v) => onChange({ inviteEmail: v })}
+            placeholder="jane@example.com"
+            nodes={otherNodes}
+            testResults={testResults}
+            hint="The email address of the person to invite to your Basecamp account."
+          />
+          <ExpressionInput
+            label="Name"
+            value={String(cfg.inviteName ?? '')}
+            onChange={(v) => onChange({ inviteName: v })}
+            placeholder="Jane Smith"
+            nodes={otherNodes}
+            testResults={testResults}
+          />
+          <ExpressionInput
+            label="Job Title (optional)"
+            value={String(cfg.inviteTitle ?? '')}
+            onChange={(v) => onChange({ inviteTitle: v })}
+            placeholder="Designer"
+            nodes={otherNodes}
+            testResults={testResults}
+          />
+          <ExpressionInput
+            label="Company Name (optional)"
+            value={String(cfg.inviteCompany ?? '')}
+            onChange={(v) => onChange({ inviteCompany: v })}
+            placeholder="Acme Corp"
+            nodes={otherNodes}
+            testResults={testResults}
+          />
+        </>
       )}
     </div>
   );

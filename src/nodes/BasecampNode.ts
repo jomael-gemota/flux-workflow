@@ -12,7 +12,8 @@ type BasecampAction =
     | 'post_message'
     | 'post_comment'
     | 'send_campfire'
-    | 'list_todos';
+    | 'list_todos'
+    | 'invite_users';
 
 interface BasecampConfig {
     credentialId: string;
@@ -38,6 +39,11 @@ interface BasecampConfig {
     includeCompleted?: boolean;
     // shared
     text?: string;
+    // invite_users
+    inviteEmail?: string;
+    inviteName?: string;
+    inviteTitle?: string;
+    inviteCompany?: string;
 }
 
 /**
@@ -479,6 +485,36 @@ export class BasecampNode implements NodeExecutor {
                     assignees: ((t.assignees as Array<{ id: number; name: string }>) ?? []).map((a) => ({ id: a.id, name: a.name })),
                 })),
                 count: allTodos.length,
+            };
+        }
+
+        if (action === 'invite_users') {
+            const email   = this.resolver.resolveTemplate(config.inviteEmail   ?? '', context).trim();
+            const name    = this.resolver.resolveTemplate(config.inviteName    ?? '', context).trim();
+            const title   = this.resolver.resolveTemplate(config.inviteTitle   ?? '', context).trim();
+            const company = this.resolver.resolveTemplate(config.inviteCompany ?? '', context).trim();
+
+            if (!email) throw new Error('Basecamp invite_users: email address is required');
+            if (!name)  throw new Error('Basecamp invite_users: name is required');
+
+            const body: Record<string, unknown> = { email_address: email, name };
+            if (title)   body.title        = title;
+            if (company) body.company_name = company;
+
+            const res = await fetch(`${baseUrl}/people/users.json`, {
+                method: 'POST', headers, body: JSON.stringify(body),
+            });
+            if (!res.ok) throw new Error(`Basecamp invite_users failed (${res.status}): ${await res.text()}`);
+            const person = await res.json() as Record<string, unknown>;
+
+            const companyObj = person.company as Record<string, unknown> | undefined;
+            return {
+                id:      person.id,
+                name:    (person.name as string | undefined)          ?? name,
+                email:   (person.email_address as string | undefined) ?? email,
+                title:   (person.title as string | undefined)         ?? title,
+                company: (companyObj?.name as string | undefined)     ?? company,
+                status:  'invited',
             };
         }
 
