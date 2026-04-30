@@ -2937,7 +2937,7 @@ interface NodeDraft {
 }
 
 export function NodeConfigPanel() {
-  const { nodes, selectedNodeId, setNodes, setSelectedNodeId, activeWorkflow, setActiveWorkflow } =
+  const { nodes, edges, selectedNodeId, setNodes, setEdges, setSelectedNodeId, activeWorkflow, setActiveWorkflow } =
     useWorkflowStore();
 
   const { save: saveWorkflow, isSaving: isSavingDisabled } = useSaveWorkflow();
@@ -3020,6 +3020,25 @@ export function NodeConfigPanel() {
 
   function updateConfig(patch: Record<string, unknown>) {
     setDraft((prev) => prev ? { ...prev, config: { ...prev.config, ...patch } } : prev);
+    // For switch nodes, immediately mirror the cases array into the canvas store
+    // so output handles appear/disappear in real-time (before the user clicks Save).
+    // Also prune any edges whose sourceHandle no longer matches a valid case index.
+    if (nodeType === 'switch' && 'cases' in patch) {
+      const newCases = (patch.cases as Array<unknown>) ?? [];
+      const latestNodes = useWorkflowStore.getState().nodes;
+      setNodes(latestNodes.map(n =>
+        n.id === selectedNodeId
+          ? { ...n, data: { ...n.data, config: { ...n.data.config, cases: newCases } } }
+          : n
+      ));
+      const validHandles = new Set([
+        ...newCases.map((_, idx) => String(idx)),
+        'default',
+      ]);
+      setEdges(edges.filter(e =>
+        e.source !== selectedNodeId || validHandles.has(e.sourceHandle ?? '')
+      ));
+    }
   }
 
   function updateData(patch: Partial<typeof data>) {
@@ -3137,6 +3156,24 @@ export function NodeConfigPanel() {
     // Reset draft to last-saved snapshot, then deselect / close the config panel
     if (originalSnapshot) {
       setDraft({ ...originalSnapshot, config: { ...originalSnapshot.config } });
+      // For switch nodes: revert the canvas cases that were live-synced during editing,
+      // and remove any edges that were drawn to handles that no longer exist.
+      if (nodeType === 'switch') {
+        const latestNodes = useWorkflowStore.getState().nodes;
+        setNodes(latestNodes.map(n =>
+          n.id === selectedNodeId
+            ? { ...n, data: { ...n.data, config: originalSnapshot.config } }
+            : n
+        ));
+        const originalCases = (originalSnapshot.config.cases as Array<unknown>) ?? [];
+        const validHandles = new Set([
+          ...originalCases.map((_, idx) => String(idx)),
+          'default',
+        ]);
+        setEdges(edges.filter(e =>
+          e.source !== selectedNodeId || validHandles.has(e.sourceHandle ?? '')
+        ));
+      }
     }
     setSelectedNodeId(null);
   }
