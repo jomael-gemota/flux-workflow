@@ -196,4 +196,30 @@ export async function basecampDataRoutes(
             );
         }
     );
+
+    /**
+     * Derives all unique companies/organizations from the account's people list.
+     * Basecamp 3 has no dedicated companies endpoint; company info is embedded in
+     * each person object as `{ id, name }`.
+     */
+    fastify.get<{ Querystring: { credentialId: string } }>(
+        '/basecamp/companies',
+        async (request, reply) => {
+            const { credentialId } = request.query;
+            if (!credentialId) return reply.badRequest('credentialId is required');
+
+            const people = await basecampFetchAll(credentialId, '/people.json');
+
+            const seen  = new Map<number, { id: number; name: string }>();
+            for (const p of people) {
+                const co = p.company as { id?: number; name?: string } | null | undefined;
+                if (co?.id && co.name && !seen.has(co.id)) {
+                    seen.set(co.id, { id: co.id, name: co.name });
+                }
+            }
+
+            const companies = [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
+            return reply.send(companies);
+        }
+    );
 }

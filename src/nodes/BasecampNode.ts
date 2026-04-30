@@ -13,7 +13,8 @@ type BasecampAction =
     | 'post_comment'
     | 'send_campfire'
     | 'list_todos'
-    | 'invite_users';
+    | 'invite_users'
+    | 'list_organizations';
 
 interface BasecampConfig {
     credentialId: string;
@@ -486,6 +487,24 @@ export class BasecampNode implements NodeExecutor {
                 })),
                 count: allTodos.length,
             };
+        }
+
+        if (action === 'list_organizations') {
+            // Basecamp 3 has no dedicated companies endpoint.
+            // Companies are embedded in each person object as { id, name }.
+            // Fetch all account people and derive the unique company list.
+            const people = await this.fetchAllPages(`${baseUrl}/people.json`, headers);
+
+            const seen = new Map<number, { id: number; name: string }>();
+            for (const p of people) {
+                const co = p.company as { id?: number; name?: string } | null | undefined;
+                if (co?.id && co.name && !seen.has(co.id)) {
+                    seen.set(co.id, { id: co.id, name: String(co.name) });
+                }
+            }
+
+            const organizations = [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
+            return { organizations, count: organizations.length };
         }
 
         if (action === 'invite_users') {

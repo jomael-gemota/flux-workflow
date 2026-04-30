@@ -5,6 +5,7 @@ import {
   listBasecampTodos,
   listBasecampTodoGroups,
   listBasecampPeople,
+  listBasecampCompanies,
 } from '../api/client';
 
 export function useBasecampProjects(credentialId: string) {
@@ -51,6 +52,16 @@ export function useBasecampPeople(credentialId: string, projectId?: string) {
   return useQuery({
     queryKey:  ['basecamp-people', credentialId, projectId ?? ''],
     queryFn:   () => listBasecampPeople(credentialId, projectId),
+    enabled:   !!credentialId,
+    staleTime: 5 * 60 * 1000,
+    retry:     false,
+  });
+}
+
+export function useBasecampCompanies(credentialId: string) {
+  return useQuery({
+    queryKey:  ['basecamp-companies', credentialId],
+    queryFn:   () => listBasecampCompanies(credentialId),
     enabled:   !!credentialId,
     staleTime: 5 * 60 * 1000,
     retry:     false,

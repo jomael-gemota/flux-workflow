@@ -453,6 +453,11 @@ export interface BasecampPerson {
   company: string | null;
 }
 
+export interface BasecampCompany {
+  id: number;
+  name: string;
+}
+
 export function listBasecampProjects(credentialId: string) {
   return request<BasecampProject[]>(`/basecamp/projects?credentialId=${encodeURIComponent(credentialId)}`);
 }
@@ -479,6 +484,10 @@ export function listBasecampPeople(credentialId: string, projectId?: string) {
   let url = `/basecamp/people?credentialId=${encodeURIComponent(credentialId)}`;
   if (projectId) url += `&projectId=${encodeURIComponent(projectId)}`;
   return request<BasecampPerson[]>(url);
+}
+
+export function listBasecampCompanies(credentialId: string) {
+  return request<BasecampCompany[]>(`/basecamp/companies?credentialId=${encodeURIComponent(credentialId)}`);
 }
 
 // ── Email Notifications ────────────────────────────────────────────────────

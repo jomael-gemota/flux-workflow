@@ -12,7 +12,8 @@ const ACTION_LABELS: Record<string, string> = {
   post_comment:    'Post Comment',
   send_campfire:   'Campfire Message',
   list_todos:      'List To-Dos',
-  invite_users:    'Invite User to Org',
+  invite_users:       'Invite User to Org',
+  list_organizations: 'List Organizations',
 };
 
 export function BasecampNodeWidget({ id, data, selected }: NodeProps<BasecampNode>) {

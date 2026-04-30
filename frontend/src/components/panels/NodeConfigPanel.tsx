@@ -15,7 +15,7 @@ import { useGSheetsSheets } from '../../hooks/useGSheetsData';
 import { useSlackChannels, useSlackUsers } from '../../hooks/useSlackData';
 import { stageFile } from '../../api/client';
 import { useTeamsTeams, useTeamsChannels, useTeamsUsers } from '../../hooks/useTeamsData';
-import { useBasecampProjects, useBasecampTodolists, useBasecampTodos, useBasecampTodoGroups, useBasecampPeople } from '../../hooks/useBasecampData';
+import { useBasecampProjects, useBasecampTodolists, useBasecampTodos, useBasecampTodoGroups, useBasecampPeople, useBasecampCompanies } from '../../hooks/useBasecampData';
 import { NodeIcon } from '../nodes/NodeIcons';
 
 // ── Output field catalogue (human-friendly labels per node type) ──────────────
@@ -142,9 +142,10 @@ const NODE_OUTPUT_FIELDS: Record<string, OutputField[]> = {
     { key: 'completed',   label: 'Completion flag (complete / uncomplete)' },
     { key: 'todos',       label: 'To-do list array (list_todos)' },
     { key: 'count',       label: 'To-do count (list_todos)' },
-    { key: 'name',        label: 'Invited person\'s name (invite_users)' },
-    { key: 'email',       label: 'Invited person\'s email address (invite_users)' },
-    { key: 'company',     label: 'Invited person\'s company name (invite_users)' },
+    { key: 'name',          label: 'Invited person\'s name (invite_users)' },
+    { key: 'email',         label: 'Invited person\'s email address (invite_users)' },
+    { key: 'company',       label: 'Invited person\'s company name (invite_users)' },
+    { key: 'organizations', label: 'Organizations array [{id, name}] (list_organizations)' },
   ],
   slack: [
     { key: 'ok',        label: 'Slack API success flag' },
@@ -2367,6 +2368,36 @@ function TeamsResultDisplay({ result }: { result: NodeTestResult }) {
 
 function BasecampResultDisplay({ result }: { result: NodeTestResult }) {
   const out = (result.output ?? {}) as Record<string, unknown>;
+
+  // List organizations action
+  if (Array.isArray(out.organizations)) {
+    type Org = { id?: unknown; name?: string };
+    const orgs = out.organizations as Org[];
+    return (
+      <div className="p-3 space-y-2">
+        <div className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">
+          {orgs.length} organization{orgs.length !== 1 ? 's' : ''}
+        </div>
+        <ExpandableList
+          items={orgs}
+          countLabel={() => ''}
+          initialShow={10}
+          emptyText="No organizations found"
+          renderItem={(org) => (
+            <div className="flex items-center gap-2.5 bg-slate-100 dark:bg-slate-800 rounded-md px-3 py-2">
+              <span className="w-5 h-5 rounded-full bg-green-100 dark:bg-green-900/40 flex items-center justify-center text-[10px] font-bold text-green-700 dark:text-green-300 shrink-0">
+                {(org.name ?? '?').charAt(0).toUpperCase()}
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-slate-800 dark:text-slate-100 leading-snug">{org.name ?? '(unnamed)'}</p>
+                {org.id != null && <p className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">ID {String(org.id)}</p>}
+              </div>
+            </div>
+          )}
+        />
+      </div>
+    );
+  }
 
   // List todos action
   if (Array.isArray(out.todos)) {
@@ -8892,6 +8923,9 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
     (action === 'complete_todo' || action === 'uncomplete_todo') ? credentialId : '', safeTodolistId, todoStatus
   );
   const { data: people = [],    isLoading: loadingPeople }    = useBasecampPeople(credentialId, isExprVal(projectId) ? undefined : (projectId || undefined));
+  const { data: companies = [], isLoading: loadingCompanies } = useBasecampCompanies(action === 'invite_users' ? credentialId : '');
+
+  const [companyMode, setCompanyMode] = useState<'select' | 'expr'>(() => isExprVal(String(cfg.inviteCompany ?? '')) ? 'expr' : 'select');
 
   const needsProject  = ['create_todo', 'post_message', 'send_campfire', 'list_todos'].includes(action);
   const needsTodolist = ['create_todo', 'list_todos'].includes(action);
@@ -8915,7 +8949,8 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
           { value: 'post_comment',    label: 'Post Comment' },
           { value: 'send_campfire',   label: 'Send Campfire Message' },
           { value: 'list_todos',      label: 'List To-Dos' },
-          { value: 'invite_users',    label: 'Invite User to Organization' },
+          { value: 'invite_users',       label: 'Invite User to Organization' },
+          { value: 'list_organizations', label: 'List Organizations' },
         ]}
       />
 
@@ -9390,6 +9425,13 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
         </div>
       )}
 
+      {/* ── list_organizations fields ─────────────────────────────────── */}
+      {action === 'list_organizations' && (
+        <p className="text-[10px] text-slate-400 dark:text-slate-500">
+          Returns all unique organizations (companies) found across everyone in your Basecamp account. Use the output <code className="font-mono bg-slate-100 dark:bg-slate-800 px-0.5 rounded">organizations</code> array in downstream nodes.
+        </p>
+      )}
+
       {/* ── invite_users fields ───────────────────────────────────────── */}
       {action === 'invite_users' && (
         <>
@@ -9421,14 +9463,74 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
             nodes={otherNodes}
             testResults={testResults}
           />
-          <ExpressionInput
-            label="Company Name (optional)"
-            value={String(cfg.inviteCompany ?? '')}
-            onChange={(v) => onChange({ inviteCompany: v })}
-            placeholder="Acme Corp"
-            nodes={otherNodes}
-            testResults={testResults}
-          />
+          {/* Company Name — dropdown from account, with variable fallback */}
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+                Company Name <span className="text-slate-600 font-normal">(optional)</span>
+              </span>
+              {credentialId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = companyMode === 'select' ? 'expr' : 'select';
+                    setCompanyMode(next);
+                    if (next === 'select') onChange({ inviteCompany: '' });
+                  }}
+                  className="flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded transition-colors text-blue-400 hover:text-white hover:bg-blue-700"
+                  title="Toggle between picking from the list and entering a variable expression"
+                >
+                  <Braces className="w-2.5 h-2.5" />
+                  {companyMode === 'select' ? 'Use variable' : 'Select from list'}
+                </button>
+              )}
+            </div>
+            {companyMode === 'expr' ? (
+              <ExpressionInput
+                value={String(cfg.inviteCompany ?? '')}
+                onChange={(v) => onChange({ inviteCompany: v })}
+                placeholder="{{nodes.trigger.items[0].company}}"
+                nodes={otherNodes}
+                testResults={testResults}
+                hint="Enter a company name directly or insert a variable expression."
+              />
+            ) : loadingCompanies ? (
+              <div className="flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500 py-1">
+                <Loader2 className="w-3 h-3 animate-spin" /> Loading companies…
+              </div>
+            ) : (
+              <div className="max-h-36 overflow-y-auto rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 divide-y divide-slate-200 dark:divide-slate-700">
+                <button
+                  type="button"
+                  onClick={() => onChange({ inviteCompany: '' })}
+                  className={`w-full text-left px-2.5 py-1.5 text-xs transition-colors ${
+                    !cfg.inviteCompany
+                      ? 'bg-green-100 dark:bg-green-600/30 text-green-800 dark:text-green-300 font-medium'
+                      : 'text-slate-400 dark:text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  (none)
+                </button>
+                {companies.length === 0 && (
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 px-2.5 py-2">No companies found in this account.</p>
+                )}
+                {companies.map((co) => (
+                  <button
+                    key={co.id}
+                    type="button"
+                    onClick={() => onChange({ inviteCompany: co.name })}
+                    className={`w-full text-left px-2.5 py-1.5 text-xs transition-colors ${
+                      cfg.inviteCompany === co.name
+                        ? 'bg-green-100 dark:bg-green-600/30 text-green-800 dark:text-green-300 font-medium'
+                        : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                    }`}
+                  >
+                    {co.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </>
       )}
     </div>
