@@ -3021,23 +3021,27 @@ export function NodeConfigPanel() {
   function updateConfig(patch: Record<string, unknown>) {
     setDraft((prev) => prev ? { ...prev, config: { ...prev.config, ...patch } } : prev);
     // For switch nodes, immediately mirror the cases array into the canvas store
-    // so output handles appear/disappear in real-time (before the user clicks Save).
-    // Also prune any edges whose sourceHandle no longer matches a valid case index.
+    // so output handle labels appear/update in real-time (before the user clicks Save).
     if (nodeType === 'switch' && 'cases' in patch) {
       const newCases = (patch.cases as Array<unknown>) ?? [];
       const latestNodes = useWorkflowStore.getState().nodes;
+      const currentNode = latestNodes.find(n => n.id === selectedNodeId);
+      const currentCases = (currentNode?.data?.config?.cases as Array<unknown>) ?? [];
       setNodes(latestNodes.map(n =>
         n.id === selectedNodeId
           ? { ...n, data: { ...n.data, config: { ...n.data.config, cases: newCases } } }
           : n
       ));
-      const validHandles = new Set([
-        ...newCases.map((_, idx) => String(idx)),
-        'default',
-      ]);
-      setEdges(edges.filter(e =>
-        e.source !== selectedNodeId || validHandles.has(e.sourceHandle ?? '')
-      ));
+      // Only prune edges when cases are added or removed (not on label/condition edits).
+      if (newCases.length !== currentCases.length) {
+        const validHandles = new Set([
+          ...newCases.map((_, idx) => String(idx)),
+          'default',
+        ]);
+        setEdges(edges.filter(e =>
+          e.source !== selectedNodeId || validHandles.has(e.sourceHandle ?? '')
+        ));
+      }
     }
   }
 

@@ -257,9 +257,12 @@ export function WorkflowCanvas() {
 
   const onConnect = useCallback(
     (connection: Connection) => {
-      setEdges(addEdge(connection, edges));
+      // Read the latest edges directly from the store to avoid stale-closure issues
+      // (React state batching can leave the `edges` captured in the closure behind).
+      const currentEdges = useWorkflowStore.getState().edges;
+      setEdges(addEdge(connection, currentEdges) as CanvasEdge[]);
     },
-    [edges, setEdges]
+    [setEdges]
   );
 
   // ── Drop from palette ───────────────────────────────────────────────────────

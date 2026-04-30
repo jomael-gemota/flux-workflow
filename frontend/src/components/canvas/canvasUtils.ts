@@ -78,9 +78,11 @@ export function deserialize(workflow: WorkflowDefinition): {
         defaultNext?: string;
       };
       (cfg.cases ?? []).forEach((c, idx) => {
-        edges.push(
-          makeEdge(`${wn.id}-case-${idx}`, wn.id, c.next, String(idx), c.label ?? `case ${idx}`)
-        );
+        if (c.next) {
+          edges.push(
+            makeEdge(`${wn.id}-case-${idx}`, wn.id, c.next, String(idx), c.label ?? `case ${idx}`)
+          );
+        }
       });
       if (cfg.defaultNext) {
         edges.push(makeEdge(`${wn.id}-default`, wn.id, cfg.defaultNext, 'default', 'default'));

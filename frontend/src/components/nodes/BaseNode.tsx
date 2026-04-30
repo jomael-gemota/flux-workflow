@@ -207,7 +207,7 @@ export function BaseNode({
       {outputs.map((h, i) => {
         const pct = ((i + 1) / (outputs.length + 1)) * 100;
         return (
-          <Fragment key={`out-${i}`}>
+          <Fragment key={`out-${h.id ?? i}`}>
             {h.label && (
               <span
                 className="absolute whitespace-nowrap text-[11px] font-semibold
