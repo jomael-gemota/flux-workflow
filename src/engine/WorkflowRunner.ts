@@ -40,9 +40,15 @@ export class WorkflowRunner {
         // Cycle guard — a node only executes once even if multiple paths reach it
         const visited = new Set<string>();
 
+        // Tracks nodes that have received at least one successful upstream
+        // result. Used by skipBranch to decide whether a join node should
+        // actually run (some upstream produced data) or be skipped (every
+        // upstream was itself skipped, so there's no real input).
+        const hasSuccessfulUpstream = new Set<string>();
+
         await Promise.all(
             entryIds.map(id =>
-                this.executeNode(workflow, id, context, results, pendingCounts, visited, onNodeResult)
+                this.executeNode(workflow, id, context, results, pendingCounts, visited, hasSuccessfulUpstream, onNodeResult)
             )
         );
 
@@ -122,6 +128,7 @@ export class WorkflowRunner {
         results: NodeResult[],
         pendingCounts: Map<string, number>,
         visited: Set<string>,
+        hasSuccessfulUpstream: Set<string>,
         onNodeResult?: (result: NodeResult) => void,
     ): Promise<void> {
         // Fan-in gate: decrement the pending count for this node.
@@ -159,17 +166,10 @@ export class WorkflowRunner {
             context.variables[nodeId] = { __disabled: true };
             pushResult({ nodeId, status: 'skipped', output: null, durationMs: 0 });
 
-            if (node.type === 'condition' || node.type === 'switch') {
-                // Routing is unknown without running — skip every branch
-                for (const nextId of this.getAllNextIds(node)) {
-                    await this.skipBranch(workflow, nextId, context, results, pendingCounts, visited, onNodeResult);
-                }
-            } else {
-                await Promise.all(
-                    node.next.filter(Boolean).map(nextId =>
-                        this.executeNode(workflow, nextId, context, results, pendingCounts, visited, onNodeResult)
-                    )
-                );
+            // A disabled node produced no real output — every outgoing branch
+            // is a skip, regardless of node type.
+            for (const nextId of this.getAllNextIds(node)) {
+                await this.skipBranch(workflow, nextId, context, results, pendingCounts, visited, hasSuccessfulUpstream, onNodeResult);
             }
             return;
         }
@@ -217,10 +217,17 @@ export class WorkflowRunner {
 
         const takenIds = this.resolveNextNodes(node.type, output, node.next);
 
+        // Mark every taken successor as having at least one successful upstream
+        // before recursing, so that a sibling branch's later skipBranch call
+        // can correctly decide to execute (rather than skip) a join node.
+        for (const tid of takenIds) {
+            if (tid) hasSuccessfulUpstream.add(tid);
+        }
+
         // Execute taken branches first
         await Promise.all(
             takenIds.map(nextId =>
-                this.executeNode(workflow, nextId, context, results, pendingCounts, visited, onNodeResult)
+                this.executeNode(workflow, nextId, context, results, pendingCounts, visited, hasSuccessfulUpstream, onNodeResult)
             )
         );
 
@@ -228,7 +235,7 @@ export class WorkflowRunner {
         // join nodes can correctly receive their pending count decrements.
         const skippedIds = this.getAllNextIds(node).filter(id => !takenIds.includes(id));
         for (const skippedId of skippedIds) {
-            await this.skipBranch(workflow, skippedId, context, results, pendingCounts, visited, onNodeResult);
+            await this.skipBranch(workflow, skippedId, context, results, pendingCounts, visited, hasSuccessfulUpstream, onNodeResult);
         }
     }
 
@@ -243,6 +250,7 @@ export class WorkflowRunner {
         results: NodeResult[],
         pendingCounts: Map<string, number>,
         visited: Set<string>,
+        hasSuccessfulUpstream: Set<string>,
         onNodeResult?: (result: NodeResult) => void,
     ): Promise<void> {
         if (!nodeId || visited.has(nodeId)) return;
@@ -263,12 +271,21 @@ export class WorkflowRunner {
             const newCount = current - 1;
             pendingCounts.set(nextId, newCount);
 
+            // Only act once the LAST predecessor of nextId has arrived.
+            // While newCount > 0, other (possibly successful) predecessors may
+            // still be coming, so we must NOT pre-emptively mark nextId as
+            // skipped here — doing that would put it in `visited` and cause
+            // a later successful predecessor's executeNode call to no-op.
             if (newCount <= 0 && !visited.has(nextId)) {
-                // All branches for this join node are now complete — execute it
-                await this.executeNode(workflow, nextId, context, results, pendingCounts, visited, onNodeResult);
-            } else if (!visited.has(nextId)) {
-                // Still waiting on other branches — propagate the skip
-                await this.skipBranch(workflow, nextId, context, results, pendingCounts, visited, onNodeResult);
+                if (hasSuccessfulUpstream.has(nextId)) {
+                    // At least one upstream branch produced real output;
+                    // run the join node so it consumes that data.
+                    await this.executeNode(workflow, nextId, context, results, pendingCounts, visited, hasSuccessfulUpstream, onNodeResult);
+                } else {
+                    // Every upstream branch was itself skipped — there is no
+                    // input for this node, so propagate the skip downstream.
+                    await this.skipBranch(workflow, nextId, context, results, pendingCounts, visited, hasSuccessfulUpstream, onNodeResult);
+                }
             }
         }
     }
