@@ -21,8 +21,14 @@ function getColorDef(colorId: string) {
 
 // ── Color swatches ────────────────────────────────────────────────────────────
 
+// The default text color for each theme. Text using these values will be
+// automatically swapped when the theme toggles so it stays readable.
+const LIGHT_DEFAULT_TEXT_COLOR = '#1e293b';
+const DARK_DEFAULT_TEXT_COLOR  = '#e2e8f0';
+
+// '__inherit__' is a sentinel meaning "strip inline color → inherit from container"
 const TEXT_COLORS = [
-  { hex: '#1e293b', label: 'Default' },
+  { hex: '__inherit__', label: 'Default' },
   { hex: '#000000', label: 'Black' },
   { hex: '#ef4444', label: 'Red' },
   { hex: '#f97316', label: 'Orange' },
@@ -53,11 +59,13 @@ interface ToolbarProps {
   execCmd: (cmd: string, value?: string) => void;
   /** Applies a pixel font size to the current selection */
   applyFontSize: (px: number) => void;
+  /** Strips inline color from the current selection so it inherits the theme color */
+  onRemoveTextColor: () => void;
   onClose: () => void;
   isDark: boolean;
 }
 
-function RichTextToolbar({ execCmd, applyFontSize, onClose, isDark }: ToolbarProps) {
+function RichTextToolbar({ execCmd, applyFontSize, onRemoveTextColor, onClose, isDark }: ToolbarProps) {
   const [textColorOpen, setTextColorOpen] = useState(false);
   const [hlColorOpen, setHlColorOpen] = useState(false);
   const [fontSize, setFontSize] = useState(16);
@@ -189,22 +197,34 @@ function RichTextToolbar({ execCmd, applyFontSize, onClose, isDark }: ToolbarPro
             style={{ background: isDark ? '#1e293b' : '#ffffff', minWidth: 148 }}
             onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
           >
-            {TEXT_COLORS.map(({ hex, label }) => (
-              <button
-                key={hex}
-                title={label}
-                className="w-6 h-6 rounded-md border-2 hover:scale-125 transition-transform"
-                style={{
-                  background: hex,
-                  borderColor: hex === '#ffffff' ? '#cbd5e1' : hex === '#1e293b' ? '#475569' : hex,
-                }}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  execCmd('foreColor', hex);
-                  setTextColorOpen(false);
-                }}
-              />
-            ))}
+            {TEXT_COLORS.map(({ hex, label }) => {
+              const isInherit = hex === '__inherit__';
+              // "Default" swatch shows the current theme's default text color so
+              // it always looks like "the normal color" regardless of theme.
+              const swatchBg = isInherit
+                ? (isDark ? DARK_DEFAULT_TEXT_COLOR : LIGHT_DEFAULT_TEXT_COLOR)
+                : hex;
+              const borderCol = isInherit
+                ? (isDark ? '#475569' : '#94a3b8')
+                : hex === '#ffffff' ? '#cbd5e1' : hex === '#000000' ? '#475569' : hex;
+              return (
+                <button
+                  key={hex}
+                  title={label}
+                  className="w-6 h-6 rounded-md border-2 hover:scale-125 transition-transform"
+                  style={{ background: swatchBg, borderColor: borderCol }}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    if (isInherit) {
+                      onRemoveTextColor();
+                    } else {
+                      execCmd('foreColor', hex);
+                    }
+                    setTextColorOpen(false);
+                  }}
+                />
+              );
+            })}
           </div>
         )}
       </div>
@@ -421,6 +441,47 @@ export function StickyNoteNode({ id, data, selected }: NodeProps) {
     }
   }, []);
 
+  /**
+   * Strips explicit inline `color` attributes/styles from every element that
+   * intersects the current saved selection, so the text falls back to inheriting
+   * the container's theme-reactive color.
+   */
+  const removeInlineColor = useCallback(() => {
+    const el = contentRef.current;
+    if (!el) return;
+
+    el.focus();
+
+    const sel = window.getSelection();
+    if (sel && savedRangeRef.current) {
+      sel.removeAllRanges();
+      sel.addRange(savedRangeRef.current);
+    }
+
+    const sel2 = window.getSelection();
+    if (!sel2 || sel2.rangeCount === 0) return;
+    const range = sel2.getRangeAt(0);
+
+    el.querySelectorAll('[color], [style]').forEach((elem) => {
+      try {
+        if (range.intersectsNode(elem)) {
+          const htmlElem = elem as HTMLElement;
+          if (htmlElem.hasAttribute('color')) htmlElem.removeAttribute('color');
+          if (htmlElem.style.color) htmlElem.style.removeProperty('color');
+        }
+      } catch {
+        // intersectsNode can throw in rare edge cases; safe to ignore
+      }
+    });
+
+    requestAnimationFrame(() => {
+      const newSel = window.getSelection();
+      if (newSel && newSel.rangeCount > 0) {
+        savedRangeRef.current = newSel.getRangeAt(0).cloneRange();
+      }
+    });
+  }, []);
+
   // ── Edit mode ───────────────────────────────────────────────────────────────
 
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
@@ -456,6 +517,32 @@ export function StickyNoteNode({ id, data, selected }: NodeProps) {
       contentRef.current.innerHTML = String(d.content ?? '');
     }
   }, [d.content, isEditing]);
+
+  // When the theme toggles, swap the two "auto-default" text colors in stored
+  // content so existing notes stay readable without any user action.
+  // We use a ref for isEditing so this effect only re-runs when isDark changes.
+  const isEditingRef = useRef(isEditing);
+  useEffect(() => { isEditingRef.current = isEditing; }, [isEditing]);
+
+  useEffect(() => {
+    const el = contentRef.current;
+    if (isEditingRef.current || !el) return;
+
+    const currentContent = el.innerHTML;
+    if (!currentContent) return;
+
+    const fromColor = isDark ? LIGHT_DEFAULT_TEXT_COLOR : DARK_DEFAULT_TEXT_COLOR;
+    const toColor   = isDark ? DARK_DEFAULT_TEXT_COLOR  : LIGHT_DEFAULT_TEXT_COLOR;
+
+    const updated = currentContent.replace(new RegExp(fromColor, 'gi'), toColor);
+    if (updated !== currentContent) {
+      el.innerHTML = updated;
+      updateContent(id, updated);
+    }
+  // Intentionally limited to isDark: id and updateContent are stable Zustand
+  // references; including d.content would cause an update loop.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDark]);
 
   // Close color swatch menu on outside click
   useEffect(() => {
@@ -558,7 +645,13 @@ export function StickyNoteNode({ id, data, selected }: NodeProps) {
 
         {/* ── Rich-text toolbar (shown only while editing) ── */}
         {isEditing && (
-          <RichTextToolbar execCmd={execCmd} applyFontSize={applyFontSize} onClose={exitEdit} isDark={isDark} />
+          <RichTextToolbar
+            execCmd={execCmd}
+            applyFontSize={applyFontSize}
+            onRemoveTextColor={removeInlineColor}
+            onClose={exitEdit}
+            isDark={isDark}
+          />
         )}
 
         {/* ── Content area ── */}
