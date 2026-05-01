@@ -821,6 +821,7 @@ function ExpressionTextArea({
         {nodes.length > 0 && (
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => setOpen((p) => !p)}
             title="Insert a variable from another node"
             className={`flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded transition-colors shrink-0 ${
@@ -926,6 +927,7 @@ function ExpressionInput({
           {nodes.length > 0 && (
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => setOpen((p) => !p)}
               title="Insert a variable from another node"
               className={`flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded transition-colors shrink-0 ${
