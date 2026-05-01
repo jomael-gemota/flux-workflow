@@ -774,8 +774,13 @@ export function WorkflowSidebar() {
       <div className="flex-1 overflow-y-auto min-h-0 py-1.5 px-2 space-y-0.5">
 
         {isLoading ? (
-          <div className="flex justify-center py-8">
-            <Loader2 className="w-4 h-4 text-slate-400 dark:text-slate-500 animate-spin" />
+          <div className="space-y-0.5 py-1 animate-pulse">
+            {([120, 160, 95, 140, 105] as const).map((w, i) => (
+              <div key={i} className="flex items-center gap-2 px-2 py-1.5 rounded-lg">
+                <div className="w-3 h-3 rounded bg-slate-200 dark:bg-slate-700 shrink-0" />
+                <div className="h-2.5 rounded-full bg-slate-200 dark:bg-slate-700" style={{ width: w }} />
+              </div>
+            ))}
           </div>
 
         ) : list.length === 0 && projects.length === 0 ? (

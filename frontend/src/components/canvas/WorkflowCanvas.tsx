@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useMemo, useState } from 'react';
+import { useWorkflowList } from '../../hooks/useWorkflows';
 import {
   ReactFlow,
   Background,
@@ -123,6 +124,86 @@ function resolveEdgeStatus(
   return 'idle';
 }
 
+// ── Canvas loading state ──────────────────────────────────────────────────────
+
+const LOADING_MESSAGES = [
+  'Assembling your automation canvas…',
+  'Fetching your workflow blueprints…',
+  'Wiring up your automation flows…',
+  'Loading your workflow studio…',
+  'Syncing your workflow definitions…',
+  'Preparing your creative workspace…',
+  'Restoring your last session…',
+  'Getting your pipelines ready…',
+  'Mapping out your logic flows…',
+  'Bringing your automations to life…',
+];
+
+function SkeletonNode({ lineWidths }: { lineWidths: number[] }) {
+  return (
+    <div className="rounded-xl bg-white/80 dark:bg-slate-800/80 shadow-md p-3 border border-slate-200/60 dark:border-slate-700/60 w-[148px] animate-pulse shrink-0">
+      <div className="flex items-center gap-2 mb-2.5">
+        <div className="w-6 h-6 rounded-lg bg-slate-200 dark:bg-slate-700 shrink-0" />
+        <div className="h-2.5 w-16 rounded-full bg-slate-200 dark:bg-slate-700" />
+      </div>
+      {lineWidths.map((w, i) => (
+        <div
+          key={i}
+          className="h-2 rounded-full bg-slate-100 dark:bg-slate-700/60 mt-1.5"
+          style={{ width: `${w}%` }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function SkeletonEdge() {
+  return (
+    <div className="flex items-center gap-0 shrink-0">
+      <div className="w-6 h-px bg-slate-300/70 dark:bg-slate-600/70" />
+      <div className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-600" />
+      <div className="w-6 h-px bg-slate-300/70 dark:bg-slate-600/70" />
+    </div>
+  );
+}
+
+function CanvasLoadingState() {
+  const message = useMemo(
+    () => LOADING_MESSAGES[Math.floor(Math.random() * LOADING_MESSAGES.length)],
+    [],
+  );
+
+  return (
+    <div className="h-full flex items-center justify-center bg-[#E9EEF6] dark:bg-[#171717]">
+      <div className="flex flex-col items-center gap-10 select-none px-8">
+
+        {/* Skeleton flow diagram */}
+        <div className="flex items-center gap-1">
+          <SkeletonNode lineWidths={[100, 75]} />
+          <SkeletonEdge />
+          <SkeletonNode lineWidths={[100, 85, 60]} />
+          <SkeletonEdge />
+          <SkeletonNode lineWidths={[100, 70]} />
+        </div>
+
+        {/* Loading message */}
+        <div className="flex flex-col items-center gap-2 text-center">
+          <div className="flex items-center gap-2.5">
+            <Loader2 className="w-4 h-4 animate-spin text-blue-500 shrink-0" />
+            <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">
+              {message}
+            </p>
+          </div>
+          <p className="text-[11px] text-slate-400 dark:text-slate-500">
+            Powered by Google AI
+          </p>
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
 // ── Main canvas ───────────────────────────────────────────────────────────────
 
 export function WorkflowCanvas() {
@@ -151,6 +232,8 @@ export function WorkflowCanvas() {
     isInteractive,
     setIsInteractive,
   } = useWorkflowStore();
+
+  const { isLoading: isWorkflowsLoading } = useWorkflowList();
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [projectModalOpen, setProjectModalOpen] = useState(false);
@@ -535,7 +618,11 @@ export function WorkflowCanvas() {
     });
   }, [edges, executionStatuses, isExecuting]);
 
-  // ── Empty state ─────────────────────────────────────────────────────────────
+  // ── Loading / empty state ────────────────────────────────────────────────────
+
+  if (!activeWorkflow && isWorkflowsLoading) {
+    return <CanvasLoadingState />;
+  }
 
   if (!activeWorkflow) {
     return (
