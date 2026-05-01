@@ -634,10 +634,6 @@ export function VariablePickerPanel({
                                       const isSubArr = Array.isArray(subVal);
                                       const subExpandKey = `${expandKey}::${subKey}`;
                                       const isSubOpen = expanded[subExpandKey] ?? false;
-                                      const subFirstItem = isSubArr && (subVal as unknown[]).length > 0
-                                        ? (subVal as unknown[])[0]
-                                        : null;
-                                      const subFirstIsObj = subFirstItem !== null && typeof subFirstItem === 'object';
 
                                       return (
                                         <div key={subKey} className="space-y-0.5">
