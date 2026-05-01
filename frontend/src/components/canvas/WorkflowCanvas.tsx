@@ -195,7 +195,7 @@ function CanvasLoadingState() {
             </p>
           </div>
           <p className="text-[11px] text-slate-400 dark:text-slate-500">
-            Powered by Google AI
+            Powered by Gemini
           </p>
         </div>
 
