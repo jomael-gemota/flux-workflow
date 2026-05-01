@@ -389,7 +389,7 @@ function DisplayValue({ value, nodes, placeholder }: { value: string; nodes: Can
  */
 function buildExtractPredictedFields(
   config: Record<string, unknown> | undefined,
-): Array<{ key: string; label: string; hasReal: false }> {
+): Array<{ key: string; label: string; hasReal: boolean }> {
   const cfg = (config ?? {}) as { mode?: string; fields?: Array<{ name?: string }> };
   const mode = cfg.mode ?? 'auto';
   const fields = Array.isArray(cfg.fields) ? cfg.fields : [];
