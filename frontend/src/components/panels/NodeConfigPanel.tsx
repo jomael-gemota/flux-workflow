@@ -8861,6 +8861,37 @@ function SlackConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
       {/* ── Send Message ──────────────────────────────────────────── */}
       {action === 'send_message' && (
         <>
+          {/* Sender selector */}
+          <div className="space-y-1">
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Send as</label>
+            <div className="grid grid-cols-2 gap-1.5">
+              {([
+                ['user', 'My Slack Account', 'Acts as you'],
+                ['bot',  'Flux Bot',         'Automated bot sender'],
+              ] as const).map(([val, lbl, sub]) => (
+                <label
+                  key={val}
+                  className={`flex flex-col gap-0.5 rounded-md border px-2.5 py-2 cursor-pointer transition-colors ${
+                    (cfg.senderType ?? 'user') === val
+                      ? 'border-violet-500 bg-violet-50 dark:bg-violet-500/10'
+                      : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="slack-sender-msg"
+                    value={val}
+                    checked={(cfg.senderType ?? 'user') === val}
+                    onChange={() => onChange({ senderType: val })}
+                    className="sr-only"
+                  />
+                  <span className={`text-xs font-medium ${(cfg.senderType ?? 'user') === val ? 'text-violet-700 dark:text-violet-300' : 'text-slate-700 dark:text-slate-200'}`}>{lbl}</span>
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500">{sub}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
           <SlackMultiPicker
             label="Channels"
             value={channelsValue}
@@ -8882,7 +8913,8 @@ function SlackConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
             placeholder="Hello from your workflow!"
             nodes={otherNodes}
             testResults={testResults}
-            rows={3}
+            rows={5}
+            resizable
           />
         </>
       )}
@@ -8890,6 +8922,37 @@ function SlackConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
       {/* ── Send DM ───────────────────────────────────────────────── */}
       {action === 'send_dm' && (
         <>
+          {/* Sender selector */}
+          <div className="space-y-1">
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Send as</label>
+            <div className="grid grid-cols-2 gap-1.5">
+              {([
+                ['user', 'My Slack Account', 'Acts as you'],
+                ['bot',  'Flux Bot',         'Automated bot sender'],
+              ] as const).map(([val, lbl, sub]) => (
+                <label
+                  key={val}
+                  className={`flex flex-col gap-0.5 rounded-md border px-2.5 py-2 cursor-pointer transition-colors ${
+                    (cfg.senderType ?? 'user') === val
+                      ? 'border-violet-500 bg-violet-50 dark:bg-violet-500/10'
+                      : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="slack-sender-dm"
+                    value={val}
+                    checked={(cfg.senderType ?? 'user') === val}
+                    onChange={() => onChange({ senderType: val })}
+                    className="sr-only"
+                  />
+                  <span className={`text-xs font-medium ${(cfg.senderType ?? 'user') === val ? 'text-violet-700 dark:text-violet-300' : 'text-slate-700 dark:text-slate-200'}`}>{lbl}</span>
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500">{sub}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
           <SlackMultiPicker
             label="Recipients"
             value={userIdsValue}
@@ -8911,7 +8974,8 @@ function SlackConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
             placeholder="Hello from your workflow!"
             nodes={otherNodes}
             testResults={testResults}
-            rows={3}
+            rows={5}
+            resizable
           />
         </>
       )}

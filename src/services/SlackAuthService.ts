@@ -158,6 +158,21 @@ export class SlackAuthService {
         return cred.accessToken;
     }
 
+    /**
+     * Returns the Flux Bot token (bot access token stored in refreshToken).
+     * Falls back to the user token if no separate bot token was issued.
+     */
+    async getFluxBotToken(credentialId: string): Promise<string> {
+        const cred = await this.credentialRepo.findById(credentialId);
+        if (!cred) {
+            throw new Error(
+                `Slack credential "${credentialId}" not found. ` +
+                'Connect your Slack workspace first via Credentials.'
+            );
+        }
+        return cred.refreshToken || cred.accessToken;
+    }
+
     /** @deprecated Use getToken() instead */
     async getBotToken(credentialId: string): Promise<string> {
         return this.getToken(credentialId);

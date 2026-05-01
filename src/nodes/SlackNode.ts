@@ -17,6 +17,8 @@ type SlackAction =
 interface SlackConfig {
     credentialId: string;
     action: SlackAction;
+    /** Who sends the message: 'bot' = Flux Bot, 'user' = connected Slack account (default) */
+    senderType?: 'bot' | 'user';
     // send_message — one or more channels (comma-separated IDs / names)
     channels?: string;
     channel?: string;           // legacy single-channel field
@@ -77,7 +79,11 @@ export class SlackNode implements NodeExecutor {
         if (!credentialId) throw new Error('Slack node: credentialId is required');
         if (!action)       throw new Error('Slack node: action is required');
 
-        const token  = await this.slackAuth.getBotToken(credentialId);
+        const isSendAction = action === 'send_message' || action === 'send_dm';
+        const useFluxBot   = isSendAction && config.senderType === 'bot';
+        const token  = useFluxBot
+            ? await this.slackAuth.getFluxBotToken(credentialId)
+            : await this.slackAuth.getToken(credentialId);
         const client = new WebClient(token);
 
         // ── Send Message to Channel(s) ────────────────────────────────────────

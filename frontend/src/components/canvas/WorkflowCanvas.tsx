@@ -99,7 +99,7 @@ const DEFAULT_CONFIGS: Partial<Record<NodeType, Record<string, unknown>>> = {
   gdrive:  { action: 'list',   credentialId: '', query: '' },
   gdocs:   { action: 'read',   credentialId: '', documentId: '' },
   gsheets: { action: 'read',   credentialId: '', spreadsheetId: '', range: 'Sheet1!A1:Z100' },
-  slack:   { action: 'send_message', credentialId: '', channels: '', text: '', uploadSource: 'content', readSource: 'channel', channelFilter: 'all' },
+  slack:   { action: 'send_message', credentialId: '', channels: '', text: '', uploadSource: 'content', readSource: 'channel', channelFilter: 'all', senderType: 'user' },
   teams:    { action: 'send_message', credentialId: '', teamId: '', channelId: '', text: '' },
   basecamp:  { action: 'create_todo', credentialId: '', projectId: '', todolistId: '' },
   formatter: { medium: 'slack', template: '' },
