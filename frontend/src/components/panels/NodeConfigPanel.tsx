@@ -380,12 +380,13 @@ function DisplayValue({ value, nodes, placeholder }: { value: string; nodes: Can
  * can insert `{{nodes.<extract>.items[0].<field>}}` chips downstream before
  * actually running the node.
  *
- *   - mode = 'each-item'              → expose `items[0].<field>` + count
- *   - mode = 'auto' / 'single' / undef → expose flat `<field>` chips
+ *   - mode = 'each-item'                       → expose `items[0].<field>` + count
+ *   - mode = 'auto' / 'single' / 'first-match' → expose flat `<field>` chips
  *
  * (For `auto`, runtime behavior depends on whether the source resolves to an
  * array, so we default to the flat shape; users can adjust the inserted
- * expression if they need to drill into items.)
+ * expression if they need to drill into items. `first-match` always produces
+ * flat output by design.)
  */
 function buildExtractPredictedFields(
   config: Record<string, unknown> | undefined,
@@ -4701,9 +4702,10 @@ function autoDetectTextPath(item: unknown): string {
 }
 
 const EXTRACT_MODE_OPTIONS = [
-  { value: 'auto',       label: 'Auto (detect from source)' },
-  { value: 'single',     label: 'Single — treat source as one block' },
-  { value: 'each-item',  label: 'Each item — require a list source' },
+  { value: 'auto',         label: 'Auto (detect from source)' },
+  { value: 'single',       label: 'Single — treat source as one block' },
+  { value: 'each-item',    label: 'Each item — return one row per item' },
+  { value: 'first-match',  label: 'First-match — search across items, return one merged result' },
 ];
 
 const EXTRACT_MODE_DESCRIPTIONS: Record<string, string> = {
@@ -4712,14 +4714,16 @@ const EXTRACT_MODE_DESCRIPTIONS: Record<string, string> = {
   single:
     'Always run extraction once. If the source is a list, the whole list is JSON-dumped before extraction — useful for AI fields that should reason across all items at once.',
   'each-item':
-    'Always iterate. Fails the node if the source isn\'t a list. Use when the upstream is guaranteed to return an array.',
+    'Always iterate. Fails the node if the source isn\'t a list. Returns `items: [...]`. Use when each item is its own independent record.',
+  'first-match':
+    'Walk through every item; for each field, take the first item where the rule matches. Returns one flat object — same shape as Single mode. Best when the values you need are scattered across multiple items (e.g. one email has the name, another has the address).',
 };
 
 function ExtractConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
   const source     = String(cfg.source ?? '');
   const preprocess = String(cfg.preprocess ?? 'plain-text');
   const fields     = (Array.isArray(cfg.fields) ? cfg.fields : []) as ExtractFieldShape[];
-  const mode       = String(cfg.mode ?? 'auto') as 'auto' | 'single' | 'each-item';
+  const mode       = String(cfg.mode ?? 'auto') as 'auto' | 'single' | 'each-item' | 'first-match';
   const textPath   = String(cfg.textPath ?? '');
   const aiProvider    = String(cfg.aiProvider    ?? 'openai');
   const aiModel       = String(cfg.aiModel       ?? 'gpt-4o-mini');
@@ -4739,8 +4743,16 @@ function ExtractConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) 
   const [itemIndex, setItemIndex] = useState(0);
   const sampleRef = useRef<HTMLTextAreaElement>(null);
 
-  // Derived flags for rendering iteration UI
-  const iterating = mode === 'each-item' || (mode === 'auto' && Array.isArray(listItems));
+  // Derived flags for rendering iteration UI.
+  //   - `iterating` means "the panel is in list-aware mode" (textPath, pager,
+  //     coverage badges all relevant). It's true for each-item, first-match,
+  //     and for auto when the source is a list.
+  //   - `outputIsList` means "the runtime produces items: [...]". Only true
+  //     for each-item (and auto-with-array). First-match still iterates over
+  //     items but the output is flat.
+  const isAutoArray = mode === 'auto' && Array.isArray(listItems);
+  const iterating   = mode === 'each-item' || mode === 'first-match' || isAutoArray;
+  const outputIsList = mode === 'each-item' || isAutoArray;
   const itemCount = listItems?.length ?? 0;
   const safeIndex = itemCount > 0 ? Math.min(itemIndex, itemCount - 1) : 0;
 
@@ -4952,18 +4964,26 @@ function ExtractConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) 
         </p>
       )}
 
-      {/* List-mode banner — appears whenever the resolved source is an array
-          (or the user forced each-item mode). Tells non-technical users the
-          extraction will run once per item and where to find their values. */}
+      {/* List-mode banner — appears whenever the panel is in list-aware mode.
+          Copy depends on whether the runtime output will be `items: [...]` or
+          a single merged flat object (first-match). */}
       {iterating && itemCount > 0 && (
         <div className="rounded-md border border-blue-300 dark:border-blue-700/60 bg-blue-50 dark:bg-blue-900/30 px-2.5 py-2 space-y-1.5">
-          <p className="text-[11px] text-blue-800 dark:text-blue-200 leading-snug">
-            <strong>Source is a list of {itemCount} item{itemCount !== 1 ? 's' : ''}.</strong>{' '}
-            Extract will run once per item and return{' '}
-            <span className="font-mono">items: [...]</span> plus{' '}
-            <span className="font-mono">count</span>. Each item's fields are accessible downstream as{' '}
-            <span className="font-mono">{`{{nodes.<this>.items[0].<fieldName>}}`}</span>.
-          </p>
+          {mode === 'first-match' ? (
+            <p className="text-[11px] text-blue-800 dark:text-blue-200 leading-snug">
+              <strong>Source is a list of {itemCount} item{itemCount !== 1 ? 's' : ''}.</strong>{' '}
+              For each field below, Extract walks every item in order and takes the first match it finds. The output is one merged object — read fields downstream as{' '}
+              <span className="font-mono">{`{{nodes.<this>.<fieldName>}}`}</span>.
+            </p>
+          ) : (
+            <p className="text-[11px] text-blue-800 dark:text-blue-200 leading-snug">
+              <strong>Source is a list of {itemCount} item{itemCount !== 1 ? 's' : ''}.</strong>{' '}
+              Extract will run once per item and return{' '}
+              <span className="font-mono">items: [...]</span> plus{' '}
+              <span className="font-mono">count</span>. Each item's fields are accessible downstream as{' '}
+              <span className="font-mono">{`{{nodes.<this>.items[0].<fieldName>}}`}</span>.
+            </p>
+          )}
         </div>
       )}
       {mode === 'each-item' && itemCount === 0 && sampleStatus === 'loaded' && (
@@ -5141,19 +5161,32 @@ function ExtractConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) 
       <p className="text-[10px] text-slate-500 dark:text-slate-400 -mt-1 leading-relaxed">
         Each field becomes one value in this node's output. Other nodes can read it as
         {' '}<span className="font-mono text-blue-500 dark:text-blue-400">
-          {iterating
+          {outputIsList
             ? `{{nodes.<this-node>.items[0].<fieldName>}}`
             : `{{nodes.<this-node>.<fieldName>}}`}
         </span>.
       </p>
       {iterating && itemCount > 1 && (
         <div className="rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 px-2.5 py-2 -mt-1 space-y-1">
-          <p className="text-[11px] text-slate-700 dark:text-slate-200 leading-snug">
-            <strong>Every field runs against every item.</strong> A rule that only matches some items will produce <span className="font-mono">null</span> on the rest — that's normal.
-          </p>
-          <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug">
-            The "preview" next to each rule shows the result for the item currently in the sample box above. The "matches X / {itemCount}" badge tells you how many items the rule matches across the entire list.
-          </p>
+          {mode === 'first-match' ? (
+            <>
+              <p className="text-[11px] text-slate-700 dark:text-slate-200 leading-snug">
+                <strong>Each field walks every item until it finds a match.</strong> A rule that matches in any one item will populate the field for the whole result.
+              </p>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug">
+                The "preview" shows the rule's result against the item currently in the sample box. The "matches X / {itemCount}" badge tells you how many items the rule matches — anything ≥ 1 is enough.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-[11px] text-slate-700 dark:text-slate-200 leading-snug">
+                <strong>Every field runs against every item.</strong> A rule that only matches some items will produce <span className="font-mono">null</span> on the rest — that's normal.
+              </p>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug">
+                The "preview" next to each rule shows the result for the item currently in the sample box above. The "matches X / {itemCount}" badge tells you how many items the rule matches across the entire list.
+              </p>
+            </>
+          )}
         </div>
       )}
 
@@ -5169,6 +5202,7 @@ function ExtractConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) 
           field={f}
           sampleText={sampleText}
           coverage={coverageFor(f)}
+          mode={mode}
           onChange={(patch) => updateField(i, patch)}
           onChangeStrategy={(patch) => updateStrategy(i, patch)}
           onChangeStrategyKind={(kind) => changeStrategyKind(i, kind)}
@@ -5279,12 +5313,14 @@ function clientPreprocess(text: string, mode: string): string {
 }
 
 function ExtractFieldRow({
-  field, sampleText, coverage, onChange, onChangeStrategy, onChangeStrategyKind, onRemove, onMoveUp, onMoveDown,
+  field, sampleText, coverage, mode, onChange, onChangeStrategy, onChangeStrategyKind, onRemove, onMoveUp, onMoveDown,
 }: {
   field: ExtractFieldShape;
   sampleText: string;
   /** Across-all-items match stats. Null when not iterating or strategy can't be previewed client-side. */
   coverage: { matched: number; total: number } | null;
+  /** Source mode — used to decide whether partial coverage + Required is actually a problem. */
+  mode: 'auto' | 'single' | 'each-item' | 'first-match';
   onChange: (patch: Partial<ExtractFieldShape>) => void;
   onChangeStrategy: (patch: Partial<ExtractStrategyShape>) => void;
   onChangeStrategyKind: (kind: ExtractStrategyKind) => void;
@@ -5294,6 +5330,16 @@ function ExtractFieldRow({
 }) {
   const preview = useMemo(() => previewExtract(field, sampleText), [field, sampleText]);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+
+  // Required-failure prediction: in each-item / auto-array modes, any item
+  // missing the value fails the node. In first-match mode, only ZERO matches
+  // is fatal — at least one match is enough to satisfy `required`.
+  const requiredWarning =
+    field.required && coverage && (
+      mode === 'first-match'
+        ? coverage.matched === 0
+        : coverage.matched < coverage.total
+    );
 
   return (
     <div className="rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 p-2 space-y-2">
@@ -5461,8 +5507,36 @@ function ExtractFieldRow({
       {/* Live preview + across-all-items coverage */}
       <div className="px-1 flex flex-wrap items-center gap-1.5">
         <PreviewBadge value={preview.value} error={preview.error} />
-        {coverage && <CoverageBadge matched={coverage.matched} total={coverage.total} />}
+        {coverage && <CoverageBadge matched={coverage.matched} total={coverage.total} mode={mode} />}
       </div>
+
+      {/* Required + bad coverage = guaranteed runtime failure. Warning copy
+          depends on the mode because the meaning of "bad coverage" differs:
+          per-item modes need ALL items to match; first-match needs at least
+          one. */}
+      {requiredWarning && coverage && (
+        <div className="rounded-md border border-rose-300 dark:border-rose-700/60 bg-rose-50 dark:bg-rose-900/30 px-2.5 py-1.5 mx-1">
+          {mode === 'first-match' ? (
+            <>
+              <p className="text-[11px] text-rose-800 dark:text-rose-200 leading-snug">
+                <strong>This field is Required</strong> but doesn't match any of the {coverage.total} items. The node will fail at runtime.
+              </p>
+              <p className="text-[10px] text-rose-700 dark:text-rose-300 leading-snug mt-0.5">
+                Fix: broaden the rule's anchors / label so at least one item contains the value, uncheck "Required" (the field will become <span className="font-mono">null</span>), or set a Default value.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-[11px] text-rose-800 dark:text-rose-200 leading-snug">
+                <strong>This field is marked Required</strong> but only matches {coverage.matched} of {coverage.total} items. The node will fail at runtime on the first item that doesn't match.
+              </p>
+              <p className="text-[10px] text-rose-700 dark:text-rose-300 leading-snug mt-0.5">
+                Fix: open <em>Advanced</em> below and uncheck "Required" (missing items become <span className="font-mono">null</span>), set a Default value, or adjust your rule so it matches every item. <em>Or</em> change Source mode to <strong>First-match</strong> at the top — the values you need would be merged across items into one result.
+              </p>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Advanced toggles */}
       <button
@@ -5572,20 +5646,34 @@ function PreviewBadge({ value, error }: { value: unknown; error?: string }) {
  * Across-all-items coverage badge for fields in iteration mode. Tells the
  * user how many list items the rule matches so they can spot bad anchors
  * without manually flipping through every item with the pager.
+ *
+ * The "is partial coverage a problem?" question depends on the source mode:
+ *   - each-item / auto-array → every item needs to match, partial = amber.
+ *   - first-match            → just one match is enough, partial = green.
  */
-function CoverageBadge({ matched, total }: { matched: number; total: number }) {
+function CoverageBadge({
+  matched, total, mode,
+}: {
+  matched: number;
+  total: number;
+  mode: 'auto' | 'single' | 'each-item' | 'first-match';
+}) {
   if (total === 0) return null;
   const all  = matched === total;
   const none = matched === 0;
+  const partialOk = mode === 'first-match' && matched > 0; // first-match treats any hit as success
+
   const cls =
-    all  ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700/50' :
-    none ? 'bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-700/50' :
-           'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700/50';
-  const icon = all ? '✓' : none ? '✗' : '◐';
+    none           ? 'bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-700/50' :
+    all || partialOk
+                   ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700/50' :
+                     'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700/50';
+  const icon = none ? '✗' : (all || partialOk) ? '✓' : '◐';
   const tip =
-    all  ? `Matches in every item (${matched} / ${total}).` :
-    none ? `Doesn't match any item — check your anchors / labels.` :
-           `Matches some items only — for items where it doesn't match, the field will be null.`;
+    none           ? `Doesn't match any item — check your anchors / labels.` :
+    all            ? `Matches in every item (${matched} / ${total}).` :
+    partialOk      ? `Matches in ${matched} of ${total} items — that's enough for First-match mode.` :
+                     `Matches some items only — for items where it doesn't match, the field will be null.`;
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${cls}`}

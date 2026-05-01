@@ -46,13 +46,19 @@ export type Preprocess = 'none' | 'plain-text' | 'strip-quoted-reply' | 'strip-s
  * How the node handles a Source that resolves to a list (e.g. a Gmail thread's
  * `messages` array).
  *
- *   - `auto`       (default) — detect at runtime; if the resolved value is an
- *                   array, run extraction once per item; otherwise run once.
- *   - `single`     — JSON-stringify the whole resolved value and run once.
- *                   Escape hatch for power users.
- *   - `each-item`  — explicitly require an array source; throw if it isn't.
+ *   - `auto`         (default) — detect at runtime; if the resolved value is
+ *                     an array, run extraction once per item; otherwise run once.
+ *   - `single`       — JSON-stringify the whole resolved value and run once.
+ *                     Escape hatch for power users.
+ *   - `each-item`    — explicitly require an array source; throw if it isn't.
+ *                     Output is `{ items: [...], count: N }`.
+ *   - `first-match`  — for each configured field, scan every item in order and
+ *                     take the first non-empty match. Output is flat (one
+ *                     object), the same shape as single-shot mode. Useful when
+ *                     the values you want are scattered across multiple items
+ *                     and you want a merged result.
  */
-export type ExtractMode = 'auto' | 'single' | 'each-item';
+export type ExtractMode = 'auto' | 'single' | 'each-item' | 'first-match';
 
 export interface ExtractNodeConfig {
     /** Default source for fields that don't override it. May contain `{{...}}`. */
@@ -334,9 +340,13 @@ export class ExtractNode implements NodeExecutor {
     private resolver = new ExpressionResolver();
 
     async execute(node: WorkflowNode, context: ExecutionContext): Promise<Record<string, unknown>> {
+        // Use the user-facing label when available so the error feels like it
+        // came from "their" node, not an internal canvas ID.
+        const nodeLabel = node.name && node.name.trim() ? node.name : node.id;
+
         if (!isExtractNodeConfig(node.config)) {
             throw new Error(
-                `Node "${node.id}" has an invalid or incomplete extract config. ` +
+                `Extract node "${nodeLabel}" has an invalid or incomplete config. ` +
                 `Expected: { source: string, fields: ExtractField[] }`,
             );
         }
@@ -355,13 +365,25 @@ export class ExtractNode implements NodeExecutor {
         const shouldIterate =
             mode === 'each-item' ? true :
             mode === 'single'    ? false :
+            mode === 'first-match' ? false : // first-match runs its own loop below
             /* auto */             isArraySource;
 
         if (mode === 'each-item' && !isArraySource) {
             throw new Error(
-                `Extract node "${node.id}" is set to "each-item" but the Source did not resolve to a list. ` +
-                `Either change Mode to "auto" / "single" or point Source at an array.`,
+                `Extract node "${nodeLabel}" is set to "Each-item" but the Source did not resolve to a list. ` +
+                `Either change Source mode to "Auto" / "Single", or point Source at an array.`,
             );
+        }
+
+        // ── First-match mode ─────────────────────────────────────────────
+        // For each configured field, walk every item in order and take the
+        // first non-empty match. Output shape is flat (same as single-shot)
+        // so the user can read the values as `nodes.<id>.<field>` without
+        // worrying about indexes. Non-array sources are wrapped in a 1-item
+        // list so the same code path works.
+        if (mode === 'first-match') {
+            const items = isArraySource ? (rawNodeSource as unknown[]) : [rawNodeSource];
+            return await this.extractFirstMatch(items, config, context);
         }
 
         if (!shouldIterate) {
@@ -378,9 +400,19 @@ export class ExtractNode implements NodeExecutor {
                 const oneResult = await this.extractOne(item, config, context);
                 items.push(oneResult);
             } catch (err) {
-                // Re-throw with a useful index so the user can find the bad item.
+                // Re-throw with a useful index so the user can find the bad
+                // item. The wrapped message already names the failing field;
+                // we add the human-readable node label and a hint about the
+                // most common cause so non-technical users know what to do.
+                const inner = (err as Error).message;
+                const isRequiredFailure = /is required but no value was found/i.test(inner);
+                const hint = isRequiredFailure
+                    ? ` Tip: this happens when "Required" is on for a field whose rule didn't match this item. ` +
+                      `Either uncheck "Required" (the field becomes null on items that don't have it), ` +
+                      `set a Default value, or fix the rule's anchors / label so it matches all items.`
+                    : '';
                 throw new Error(
-                    `Extract node "${node.id}" failed on item ${i}: ${(err as Error).message}`,
+                    `Extract node "${nodeLabel}" failed on item ${i + 1} of ${list.length}: ${inner}${hint}`,
                 );
             }
         }
@@ -485,6 +517,150 @@ export class ExtractNode implements NodeExecutor {
 
             for (const [fieldSource, fields] of groups) {
                 const text = getFieldString(fieldSource);
+                const aiResults = await this.runAiBatch(text, fields, config);
+                for (const f of fields) {
+                    const strat = f.strategy as Extract<ExtractStrategy, { kind: 'ai' }>;
+                    let value = coerceAiValue(aiResults[f.name], strat.type);
+                    value = applyMissingPolicy(value, f);
+                    result[f.name] = value;
+                }
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Run extraction in "first-match" mode: for each configured field, walk
+     * every item in order and take the first non-empty match. Output is flat
+     * — same shape as single-shot mode — so downstream nodes read it as
+     * `nodes.<id>.<field>` without any indexing. Useful when the values you
+     * want are scattered across multiple items (e.g. one email mentions the
+     * employee's name, another mentions their email address).
+     *
+     * Per-field `source` overrides resolve once against their own expression
+     * (same semantics as `extractOne`).
+     */
+    private async extractFirstMatch(
+        items: unknown[],
+        config: ExtractNodeConfig,
+        context: ExecutionContext,
+    ): Promise<Record<string, unknown>> {
+        const result: Record<string, unknown> = {};
+
+        // Pre-compute the cleaned text for each item once. Per-field sources
+        // bypass this and resolve fresh below.
+        const itemTexts: string[] = items.map(
+            (it) => preprocessSource(toExtractText(it, config.textPath), config.preprocess),
+        );
+
+        // Cache for per-field source overrides (resolved once each).
+        const overrideStringCache = new Map<string, string>();
+        const overrideRawCache    = new Map<string, unknown>();
+        const getOverrideString = (src: string): string => {
+            if (overrideStringCache.has(src)) return overrideStringCache.get(src)!;
+            const raw = this.resolveRawValue(src, context);
+            const cleaned = preprocessSource(coerceToString(raw), config.preprocess);
+            overrideStringCache.set(src, cleaned);
+            return cleaned;
+        };
+        const getOverrideRaw = (src: string): unknown => {
+            if (overrideRawCache.has(src)) return overrideRawCache.get(src);
+            const raw = this.resolveRawValue(src, context);
+            overrideRawCache.set(src, raw);
+            return raw;
+        };
+
+        // Helper: run a single (non-AI) field's strategy against one piece of
+        // text or one raw value. Returns whatever the strategy produced (may
+        // be null / empty array / non-empty value).
+        const runOneStrategy = (field: ExtractField, text: string, raw: unknown): unknown => {
+            switch (field.strategy.kind) {
+                case 'regex':
+                    return runRegex(text, field.strategy.pattern, field.strategy.flags, field.strategy.group, !!field.multiple);
+                case 'between':
+                    return runBetween(text, field.strategy.before, field.strategy.after, !!field.multiple);
+                case 'labeled':
+                    return runLabeled(text, field.strategy.label, field.strategy.stopAt, !!field.multiple);
+                case 'jsonpath':
+                    return runJsonPath(raw, field.strategy.path, !!field.multiple);
+                default:
+                    return null;
+            }
+        };
+
+        // Two passes — non-AI fields first, then AI fields per-item batched.
+        const aiFields: ExtractField[] = [];
+
+        for (const field of config.fields) {
+            if (!field || !field.name) continue;
+            if (field.strategy.kind === 'ai') {
+                aiFields.push(field);
+                continue;
+            }
+
+            // Per-field source override → resolve once and run; iteration
+            // doesn't apply to overrides (same as `extractOne`).
+            if (field.source) {
+                let value: unknown;
+                try {
+                    value = runOneStrategy(field, getOverrideString(field.source), getOverrideRaw(field.source));
+                } catch (err) {
+                    if (field.required) throw err;
+                    value = null;
+                }
+                value = applyTransform(value, field.transform);
+                value = applyMissingPolicy(value, field);
+                result[field.name] = value;
+                continue;
+            }
+
+            // Loop through items and stop at the first non-empty match.
+            // For `multiple: true`, accumulate results across all items.
+            let firstHit: unknown = null;
+            const collected: unknown[] = [];
+            for (let i = 0; i < items.length; i++) {
+                const text = itemTexts[i];
+                const raw  = items[i];
+                let v: unknown;
+                try { v = runOneStrategy(field, text, raw); }
+                catch (err) {
+                    if (field.required) throw err;
+                    continue;
+                }
+                if (field.multiple) {
+                    // For multiple, append every non-empty match across items.
+                    if (Array.isArray(v) && v.length > 0) collected.push(...v);
+                    else if (v != null && v !== '') collected.push(v);
+                } else if (v != null && v !== '' && !(Array.isArray(v) && v.length === 0)) {
+                    firstHit = v;
+                    break;
+                }
+            }
+
+            let value: unknown = field.multiple ? collected : firstHit;
+            value = applyTransform(value, field.transform);
+            value = applyMissingPolicy(value, field);
+            result[field.name] = value;
+        }
+
+        // ── AI fields: one LLM call that sees the concatenated item texts.
+        // The model can then reason across the full list and return one
+        // merged answer per field. We separate items with delimiters so the
+        // prompt remains readable even when items are long.
+        if (aiFields.length > 0) {
+            const groups = new Map<string | undefined, ExtractField[]>();
+            for (const f of aiFields) {
+                const key = f.source;
+                if (!groups.has(key)) groups.set(key, []);
+                groups.get(key)!.push(f);
+            }
+            for (const [fieldSource, fields] of groups) {
+                const text = fieldSource
+                    ? getOverrideString(fieldSource)
+                    : itemTexts
+                        .map((t, i) => `--- ITEM ${i + 1} of ${itemTexts.length} ---\n${t}`)
+                        .join('\n\n');
                 const aiResults = await this.runAiBatch(text, fields, config);
                 for (const f of fields) {
                     const strat = f.strategy as Extract<ExtractStrategy, { kind: 'ai' }>;
