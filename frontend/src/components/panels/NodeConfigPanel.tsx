@@ -4822,6 +4822,34 @@ function ExtractConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) 
     if (guess) onChange({ textPath: guess });
   }
 
+  // Pre-compute the cleaned text of every item in the list. Used to give each
+  // field a "matches in X / Y items" coverage badge so the user can verify
+  // their rules across all items at once instead of paging through them
+  // manually. Only computed in iteration mode.
+  const itemTexts = useMemo<string[]>(() => {
+    if (!iterating || !listItems) return [];
+    return listItems.map((it) => clientPreprocess(pickItemText(it, textPath), preprocess));
+  }, [iterating, listItems, textPath, preprocess]);
+
+  /**
+   * Count how many items in the list this field's rule matches against.
+   * Returns `null` for AI / JSONPath strategies (those don't run client-side)
+   * or when not in iteration mode.
+   */
+  function coverageFor(f: ExtractFieldShape): { matched: number; total: number } | null {
+    if (!iterating || itemTexts.length === 0) return null;
+    const kind = f.strategy?.kind;
+    if (kind === 'ai' || kind === 'jsonpath') return null;
+    let matched = 0;
+    for (const text of itemTexts) {
+      const r = previewExtract(f, text);
+      const v = r.value;
+      const isMatch = v != null && v !== '' && !(Array.isArray(v) && v.length === 0);
+      if (isMatch) matched++;
+    }
+    return { matched, total: itemTexts.length };
+  }
+
   function setFields(next: ExtractFieldShape[]) { onChange({ fields: next }); }
 
   function addManualField() {
@@ -5112,8 +5140,22 @@ function ExtractConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) 
       </p>
       <p className="text-[10px] text-slate-500 dark:text-slate-400 -mt-1 leading-relaxed">
         Each field becomes one value in this node's output. Other nodes can read it as
-        {' '}<span className="font-mono text-blue-500 dark:text-blue-400">{`{{nodes.<this-node>.<fieldName>}}`}</span>.
+        {' '}<span className="font-mono text-blue-500 dark:text-blue-400">
+          {iterating
+            ? `{{nodes.<this-node>.items[0].<fieldName>}}`
+            : `{{nodes.<this-node>.<fieldName>}}`}
+        </span>.
       </p>
+      {iterating && itemCount > 1 && (
+        <div className="rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 px-2.5 py-2 -mt-1 space-y-1">
+          <p className="text-[11px] text-slate-700 dark:text-slate-200 leading-snug">
+            <strong>Every field runs against every item.</strong> A rule that only matches some items will produce <span className="font-mono">null</span> on the rest — that's normal.
+          </p>
+          <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug">
+            The "preview" next to each rule shows the result for the item currently in the sample box above. The "matches X / {itemCount}" badge tells you how many items the rule matches across the entire list.
+          </p>
+        </div>
+      )}
 
       {fields.length === 0 && (
         <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">
@@ -5126,6 +5168,7 @@ function ExtractConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) 
           key={i}
           field={f}
           sampleText={sampleText}
+          coverage={coverageFor(f)}
           onChange={(patch) => updateField(i, patch)}
           onChangeStrategy={(patch) => updateStrategy(i, patch)}
           onChangeStrategyKind={(kind) => changeStrategyKind(i, kind)}
@@ -5236,10 +5279,12 @@ function clientPreprocess(text: string, mode: string): string {
 }
 
 function ExtractFieldRow({
-  field, sampleText, onChange, onChangeStrategy, onChangeStrategyKind, onRemove, onMoveUp, onMoveDown,
+  field, sampleText, coverage, onChange, onChangeStrategy, onChangeStrategyKind, onRemove, onMoveUp, onMoveDown,
 }: {
   field: ExtractFieldShape;
   sampleText: string;
+  /** Across-all-items match stats. Null when not iterating or strategy can't be previewed client-side. */
+  coverage: { matched: number; total: number } | null;
   onChange: (patch: Partial<ExtractFieldShape>) => void;
   onChangeStrategy: (patch: Partial<ExtractStrategyShape>) => void;
   onChangeStrategyKind: (kind: ExtractStrategyKind) => void;
@@ -5413,9 +5458,10 @@ function ExtractFieldRow({
         </div>
       )}
 
-      {/* Live preview */}
-      <div className="px-1">
+      {/* Live preview + across-all-items coverage */}
+      <div className="px-1 flex flex-wrap items-center gap-1.5">
         <PreviewBadge value={preview.value} error={preview.error} />
+        {coverage && <CoverageBadge matched={coverage.matched} total={coverage.total} />}
       </div>
 
       {/* Advanced toggles */}
@@ -5519,6 +5565,35 @@ function PreviewBadge({ value, error }: { value: unknown; error?: string }) {
     <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono break-all">
       → {str.length > 80 ? str.slice(0, 80) + '…' : str}
     </p>
+  );
+}
+
+/**
+ * Across-all-items coverage badge for fields in iteration mode. Tells the
+ * user how many list items the rule matches so they can spot bad anchors
+ * without manually flipping through every item with the pager.
+ */
+function CoverageBadge({ matched, total }: { matched: number; total: number }) {
+  if (total === 0) return null;
+  const all  = matched === total;
+  const none = matched === 0;
+  const cls =
+    all  ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700/50' :
+    none ? 'bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-700/50' :
+           'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700/50';
+  const icon = all ? '✓' : none ? '✗' : '◐';
+  const tip =
+    all  ? `Matches in every item (${matched} / ${total}).` :
+    none ? `Doesn't match any item — check your anchors / labels.` :
+           `Matches some items only — for items where it doesn't match, the field will be null.`;
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${cls}`}
+      title={tip}
+    >
+      <span>{icon}</span>
+      <span>matches in {matched} / {total}</span>
+    </span>
   );
 }
 
