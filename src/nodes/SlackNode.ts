@@ -91,9 +91,18 @@ export class SlackNode implements NodeExecutor {
         const client = new WebClient(token);
 
         // ── Resolve Flux Bot appearance overrides (used in send actions) ─────
-        const botUsername  = useFluxBot ? this.resolver.resolveTemplate(config.botUsername  ?? '', context).trim() || undefined : undefined;
-        const botIconEmoji = useFluxBot ? this.resolver.resolveTemplate(config.botIconEmoji ?? '', context).trim() || undefined : undefined;
-        const botIconUrl   = useFluxBot ? this.resolver.resolveTemplate(config.botIconUrl   ?? '', context).trim() || undefined : undefined;
+        // Built as a plain Record to avoid discriminated-union conflicts in
+        // ChatPostMessageArguments (icon_emoji and icon_url are mutually exclusive
+        // in the @slack/web-api types). icon_url takes priority over icon_emoji.
+        const botAppearance: Record<string, string> = {};
+        if (useFluxBot) {
+            const username  = this.resolver.resolveTemplate(config.botUsername  ?? '', context).trim();
+            const iconEmoji = this.resolver.resolveTemplate(config.botIconEmoji ?? '', context).trim();
+            const iconUrl   = this.resolver.resolveTemplate(config.botIconUrl   ?? '', context).trim();
+            if (username)  botAppearance['username']   = username;
+            if (iconUrl)   botAppearance['icon_url']   = iconUrl;
+            else if (iconEmoji) botAppearance['icon_emoji'] = iconEmoji;
+        }
 
         // ── Send Message to Channel(s) ────────────────────────────────────────
         if (action === 'send_message') {
@@ -108,13 +117,9 @@ export class SlackNode implements NodeExecutor {
             const channelList = splitIds(rawChannels);
             const results = await Promise.all(
                 channelList.map(async (channel) => {
-                    const res = await client.chat.postMessage({
-                        channel,
-                        text,
-                        ...(botUsername  ? { username:   botUsername  } : {}),
-                        ...(botIconEmoji ? { icon_emoji: botIconEmoji } : {}),
-                        ...(botIconUrl   ? { icon_url:   botIconUrl   } : {}),
-                    });
+                    const res = await client.chat.postMessage(
+                        Object.assign({ channel, text }, botAppearance) as Parameters<typeof client.chat.postMessage>[0],
+                    );
                     return { ok: res.ok, ts: res.ts, channel: res.channel, messageId: res.ts };
                 })
             );
@@ -139,13 +144,9 @@ export class SlackNode implements NodeExecutor {
                     if (!conv.ok || !conv.channel?.id) {
                         throw new Error(`Slack send_dm: failed to open DM with user "${userId}"`);
                     }
-                    const res = await client.chat.postMessage({
-                        channel: conv.channel.id,
-                        text,
-                        ...(botUsername  ? { username:   botUsername  } : {}),
-                        ...(botIconEmoji ? { icon_emoji: botIconEmoji } : {}),
-                        ...(botIconUrl   ? { icon_url:   botIconUrl   } : {}),
-                    });
+                    const res = await client.chat.postMessage(
+                        Object.assign({ channel: conv.channel.id, text }, botAppearance) as Parameters<typeof client.chat.postMessage>[0],
+                    );
                     return { ok: res.ok, ts: res.ts, channel: res.channel, messageId: res.ts, userId };
                 })
             );
