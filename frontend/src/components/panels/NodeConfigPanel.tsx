@@ -8892,6 +8892,43 @@ function SlackConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
             </div>
           </div>
 
+          {/* Flux Bot appearance (only when bot sender selected) */}
+          {(cfg.senderType ?? 'user') === 'bot' && (
+            <div className="space-y-2 rounded-md border border-violet-200 dark:border-violet-500/20 bg-violet-50/50 dark:bg-violet-500/5 px-3 py-2.5">
+              <p className="text-[10px] font-medium text-violet-600 dark:text-violet-400">Flux Bot Appearance</p>
+              <ExpressionInput
+                label="Display Name"
+                value={String(cfg.botUsername ?? '')}
+                onChange={(v) => onChange({ botUsername: v })}
+                placeholder="Flux Bot"
+                nodes={otherNodes}
+                testResults={testResults}
+                hint="Overrides the bot's name shown in Slack. Supports expressions for dynamic names."
+              />
+              <ExpressionInput
+                label="Icon Emoji"
+                value={String(cfg.botIconEmoji ?? '')}
+                onChange={(v) => onChange({ botIconEmoji: v })}
+                placeholder=":robot_face:"
+                nodes={otherNodes}
+                testResults={testResults}
+                hint="Emoji to use as the bot's icon, e.g. :zap: or :bell:. Supports expressions to vary per run."
+              />
+              <ExpressionInput
+                label="Icon URL (optional, overrides emoji)"
+                value={String(cfg.botIconUrl ?? '')}
+                onChange={(v) => onChange({ botIconUrl: v })}
+                placeholder="https://example.com/icon.png"
+                nodes={otherNodes}
+                testResults={testResults}
+                hint="Public image URL for the bot icon. If set, takes priority over Icon Emoji."
+              />
+              <p className="text-[10px] text-violet-500/80 dark:text-violet-400/60 leading-relaxed">
+                Requires <code className="font-mono bg-violet-100 dark:bg-violet-500/20 px-0.5 rounded">chat:write.customize</code> scope on your Slack app.
+              </p>
+            </div>
+          )}
+
           <SlackMultiPicker
             label="Channels"
             value={channelsValue}
@@ -8952,6 +8989,43 @@ function SlackConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
               ))}
             </div>
           </div>
+
+          {/* Flux Bot appearance (only when bot sender selected) */}
+          {(cfg.senderType ?? 'user') === 'bot' && (
+            <div className="space-y-2 rounded-md border border-violet-200 dark:border-violet-500/20 bg-violet-50/50 dark:bg-violet-500/5 px-3 py-2.5">
+              <p className="text-[10px] font-medium text-violet-600 dark:text-violet-400">Flux Bot Appearance</p>
+              <ExpressionInput
+                label="Display Name"
+                value={String(cfg.botUsername ?? '')}
+                onChange={(v) => onChange({ botUsername: v })}
+                placeholder="Flux Bot"
+                nodes={otherNodes}
+                testResults={testResults}
+                hint="Overrides the bot's name shown in Slack. Supports expressions for dynamic names."
+              />
+              <ExpressionInput
+                label="Icon Emoji"
+                value={String(cfg.botIconEmoji ?? '')}
+                onChange={(v) => onChange({ botIconEmoji: v })}
+                placeholder=":robot_face:"
+                nodes={otherNodes}
+                testResults={testResults}
+                hint="Emoji to use as the bot's icon, e.g. :zap: or :bell:. Supports expressions to vary per run."
+              />
+              <ExpressionInput
+                label="Icon URL (optional, overrides emoji)"
+                value={String(cfg.botIconUrl ?? '')}
+                onChange={(v) => onChange({ botIconUrl: v })}
+                placeholder="https://example.com/icon.png"
+                nodes={otherNodes}
+                testResults={testResults}
+                hint="Public image URL for the bot icon. If set, takes priority over Icon Emoji."
+              />
+              <p className="text-[10px] text-violet-500/80 dark:text-violet-400/60 leading-relaxed">
+                Requires <code className="font-mono bg-violet-100 dark:bg-violet-500/20 px-0.5 rounded">chat:write.customize</code> scope on your Slack app.
+              </p>
+            </div>
+          )}
 
           <SlackMultiPicker
             label="Recipients"
