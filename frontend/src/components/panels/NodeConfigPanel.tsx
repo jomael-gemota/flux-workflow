@@ -68,16 +68,36 @@ const NODE_OUTPUT_FIELDS: Record<string, OutputField[]> = {
   ],
   output: [{ key: 'value', label: 'Resolved output value' }],
   gmail: [
-    { key: 'messageId',    label: 'Message ID (send / send_flux)' },
-    { key: 'threadId',     label: 'Thread ID (send)' },
+    // send / reply
+    { key: 'messageId',    label: 'Message ID (send / reply / send_flux)' },
+    { key: 'threadId',     label: 'Thread ID (send / reply)' },
+    { key: 'labelIds',     label: 'Label IDs applied (send / reply)' },
+    // send_flux
     { key: 'accepted',     label: 'Accepted recipients array (send_flux)' },
     { key: 'rejected',     label: 'Rejected recipients array (send_flux)' },
     { key: 'from',         label: 'From address used (send_flux / read)' },
     { key: 'to',           label: 'To address (send_flux)' },
     { key: 'subject',      label: 'Subject line (send_flux / read)' },
     { key: 'usedTemplate', label: 'Whether Flux template was applied (send_flux)' },
-    { key: 'messages',     label: 'Message list (list)' },
-    { key: 'body',         label: 'Email body text (read)' },
+    // list / get_many — thread structure
+    { key: 'threads',         label: 'Thread list — array of { threadId, messages[] } (list)' },
+    { key: 'totalThreads',    label: 'Total threads returned (list)' },
+    { key: 'totalMessages',   label: 'Total messages across all threads (list)' },
+    { key: 'matchedMessages', label: 'Matched message count from search (list)' },
+    // per-thread message fields — expand threads[0].messages to see these
+    { key: 'threads[0].threadId',              label: 'Thread ID of first thread (list)' },
+    { key: 'threads[0].messages[0].id',        label: 'Message ID — first msg of first thread (list)' },
+    { key: 'threads[0].messages[0].threadId',  label: 'Thread ID on the message object (list)' },
+    { key: 'threads[0].messages[0].subject',   label: 'Subject of first message (list)' },
+    { key: 'threads[0].messages[0].from',      label: 'Sender address of first message (list)' },
+    { key: 'threads[0].messages[0].to',        label: 'Recipient address of first message (list)' },
+    { key: 'threads[0].messages[0].date',      label: 'Date header of first message (list)' },
+    { key: 'threads[0].messages[0].snippet',   label: 'Short preview snippet of first message (list)' },
+    { key: 'threads[0].messages[0].body',      label: 'Full body text of first message (list)' },
+    // read
+    { key: 'id',       label: 'Message ID (read)' },
+    { key: 'snippet',  label: 'Short preview snippet (read)' },
+    { key: 'body',     label: 'Full body text (read)' },
   ],
   gdrive: [
     { key: 'files',        label: 'File/folder list (list)' },
@@ -609,21 +629,90 @@ export function VariablePickerPanel({
 
                                 {/* If first item is an object, expose each sub-key individually */}
                                 {firstIsObj && (
-                                  <div className="flex flex-wrap gap-1 pt-0.5">
-                                    {Object.entries(firstItem as Record<string, unknown>).map(([subKey, subVal]) => (
-                                      <button
-                                        key={subKey}
-                                        type="button"
-                                        onClick={() => onInsert(`{{nodes.${n.id}.${f.key}[0].${subKey}}}`)}
-                                        title={`Insert: {{nodes.${n.id}.${f.key}[0].${subKey}}}`}
-                                        className={chipCls}
-                                      >
-                                        .{f.key}[0].{subKey}
-                                        <span className={chipValCls}>
-                                          = <ValuePreview value={subVal} />
-                                        </span>
-                                      </button>
-                                    ))}
+                                  <div className="space-y-0.5 pt-0.5">
+                                    {Object.entries(firstItem as Record<string, unknown>).map(([subKey, subVal]) => {
+                                      const isSubArr = Array.isArray(subVal);
+                                      const subExpandKey = `${expandKey}::${subKey}`;
+                                      const isSubOpen = expanded[subExpandKey] ?? false;
+                                      const subFirstItem = isSubArr && (subVal as unknown[]).length > 0
+                                        ? (subVal as unknown[])[0]
+                                        : null;
+                                      const subFirstIsObj = subFirstItem !== null && typeof subFirstItem === 'object';
+
+                                      return (
+                                        <div key={subKey} className="space-y-0.5">
+                                          <div className="flex flex-wrap items-center gap-1">
+                                            <button
+                                              type="button"
+                                              onClick={() => onInsert(`{{nodes.${n.id}.${f.key}[0].${subKey}}}`)}
+                                              title={`Insert: {{nodes.${n.id}.${f.key}[0].${subKey}}}`}
+                                              className={chipCls}
+                                            >
+                                              .{f.key}[0].{subKey}
+                                              {!isSubArr && (
+                                                <span className={chipValCls}>
+                                                  = <ValuePreview value={subVal} />
+                                                </span>
+                                              )}
+                                            </button>
+
+                                            {/* Expand sub-arrays (e.g. threads[0].messages) */}
+                                            {isSubArr && (
+                                              <button
+                                                type="button"
+                                                onClick={() => setExpanded((prev) => ({ ...prev, [subExpandKey]: !isSubOpen }))}
+                                                className="inline-flex items-center gap-0.5 text-[9px] text-pink-600 dark:text-pink-400 hover:text-pink-800 dark:hover:text-pink-200 px-1 py-0.5 rounded hover:bg-pink-50 dark:hover:bg-pink-900/20 transition-colors font-medium"
+                                                title={isSubOpen ? 'Collapse messages' : 'Expand to see individual message fields'}
+                                              >
+                                                {isSubOpen
+                                                  ? <ChevronUp   className="w-2.5 h-2.5" />
+                                                  : <ChevronDown className="w-2.5 h-2.5" />
+                                                }
+                                                {isSubOpen ? 'collapse' : `expand ${(subVal as unknown[]).length} item${(subVal as unknown[]).length !== 1 ? 's' : ''}`}
+                                              </button>
+                                            )}
+                                          </div>
+
+                                          {/* Sub-array expansion (e.g. threads[0].messages[0].from) */}
+                                          {isSubOpen && isSubArr && (
+                                            <div className="ml-2 pl-2 border-l-2 border-pink-300 dark:border-pink-700/50 space-y-0.5">
+                                              <button
+                                                type="button"
+                                                onClick={() => onInsert(`{{nodes.${n.id}.${f.key}[0].${subKey}[0]}}`)}
+                                                title={`Insert: {{nodes.${n.id}.${f.key}[0].${subKey}[0]}}`}
+                                                className={chipCls}
+                                              >
+                                                .{f.key}[0].{subKey}[0]
+                                                {subFirstItem !== null && (
+                                                  <span className={chipValCls}>
+                                                    = <ValuePreview value={subFirstItem} />
+                                                  </span>
+                                                )}
+                                              </button>
+
+                                              {subFirstIsObj && (
+                                                <div className="flex flex-wrap gap-1 pt-0.5">
+                                                  {Object.entries(subFirstItem as Record<string, unknown>).map(([deepKey, deepVal]) => (
+                                                    <button
+                                                      key={deepKey}
+                                                      type="button"
+                                                      onClick={() => onInsert(`{{nodes.${n.id}.${f.key}[0].${subKey}[0].${deepKey}}}`)}
+                                                      title={`Insert: {{nodes.${n.id}.${f.key}[0].${subKey}[0].${deepKey}}}`}
+                                                      className={chipCls}
+                                                    >
+                                                      .{f.key}[0].{subKey}[0].{deepKey}
+                                                      <span className={chipValCls}>
+                                                        = <ValuePreview value={deepVal} />
+                                                      </span>
+                                                    </button>
+                                                  ))}
+                                                </div>
+                                              )}
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
                                   </div>
                                 )}
                               </>
