@@ -161,16 +161,23 @@ export class WorkflowRunner {
 
         // Disabled node: record as skipped, place a sentinel in context so any
         // downstream expression that references its output gets a clear error,
-        // then continue execution through all outgoing edges.
+        // then continue execution through all outgoing edges as a pass-through.
         if (node.disabled) {
             context.variables[nodeId] = { __disabled: true };
             pushResult({ nodeId, status: 'skipped', output: null, durationMs: 0 });
 
-            // A disabled node produced no real output — every outgoing branch
-            // is a skip, regardless of node type.
-            for (const nextId of this.getAllNextIds(node)) {
-                await this.skipBranch(workflow, nextId, context, results, pendingCounts, visited, hasSuccessfulUpstream, onNodeResult);
+            // Treat the disabled node as transparent — propagate execution to
+            // all successors so active nodes further downstream still run.
+            // Mark them as having a successful upstream so join nodes fire correctly.
+            const nextIds = this.getAllNextIds(node);
+            for (const nextId of nextIds) {
+                if (nextId) hasSuccessfulUpstream.add(nextId);
             }
+            await Promise.all(
+                nextIds.map(nextId =>
+                    this.executeNode(workflow, nextId, context, results, pendingCounts, visited, hasSuccessfulUpstream, onNodeResult)
+                )
+            );
             return;
         }
 
