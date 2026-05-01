@@ -673,41 +673,48 @@ export function VariablePickerPanel({
                                             )}
                                           </div>
 
-                                          {/* Sub-array expansion (e.g. threads[0].messages[0].from) */}
+                                          {/* Sub-array expansion — one section per item with correct index */}
                                           {isSubOpen && isSubArr && (
-                                            <div className="ml-2 pl-2 border-l-2 border-pink-300 dark:border-pink-700/50 space-y-0.5">
-                                              <button
-                                                type="button"
-                                                onClick={() => onInsert(`{{nodes.${n.id}.${f.key}[0].${subKey}[0]}}`)}
-                                                title={`Insert: {{nodes.${n.id}.${f.key}[0].${subKey}[0]}}`}
-                                                className={chipCls}
-                                              >
-                                                .{f.key}[0].{subKey}[0]
-                                                {subFirstItem !== null && (
-                                                  <span className={chipValCls}>
-                                                    = <ValuePreview value={subFirstItem} />
-                                                  </span>
-                                                )}
-                                              </button>
-
-                                              {subFirstIsObj && (
-                                                <div className="flex flex-wrap gap-1 pt-0.5">
-                                                  {Object.entries(subFirstItem as Record<string, unknown>).map(([deepKey, deepVal]) => (
+                                            <div className="ml-2 pl-2 border-l-2 border-pink-300 dark:border-pink-700/50 space-y-2">
+                                              {(subVal as unknown[]).map((item, idx) => {
+                                                const isItemObj = item !== null && typeof item === 'object' && !Array.isArray(item);
+                                                return (
+                                                  <div key={idx} className="space-y-0.5">
+                                                    {/* Whole item chip */}
                                                     <button
-                                                      key={deepKey}
                                                       type="button"
-                                                      onClick={() => onInsert(`{{nodes.${n.id}.${f.key}[0].${subKey}[0].${deepKey}}}`)}
-                                                      title={`Insert: {{nodes.${n.id}.${f.key}[0].${subKey}[0].${deepKey}}}`}
+                                                      onClick={() => onInsert(`{{nodes.${n.id}.${f.key}[0].${subKey}[${idx}]}}`)}
+                                                      title={`Insert: {{nodes.${n.id}.${f.key}[0].${subKey}[${idx}]}}`}
                                                       className={chipCls}
                                                     >
-                                                      .{f.key}[0].{subKey}[0].{deepKey}
+                                                      .{f.key}[0].{subKey}[{idx}]
                                                       <span className={chipValCls}>
-                                                        = <ValuePreview value={deepVal} />
+                                                        = <ValuePreview value={item} />
                                                       </span>
                                                     </button>
-                                                  ))}
-                                                </div>
-                                              )}
+
+                                                    {/* Individual field chips for this item */}
+                                                    {isItemObj && (
+                                                      <div className="flex flex-wrap gap-1 pl-2">
+                                                        {Object.entries(item as Record<string, unknown>).map(([deepKey, deepVal]) => (
+                                                          <button
+                                                            key={deepKey}
+                                                            type="button"
+                                                            onClick={() => onInsert(`{{nodes.${n.id}.${f.key}[0].${subKey}[${idx}].${deepKey}}}`)}
+                                                            title={`Insert: {{nodes.${n.id}.${f.key}[0].${subKey}[${idx}].${deepKey}}}`}
+                                                            className={chipCls}
+                                                          >
+                                                            .{f.key}[0].{subKey}[{idx}].{deepKey}
+                                                            <span className={chipValCls}>
+                                                              = <ValuePreview value={deepVal} />
+                                                            </span>
+                                                          </button>
+                                                        ))}
+                                                      </div>
+                                                    )}
+                                                  </div>
+                                                );
+                                              })}
                                             </div>
                                           )}
                                         </div>
