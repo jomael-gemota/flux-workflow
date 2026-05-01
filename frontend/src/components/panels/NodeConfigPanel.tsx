@@ -239,9 +239,68 @@ function parseExprSegments(value: string, nodes: CanvasNode[]): ExprSegment[] {
 const EXPR_RE = /\{\{nodes\.[^}]+\}\}/;
 
 /**
- * Resolves all `{{nodes.<nodeId>.<field>}}` tokens in `value` using cached
- * test-result outputs.  Returns the substituted string, or `null` when at
- * least one token couldn't be resolved (node not tested / field missing).
+ * Walk a dotted path (with bracket array indices) against an object — mirrors
+ * the backend `ExpressionResolver.walkPath` so the frontend preview agrees
+ * with what the workflow runtime will see. Supports `body[0]` and bare `[0]`
+ * segments.
+ *
+ * Returns `undefined` for any "not present" outcome; callers decide how to
+ * render that.
+ */
+function walkResolvedPath(obj: unknown, fieldPath: string): unknown {
+  let current: unknown = obj;
+  for (const rawKey of fieldPath.split('.')) {
+    if (current == null) return undefined;
+
+    // "key[0]" — access a property and then an array index in one segment
+    const propPlusBracket = rawKey.match(/^(.+?)\[(\d+)\]$/);
+    if (propPlusBracket) {
+      const [, propKey, idxStr] = propPlusBracket;
+      if (typeof current !== 'object') return undefined;
+      const next = (current as Record<string, unknown>)[propKey];
+      if (!Array.isArray(next)) return undefined;
+      current = next[parseInt(idxStr, 10)];
+      continue;
+    }
+    // "[0]" — index into the current array
+    const bareBracket = rawKey.match(/^\[(\d+)\]$/);
+    if (bareBracket) {
+      if (!Array.isArray(current)) return undefined;
+      current = current[parseInt(bareBracket[1], 10)];
+      continue;
+    }
+    if (typeof current !== 'object') return undefined;
+    current = (current as Record<string, unknown>)[rawKey];
+  }
+  return current;
+}
+
+/**
+ * Resolve a single `{{nodes.<id>...}}` token to its raw (un-stringified) value
+ * using cached test-result outputs. Returns `undefined` when the path can't be
+ * resolved (node not tested, key missing, etc.).
+ *
+ * Also handles bare `{{nodes.<id>}}` — returns the whole node output object.
+ */
+function resolveTokenRaw(
+  token: string,
+  testResults: Record<string, NodeTestResult>,
+): unknown {
+  // Token shape: {{nodes.<id>}} or {{nodes.<id>.<path>}}
+  const m = token.match(/^\{\{\s*nodes\.([^.}\s]+)(?:\.([^}]+))?\s*\}\}$/);
+  if (!m) return undefined;
+  const [, nodeId, fieldPath] = m;
+  const output = testResults[nodeId]?.output;
+  if (output == null) return undefined;
+  if (!fieldPath) return output;
+  return walkResolvedPath(output, fieldPath);
+}
+
+/**
+ * Resolves a string with `{{nodes...}}` tokens to a plain string for places
+ * that expect text (e.g. inline previews). Returns `null` when *any* token in
+ * the string fails to resolve. Non-string resolved values are stringified
+ * (objects → JSON, primitives → String()).
  */
 function resolveValue(
   value: string,
@@ -249,19 +308,42 @@ function resolveValue(
 ): string | null {
   if (!EXPR_RE.test(value)) return value; // nothing to resolve
   let allResolved = true;
-  const result = value.replace(/\{\{nodes\.([^.}]+)\.([^}]+)\}\}/g, (_match, nodeId, fieldPath) => {
-    const output = testResults[nodeId]?.output;
-    if (output == null || typeof output !== 'object') { allResolved = false; return ''; }
-    const parts   = fieldPath.split('.');
-    let   current: unknown = output;
-    for (const part of parts) {
-      if (current == null || typeof current !== 'object') { allResolved = false; return ''; }
-      current = (current as Record<string, unknown>)[part];
-    }
-    if (current == null) { allResolved = false; return ''; }
-    return String(current);
+  const result = value.replace(/\{\{nodes\.[^}]+\}\}/g, (token) => {
+    const raw = resolveTokenRaw(token, testResults);
+    if (raw == null) { allResolved = false; return ''; }
+    if (typeof raw === 'string')               return raw;
+    if (typeof raw === 'number' || typeof raw === 'boolean') return String(raw);
+    try { return JSON.stringify(raw); } catch { return String(raw); }
   });
   return allResolved ? result : null;
+}
+
+/**
+ * Like {@link resolveValue} but returns the *raw* resolved value when the
+ * input is a single bare token like `{{nodes.gmail.threads[0].messages}}`.
+ * This lets the Extract panel detect whether the source is an array (→
+ * iteration mode) instead of a coerced string. For mixed templates (text
+ * around tokens), defers to `resolveValue` and returns the merged string.
+ *
+ * Returns `null` only when the expression contains tokens that can't be
+ * resolved at all — same "unresolved" sentinel as `resolveValue`.
+ */
+function resolveValueRaw(
+  value: string,
+  testResults: Record<string, NodeTestResult>,
+): unknown {
+  const trimmed = value.trim();
+  if (!EXPR_RE.test(trimmed)) return trimmed;
+
+  // Single bare token → return the raw value (object, array, string, …)
+  const single = trimmed.match(/^\{\{[^}]+\}\}$/);
+  if (single) {
+    const raw = resolveTokenRaw(trimmed, testResults);
+    return raw === undefined ? null : raw;
+  }
+
+  // Mixed template → fall back to string substitution semantics
+  return resolveValue(value, testResults);
 }
 
 function ExprToken({ nodeType, nodeName, field }: { nodeType: string; nodeName: string; field: string }) {
@@ -291,6 +373,45 @@ function DisplayValue({ value, nodes, placeholder }: { value: string; nodes: Can
 }
 
 // ── Variable picker panel ─────────────────────────────────────────────────────
+
+/**
+ * Build a "predicted" output-field list for an Extract node that hasn't been
+ * tested yet, based on the configured fields and source mode. This way users
+ * can insert `{{nodes.<extract>.items[0].<field>}}` chips downstream before
+ * actually running the node.
+ *
+ *   - mode = 'each-item'              → expose `items[0].<field>` + count
+ *   - mode = 'auto' / 'single' / undef → expose flat `<field>` chips
+ *
+ * (For `auto`, runtime behavior depends on whether the source resolves to an
+ * array, so we default to the flat shape; users can adjust the inserted
+ * expression if they need to drill into items.)
+ */
+function buildExtractPredictedFields(
+  config: Record<string, unknown> | undefined,
+): Array<{ key: string; label: string; hasReal: false }> {
+  const cfg = (config ?? {}) as { mode?: string; fields?: Array<{ name?: string }> };
+  const mode = cfg.mode ?? 'auto';
+  const fields = Array.isArray(cfg.fields) ? cfg.fields : [];
+  const named = fields.filter((f) => typeof f?.name === 'string' && f.name.length > 0) as Array<{ name: string }>;
+
+  if (named.length === 0) {
+    return [];
+  }
+
+  if (mode === 'each-item') {
+    return [
+      { key: 'count', label: 'Number of items in the list', hasReal: false },
+      ...named.map((f) => ({
+        key: `items[0].${f.name}`,
+        label: `(per-item) "${f.name}" — replace [0] with the desired index`,
+        hasReal: false,
+      })),
+    ];
+  }
+
+  return named.map((f) => ({ key: f.name, label: `Extracted value: ${f.name}`, hasReal: false }));
+}
 
 export function VariablePickerPanel({
   nodes,
@@ -336,10 +457,12 @@ export function VariablePickerPanel({
                   realValue: val,
                   hasReal: true,
                 }))
-              : (NODE_OUTPUT_FIELDS[n.data.nodeType] ?? []).map((f) => ({
-                  ...f,
-                  hasReal: false,
-                }));
+              : n.data.nodeType === 'extract'
+                ? buildExtractPredictedFields(n.data.config as Record<string, unknown>)
+                : (NODE_OUTPUT_FIELDS[n.data.nodeType] ?? []).map((f) => ({
+                    ...f,
+                    hasReal: false,
+                  }));
 
           return (
             <div key={n.id} className="px-2.5 py-2 border-b border-slate-200 dark:border-slate-700/60 last:border-0">
@@ -2557,6 +2680,62 @@ function ExtractResultDisplay({ result }: { result: NodeTestResult }) {
   if (typeof out !== 'object' || out === null || Array.isArray(out)) {
     return <GenericResultDisplay result={result} />;
   }
+
+  // List-mode result: { items: [...], count: N }. Render each item as its own
+  // mini block so the user can verify the extraction worked across the list.
+  const items = (out as Record<string, unknown>).items;
+  if (Array.isArray(items)) {
+    const total = items.length;
+    return (
+      <div className="p-3 space-y-2">
+        <SectionLabel>
+          Extracted {total} item{total !== 1 ? 's' : ''}
+        </SectionLabel>
+        {total === 0 && (
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">
+            Source resolved to an empty list — no items to extract from.
+          </p>
+        )}
+        <div className="space-y-2">
+          {items.map((item, idx) => {
+            const itemRecord = (item ?? {}) as Record<string, unknown>;
+            const entries = Object.entries(itemRecord);
+            const found   = entries.filter(([, v]) => v !== null && v !== '' && !(Array.isArray(v) && v.length === 0)).length;
+            return (
+              <div key={idx} className="rounded border border-slate-200 dark:border-slate-700 overflow-hidden">
+                <div className="flex items-center justify-between px-3 py-1.5 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+                  <span className="text-[10px] font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wider">
+                    Item {idx + 1}
+                  </span>
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                    {found} / {entries.length} field{entries.length !== 1 ? 's' : ''} found
+                  </span>
+                </div>
+                {entries.length === 0 ? (
+                  <div className="px-3 py-2 text-[11px] text-slate-500 dark:text-slate-400 italic bg-white dark:bg-slate-900/40">
+                    (no fields)
+                  </div>
+                ) : entries.map(([k, v], i) => {
+                  const isMissing = v == null || v === '' || (Array.isArray(v) && v.length === 0);
+                  return (
+                    <div key={k} className={`flex items-start gap-3 px-3 py-2 text-[11px] border-b border-slate-100 dark:border-slate-700/50 last:border-b-0 ${
+                      i % 2 === 0 ? 'bg-white dark:bg-slate-900/40' : 'bg-slate-50 dark:bg-slate-800/40'
+                    }`}>
+                      <span className="font-semibold text-blue-500 dark:text-blue-400 shrink-0 min-w-[110px] pt-0.5 font-mono">{k}</span>
+                      <span className="text-slate-400 dark:text-slate-500 shrink-0 pt-0.5">→</span>
+                      {isMissing ? <NoDataBadge /> : <SmartValue v={v} />}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // Single-shot result — original flat layout.
   const entries = Object.entries(out as Record<string, unknown>);
   const found   = entries.filter(([, v]) => v !== null && v !== '' && !(Array.isArray(v) && v.length === 0)).length;
   return (
@@ -4481,10 +4660,67 @@ function escapeReg(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/**
+ * Frontend mirror of the backend's `toExtractText`. Takes one iteration item
+ * (which may be a string, primitive, or object) and returns the text the
+ * extraction rules should run against. When `textPath` is set we walk it;
+ * otherwise we probe a few common email-shaped keys before falling back to
+ * a JSON dump (so the user sees the structure when nothing matched).
+ */
+function pickItemText(item: unknown, textPath: string | undefined): string {
+  if (item == null) return '';
+  if (typeof item === 'string') return item;
+  if (typeof item === 'number' || typeof item === 'boolean') return String(item);
+  if (typeof item !== 'object') return String(item);
+
+  if (textPath && textPath.trim()) {
+    const picked = walkResolvedPath(item, textPath.trim());
+    if (typeof picked === 'string')      return picked;
+    if (picked != null) {
+      try { return JSON.stringify(picked, null, 2); }
+      catch { return String(picked); }
+    }
+  }
+
+  for (const key of ['body', 'text', 'content', 'message', 'snippet', 'value']) {
+    const v = (item as Record<string, unknown>)[key];
+    if (typeof v === 'string' && v.length > 0) return v;
+  }
+  try { return JSON.stringify(item, null, 2); }
+  catch { return String(item); }
+}
+
+/** Probe the first item for the most likely "text" key. Returns '' if none. */
+function autoDetectTextPath(item: unknown): string {
+  if (item == null || typeof item !== 'object' || Array.isArray(item)) return '';
+  for (const key of ['body', 'text', 'content', 'message', 'snippet']) {
+    const v = (item as Record<string, unknown>)[key];
+    if (typeof v === 'string' && v.length > 0) return key;
+  }
+  return '';
+}
+
+const EXTRACT_MODE_OPTIONS = [
+  { value: 'auto',       label: 'Auto (detect from source)' },
+  { value: 'single',     label: 'Single — treat source as one block' },
+  { value: 'each-item',  label: 'Each item — require a list source' },
+];
+
+const EXTRACT_MODE_DESCRIPTIONS: Record<string, string> = {
+  auto:
+    'If the source is a list, run extraction once per item and return `items: [...]`. Otherwise run once and return a flat object. Recommended for most cases.',
+  single:
+    'Always run extraction once. If the source is a list, the whole list is JSON-dumped before extraction — useful for AI fields that should reason across all items at once.',
+  'each-item':
+    'Always iterate. Fails the node if the source isn\'t a list. Use when the upstream is guaranteed to return an array.',
+};
+
 function ExtractConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
   const source     = String(cfg.source ?? '');
   const preprocess = String(cfg.preprocess ?? 'plain-text');
   const fields     = (Array.isArray(cfg.fields) ? cfg.fields : []) as ExtractFieldShape[];
+  const mode       = String(cfg.mode ?? 'auto') as 'auto' | 'single' | 'each-item';
+  const textPath   = String(cfg.textPath ?? '');
   const aiProvider    = String(cfg.aiProvider    ?? 'openai');
   const aiModel       = String(cfg.aiModel       ?? 'gpt-4o-mini');
   const aiTemperature = Number(cfg.aiTemperature ?? 0);
@@ -4496,32 +4732,94 @@ function ExtractConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) 
   const [sampleText, setSampleText] = useState<string>('');
   const [sampleAuto, setSampleAuto] = useState(true);
   const [sampleStatus, setSampleStatus] = useState<'idle' | 'loaded' | 'unresolved'>('idle');
+  // List-mode state — when the resolved source is an array we keep the items
+  // here so the user can flip between them with a pager. `null` means we're
+  // in single-shot mode (or nothing has resolved yet).
+  const [listItems, setListItems] = useState<unknown[] | null>(null);
+  const [itemIndex, setItemIndex] = useState(0);
   const sampleRef = useRef<HTMLTextAreaElement>(null);
+
+  // Derived flags for rendering iteration UI
+  const iterating = mode === 'each-item' || (mode === 'auto' && Array.isArray(listItems));
+  const itemCount = listItems?.length ?? 0;
+  const safeIndex = itemCount > 0 ? Math.min(itemIndex, itemCount - 1) : 0;
 
   useEffect(() => {
     if (!sampleAuto) return;
-    const resolved = resolveValue(source, testResults);
+    const resolved = resolveValueRaw(source, testResults);
     if (resolved == null) {
       setSampleStatus('unresolved');
+      setListItems(null);
       return;
     }
-    // Run the same lightweight preprocessing the backend does so the preview
-    // matches what the node will actually see at runtime.
-    const cleaned = clientPreprocess(resolved, preprocess);
-    setSampleText(cleaned);
+
+    // Array source → seed list state and show item N's text.
+    if (Array.isArray(resolved) && mode !== 'single') {
+      setListItems(resolved);
+      const idx = Math.min(itemIndex, Math.max(0, resolved.length - 1));
+      const itemText = resolved.length > 0 ? pickItemText(resolved[idx], textPath) : '';
+      setSampleText(clientPreprocess(itemText, preprocess));
+      setSampleStatus('loaded');
+      return;
+    }
+
+    // Non-array (or mode = 'single') → flat preview.
+    setListItems(null);
+    const asString =
+      typeof resolved === 'string'  ? resolved :
+      typeof resolved === 'number'  ? String(resolved) :
+      typeof resolved === 'boolean' ? String(resolved) :
+      (() => { try { return JSON.stringify(resolved, null, 2); } catch { return String(resolved); } })();
+    setSampleText(clientPreprocess(asString, preprocess));
     setSampleStatus('loaded');
-  }, [source, preprocess, testResults, sampleAuto]);
+    // We deliberately don't depend on `itemIndex` here — the pager click
+    // handler refreshes sampleText itself to avoid a feedback loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [source, preprocess, mode, textPath, testResults, sampleAuto]);
+
+  /**
+   * Refresh just the sample text from `listItems[itemIndex]`. Called by the
+   * pager so flipping items doesn't need to re-resolve the upstream output.
+   */
+  function showItemAt(idx: number) {
+    if (!listItems || listItems.length === 0) return;
+    const clamped = Math.max(0, Math.min(idx, listItems.length - 1));
+    setItemIndex(clamped);
+    setSampleText(clientPreprocess(pickItemText(listItems[clamped], textPath), preprocess));
+    setSampleAuto(true);
+    setSampleStatus('loaded');
+  }
 
   /** Pull whatever the source resolves to RIGHT NOW into the sample pane. */
   function reloadSampleFromSource() {
-    const resolved = resolveValue(source, testResults);
+    const resolved = resolveValueRaw(source, testResults);
     if (resolved == null) {
       setSampleStatus('unresolved');
       return;
     }
     setSampleAuto(true);
-    setSampleText(clientPreprocess(resolved, preprocess));
+    if (Array.isArray(resolved) && mode !== 'single') {
+      setListItems(resolved);
+      setItemIndex(0);
+      const itemText = resolved.length > 0 ? pickItemText(resolved[0], textPath) : '';
+      setSampleText(clientPreprocess(itemText, preprocess));
+    } else {
+      setListItems(null);
+      const asString =
+        typeof resolved === 'string'  ? resolved :
+        typeof resolved === 'number'  ? String(resolved) :
+        typeof resolved === 'boolean' ? String(resolved) :
+        (() => { try { return JSON.stringify(resolved, null, 2); } catch { return String(resolved); } })();
+      setSampleText(clientPreprocess(asString, preprocess));
+    }
     setSampleStatus('loaded');
+  }
+
+  /** Probe the first item and set `textPath` to the most likely text key. */
+  function detectTextPath() {
+    if (!listItems || listItems.length === 0) return;
+    const guess = autoDetectTextPath(listItems[0]);
+    if (guess) onChange({ textPath: guess });
   }
 
   function setFields(next: ExtractFieldShape[]) { onChange({ fields: next }); }
@@ -4615,6 +4913,73 @@ function ExtractConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) 
       />
 
       <Select
+        label="Source mode"
+        value={mode}
+        onChange={(e) => onChange({ mode: e.target.value })}
+        options={EXTRACT_MODE_OPTIONS}
+      />
+      {EXTRACT_MODE_DESCRIPTIONS[mode] && (
+        <p className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/60 rounded-md px-2.5 py-2 leading-relaxed -mt-1">
+          {EXTRACT_MODE_DESCRIPTIONS[mode]}
+        </p>
+      )}
+
+      {/* List-mode banner — appears whenever the resolved source is an array
+          (or the user forced each-item mode). Tells non-technical users the
+          extraction will run once per item and where to find their values. */}
+      {iterating && itemCount > 0 && (
+        <div className="rounded-md border border-blue-300 dark:border-blue-700/60 bg-blue-50 dark:bg-blue-900/30 px-2.5 py-2 space-y-1.5">
+          <p className="text-[11px] text-blue-800 dark:text-blue-200 leading-snug">
+            <strong>Source is a list of {itemCount} item{itemCount !== 1 ? 's' : ''}.</strong>{' '}
+            Extract will run once per item and return{' '}
+            <span className="font-mono">items: [...]</span> plus{' '}
+            <span className="font-mono">count</span>. Each item's fields are accessible downstream as{' '}
+            <span className="font-mono">{`{{nodes.<this>.items[0].<fieldName>}}`}</span>.
+          </p>
+        </div>
+      )}
+      {mode === 'each-item' && itemCount === 0 && sampleStatus === 'loaded' && (
+        <div className="rounded-md border border-amber-300 dark:border-amber-700/60 bg-amber-50 dark:bg-amber-900/30 px-2.5 py-2">
+          <p className="text-[11px] text-amber-800 dark:text-amber-200 leading-snug">
+            <strong>Source isn't a list.</strong> "Each item" mode requires an array source — the node will fail at runtime. Switch to "Auto" or fix the Source expression.
+          </p>
+        </div>
+      )}
+
+      {/* Per-item text path — only meaningful when iterating over objects. */}
+      {iterating && (
+        <div className="space-y-1">
+          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+            Text path within each item
+          </label>
+          <div className="flex gap-1">
+            <input
+              type="text"
+              value={textPath}
+              onChange={(e) => onChange({ textPath: e.target.value })}
+              placeholder="body"
+              className="flex-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs font-mono placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+            />
+            <button
+              type="button"
+              onClick={detectTextPath}
+              disabled={!listItems || listItems.length === 0}
+              className="text-[11px] text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-md px-2.5 py-1 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Look at the first item and pick a likely text key (body, text, content, …)."
+            >
+              Detect
+            </button>
+          </div>
+          <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-snug">
+            When each item is an object (e.g. an email), this is the path to the actual text inside it. Examples:{' '}
+            <span className="font-mono">body</span>,{' '}
+            <span className="font-mono">payload.body.text</span>,{' '}
+            <span className="font-mono">messages[0].body</span>. Leave blank to auto-detect common keys.
+          </p>
+        </div>
+      )}
+
+      <Select
         label="Preprocess"
         value={preprocess}
         onChange={(e) => onChange({ preprocess: e.target.value })}
@@ -4631,7 +4996,9 @@ function ExtractConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) 
       <div className="space-y-1">
         <div className="flex items-center justify-between gap-1">
           <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold">
-            Sample text
+            {iterating && itemCount > 0
+              ? <>Sample text — item <span className="font-mono">{safeIndex + 1}</span> of <span className="font-mono">{itemCount}</span></>
+              : 'Sample text'}
           </p>
           <label className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400 cursor-pointer">
             <input
@@ -4644,7 +5011,9 @@ function ExtractConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) 
           </label>
         </div>
         <p className="text-[10px] text-slate-400 dark:text-slate-500 -mt-0.5">
-          A real example of what the source will look like at runtime. We use it to preview your rules below.
+          {iterating
+            ? 'Each item runs through the rules below. Use the pager to spot-check a different item.'
+            : 'A real example of what the source will look like at runtime. We use it to preview your rules below.'}
         </p>
         <textarea
           ref={sampleRef}
@@ -4654,6 +5023,33 @@ function ExtractConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) 
           placeholder="Paste a sample email body here, or click 'Reload from source' to pull a real upstream output."
           className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 font-mono whitespace-pre-wrap resize-y"
         />
+
+        {/* Item pager — only meaningful in iteration mode with at least 2 items */}
+        {iterating && itemCount > 1 && (
+          <div className="flex items-center gap-1.5 pt-1">
+            <button
+              type="button"
+              onClick={() => showItemAt(safeIndex - 1)}
+              disabled={safeIndex <= 0}
+              className="text-[11px] text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-md px-2 py-0.5 font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Previous item"
+            >
+              ← Prev
+            </button>
+            <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+              {safeIndex + 1} / {itemCount}
+            </span>
+            <button
+              type="button"
+              onClick={() => showItemAt(safeIndex + 1)}
+              disabled={safeIndex >= itemCount - 1}
+              className="text-[11px] text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-md px-2 py-0.5 font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Next item"
+            >
+              Next →
+            </button>
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-1.5 pt-1">
           <button
@@ -4666,7 +5062,11 @@ function ExtractConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) 
             ⟳ Reload from source
           </button>
           {sampleStatus === 'loaded' && (
-            <span className="text-[10px] text-emerald-600 dark:text-emerald-400">Loaded from upstream test result.</span>
+            <span className="text-[10px] text-emerald-600 dark:text-emerald-400">
+              {iterating && itemCount > 0
+                ? `Loaded list of ${itemCount} item${itemCount !== 1 ? 's' : ''} from upstream.`
+                : 'Loaded from upstream test result.'}
+            </span>
           )}
           {sampleStatus === 'unresolved' && source.trim() && (
             <span className="text-[10px] text-amber-600 dark:text-amber-400">

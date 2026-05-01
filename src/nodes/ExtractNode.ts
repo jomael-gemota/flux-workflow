@@ -42,16 +42,40 @@ export interface ExtractField {
 
 export type Preprocess = 'none' | 'plain-text' | 'strip-quoted-reply' | 'strip-signature';
 
+/**
+ * How the node handles a Source that resolves to a list (e.g. a Gmail thread's
+ * `messages` array).
+ *
+ *   - `auto`       (default) — detect at runtime; if the resolved value is an
+ *                   array, run extraction once per item; otherwise run once.
+ *   - `single`     — JSON-stringify the whole resolved value and run once.
+ *                   Escape hatch for power users.
+ *   - `each-item`  — explicitly require an array source; throw if it isn't.
+ */
+export type ExtractMode = 'auto' | 'single' | 'each-item';
+
 export interface ExtractNodeConfig {
     /** Default source for fields that don't override it. May contain `{{...}}`. */
     source: string;
     /** Optional sanitisation applied to every resolved source string. */
     preprocess?: Preprocess;
     fields: ExtractField[];
+    /** How to treat a Source that resolves to a list. Defaults to `auto`. */
+    mode?: ExtractMode;
+    /**
+     * When the Source resolves to a list of objects, where to find the text
+     * inside each item. Dotted/bracket path, e.g. `body`, `payload.body.text`.
+     * If empty, the executor probes a few common keys (`body`, `text`,
+     * `content`, `message`) and falls back to JSON-stringifying the item.
+     *
+     * Per-field `source` overrides opt out of iteration entirely — those
+     * fields always resolve once against their own expression.
+     */
+    textPath?: string;
     // ── AI ─────────────────────────────────────────────────────────────────
-    // Used when at least one field has `strategy.kind === 'ai'`. All AI
-    // fields with the same source are batched into a single LLM call so
-    // costs stay sane.
+    // Used when at least one field has `strategy.kind === 'ai'`. AI fields
+    // with the same source are batched into a single LLM call so costs stay
+    // sane (one call per item when iterating).
     aiProvider?: LLMProviderName;
     aiModel?: string;
     aiTemperature?: number;
@@ -118,6 +142,78 @@ function preprocessSource(text: string, mode: Preprocess | undefined): string {
             out = out.replace(/\r\n/g, '\n');
     }
     return out;
+}
+
+// ── Source coercion ───────────────────────────────────────────────────────────
+//
+// Helpers that turn whatever the Source resolved to (strings, numbers, arrays,
+// objects) into the plain-text the regex/between/labeled strategies expect.
+
+/** Walk a dotted/bracket path the same way ExpressionResolver does (best-effort). */
+function walkObjectPath(obj: unknown, path: string): unknown {
+    if (!path) return obj;
+    let current: unknown = obj;
+    for (const rawKey of path.split('.')) {
+        if (current == null) return undefined;
+
+        const propPlusBracket = rawKey.match(/^(.+?)\[(\d+)\]$/);
+        if (propPlusBracket) {
+            const [, propKey, idxStr] = propPlusBracket;
+            if (typeof current !== 'object') return undefined;
+            const next = (current as Record<string, unknown>)[propKey];
+            if (!Array.isArray(next)) return undefined;
+            current = next[parseInt(idxStr, 10)];
+            continue;
+        }
+        const bareBracket = rawKey.match(/^\[(\d+)\]$/);
+        if (bareBracket) {
+            if (!Array.isArray(current)) return undefined;
+            current = current[parseInt(bareBracket[1], 10)];
+            continue;
+        }
+        if (typeof current !== 'object') return undefined;
+        current = (current as Record<string, unknown>)[rawKey];
+    }
+    return current;
+}
+
+/** Coerce any value to a string suitable for regex/between/labeled strategies. */
+function coerceToString(value: unknown): string {
+    if (value == null) return '';
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    try { return JSON.stringify(value); } catch { return String(value); }
+}
+
+/**
+ * Pull the extractable text out of an iteration item. When `textPath` is set,
+ * walk that path; otherwise probe a few common email-shaped keys before
+ * falling back to a JSON dump (so AI extraction can still see the structure).
+ */
+function toExtractText(item: unknown, textPath: string | undefined): string {
+    if (item == null) return '';
+    if (typeof item === 'string') return item;
+    if (typeof item !== 'object') return coerceToString(item);
+
+    if (textPath && textPath.trim()) {
+        const picked = walkObjectPath(item, textPath.trim());
+        if (picked != null) return coerceToString(picked);
+        // textPath was set but didn't resolve — fall through to defaults rather
+        // than returning empty, so the user's rules still see something.
+    }
+
+    // Common keys we look for in order. Designed for emails / chat / API
+    // responses: most of them surface a "body" or "text" field.
+    const probes = ['body', 'text', 'content', 'message', 'snippet', 'value'];
+    for (const key of probes) {
+        const v = (item as Record<string, unknown>)[key];
+        if (typeof v === 'string' && v.length > 0) return v;
+    }
+
+    // Last resort — JSON-stringify so AI strategies still have something to
+    // work with. Non-AI strategies running against a JSON blob will produce
+    // weak matches, which is the user's cue to set a textPath.
+    return coerceToString(item);
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -246,52 +342,96 @@ export class ExtractNode implements NodeExecutor {
         }
 
         const config = node.config;
+        const mode: ExtractMode = config.mode ?? 'auto';
+
+        // ── Iteration decision ────────────────────────────────────────────
+        // We resolve the node-level Source as a raw value (object/array/string)
+        // and decide whether to run the extraction once or once-per-item.
+        // Per-field sources opt out of iteration — each field with its own
+        // `source` always resolves against its own expression, single-shot.
+        const rawNodeSource = this.resolveRawValue(config.source, context);
+
+        const isArraySource = Array.isArray(rawNodeSource);
+        const shouldIterate =
+            mode === 'each-item' ? true :
+            mode === 'single'    ? false :
+            /* auto */             isArraySource;
+
+        if (mode === 'each-item' && !isArraySource) {
+            throw new Error(
+                `Extract node "${node.id}" is set to "each-item" but the Source did not resolve to a list. ` +
+                `Either change Mode to "auto" / "single" or point Source at an array.`,
+            );
+        }
+
+        if (!shouldIterate) {
+            // Single-shot: same shape as before — flat field/value object.
+            return await this.extractOne(rawNodeSource, config, context);
+        }
+
+        // Iteration mode: produce { items: [...], count: N }.
+        const list = (rawNodeSource as unknown[]) ?? [];
+        const items: Record<string, unknown>[] = [];
+        for (let i = 0; i < list.length; i++) {
+            const item = list[i];
+            try {
+                const oneResult = await this.extractOne(item, config, context);
+                items.push(oneResult);
+            } catch (err) {
+                // Re-throw with a useful index so the user can find the bad item.
+                throw new Error(
+                    `Extract node "${node.id}" failed on item ${i}: ${(err as Error).message}`,
+                );
+            }
+        }
+
+        return { items, count: items.length };
+    }
+
+    /**
+     * Run all configured fields against a single source value (string, object,
+     * or array — we don't care, the per-field strategy decides what to do).
+     *
+     * `rawSource` is the *raw* value the node-level source resolves to (or a
+     * single array element when iterating). Per-field sources are resolved
+     * inside this method against the original execution context.
+     */
+    private async extractOne(
+        rawSource: unknown,
+        config: ExtractNodeConfig,
+        context: ExecutionContext,
+    ): Promise<Record<string, unknown>> {
         const result: Record<string, unknown> = {};
 
-        // ── Resolve sources up-front. We cache by raw expression so two fields
-        // pointing at the same source don't re-resolve / re-preprocess.
-        const sourceCache = new Map<string, string>();
-        const resolveSource = (rawExpr: string): string => {
-            if (sourceCache.has(rawExpr)) return sourceCache.get(rawExpr)!;
-            // resolveTemplate gracefully replaces unknown references with
-            // "[missing: ...]"; resolveTemplate also handles bare "{{...}}".
-            const resolved = this.resolver.resolveTemplate(rawExpr, context);
-            const cleaned  = preprocessSource(resolved, config.preprocess);
-            sourceCache.set(rawExpr, cleaned);
-            return cleaned;
+        // Cache raw and stringified-cleaned representations of the per-field
+        // source expressions. Falsy "source override" → use the iteration's
+        // raw value directly.
+        const stringCache = new Map<string, string>();
+        const rawCache    = new Map<string, unknown>();
+
+        const getFieldRaw = (fieldSource: string | undefined): unknown => {
+            if (!fieldSource) return rawSource;
+            if (rawCache.has(fieldSource)) return rawCache.get(fieldSource);
+            const v = this.resolveRawValue(fieldSource, context);
+            rawCache.set(fieldSource, v);
+            return v;
         };
 
-        // We also need raw (un-preprocessed) JSON for the jsonpath strategy
-        // because preprocessing strips structure.
-        const rawCache = new Map<string, unknown>();
-        const resolveRaw = (rawExpr: string): unknown => {
-            if (rawCache.has(rawExpr)) return rawCache.get(rawExpr);
+        const getFieldString = (fieldSource: string | undefined): string => {
+            const cacheKey = fieldSource ?? '__node_source__';
+            if (stringCache.has(cacheKey)) return stringCache.get(cacheKey)!;
 
-            const trimmed = rawExpr.trim();
-            const single  = trimmed.match(/^\{\{\s*(.+?)\s*\}\}$/);
-            const inner   = single ? single[1].trim() : '';
-
-            // Special-case bare top-level node refs ({{nodes.<id>}}) — the
-            // standard ExpressionResolver requires at least nodes.<id>.<field>.
-            // For JSONPath input we frequently want the whole node output as
-            // the root document, so we look it up directly here.
-            const bareNode = inner.match(/^nodes\.([^.]+)$/);
-            if (bareNode) {
-                const value = context.variables[bareNode[1]];
-                rawCache.set(rawExpr, value);
-                return value;
-            }
-
-            try {
-                const value = single
-                    ? this.resolver.resolve(inner, context)
-                    : this.resolver.resolveTemplate(rawExpr, context);
-                rawCache.set(rawExpr, value);
-                return value;
-            } catch {
-                rawCache.set(rawExpr, undefined);
-                return undefined;
-            }
+            // Per-field override → resolve fresh as a template string.
+            // Node-source iteration item → coerce via toExtractText so we
+            // pick the configured textPath out of object items.
+            const raw = getFieldRaw(fieldSource);
+            const text =
+                fieldSource
+                    ? coerceToString(raw)
+                    : toExtractText(raw, config.textPath);
+            const cleaned = preprocessSource(text, config.preprocess);
+            stringCache.set(cacheKey, cleaned);
+            return cleaned;
         };
 
         // ── Pass 1: every non-AI field is computed synchronously and stored.
@@ -303,14 +443,13 @@ export class ExtractNode implements NodeExecutor {
                 continue;
             }
 
-            const sourceExpr = field.source ?? config.source;
             let value: unknown;
 
             try {
                 if (field.strategy.kind === 'jsonpath') {
-                    value = runJsonPath(resolveRaw(sourceExpr), field.strategy.path, !!field.multiple);
+                    value = runJsonPath(getFieldRaw(field.source), field.strategy.path, !!field.multiple);
                 } else {
-                    const text = resolveSource(sourceExpr);
+                    const text = getFieldString(field.source);
                     switch (field.strategy.kind) {
                         case 'regex':
                             value = runRegex(text, field.strategy.pattern, field.strategy.flags, field.strategy.group, !!field.multiple);
@@ -333,18 +472,19 @@ export class ExtractNode implements NodeExecutor {
             result[field.name] = value;
         }
 
-        // ── Pass 2: AI fields are batched per source so we make one LLM call
-        // even when the user defined a dozen AI extractions.
+        // ── Pass 2: AI fields batched per source. Within one extractOne call
+        // we typically have one source (the iteration item) so this is a
+        // single LLM call per item even when the user defined many AI fields.
         if (aiFields.length > 0) {
-            const groups = new Map<string, ExtractField[]>();
+            const groups = new Map<string | undefined, ExtractField[]>();
             for (const f of aiFields) {
-                const key = f.source ?? config.source;
+                const key = f.source;
                 if (!groups.has(key)) groups.set(key, []);
                 groups.get(key)!.push(f);
             }
 
-            for (const [sourceExpr, fields] of groups) {
-                const text = resolveSource(sourceExpr);
+            for (const [fieldSource, fields] of groups) {
+                const text = getFieldString(fieldSource);
                 const aiResults = await this.runAiBatch(text, fields, config);
                 for (const f of fields) {
                     const strat = f.strategy as Extract<ExtractStrategy, { kind: 'ai' }>;
@@ -356,6 +496,32 @@ export class ExtractNode implements NodeExecutor {
         }
 
         return result;
+    }
+
+    /**
+     * Resolve a raw expression to its underlying value (object/array/string),
+     * gracefully returning `undefined` when the path can't be resolved (e.g.
+     * during isolated testing). Special-cases bare `{{nodes.<id>}}` since the
+     * standard resolver requires at least three path segments.
+     */
+    private resolveRawValue(rawExpr: string, context: ExecutionContext): unknown {
+        if (!rawExpr) return undefined;
+        const trimmed = rawExpr.trim();
+        const single  = trimmed.match(/^\{\{\s*(.+?)\s*\}\}$/);
+
+        if (single) {
+            const inner = single[1].trim();
+            const bareNode = inner.match(/^nodes\.([^.]+)$/);
+            if (bareNode) return context.variables[bareNode[1]];
+            try { return this.resolver.resolve(inner, context); }
+            catch { return undefined; }
+        }
+
+        // Mixed template (e.g. "Hello {{nodes.x.name}}") — fall back to a
+        // template-resolved string. There's no sensible "raw" for mixed
+        // templates because they're string-shaped by definition.
+        try { return this.resolver.resolveTemplate(rawExpr, context); }
+        catch { return undefined; }
     }
 
     private async runAiBatch(

@@ -92,7 +92,7 @@ const DEFAULT_CONFIGS: Partial<Record<NodeType, Record<string, unknown>>> = {
   condition: { condition: { type: 'leaf', left: '', operator: 'eq', right: '' }, trueNext: '', falseNext: '' },
   switch: { cases: [], defaultNext: '' },
   transform: { mappings: {} },
-  extract: { source: '', preprocess: 'plain-text', fields: [], aiProvider: 'openai', aiModel: 'gpt-5.4-mini', aiTemperature: 0 },
+  extract: { source: '', preprocess: 'plain-text', fields: [], mode: 'auto', textPath: '', aiProvider: 'openai', aiModel: 'gpt-5.4-mini', aiTemperature: 0 },
   output: { value: '' },
   gmail:   { action: 'send',   credentialId: '', to: '', subject: '', body: '' },
   gdrive:  { action: 'list',   credentialId: '', query: '' },
