@@ -14,6 +14,7 @@ type BasecampAction =
     | 'send_campfire'
     | 'list_todos'
     | 'invite_users'
+    | 'remove_user'
     | 'list_organizations';
 
 interface BasecampConfig {
@@ -45,6 +46,9 @@ interface BasecampConfig {
     inviteName?: string;
     inviteTitle?: string;
     inviteCompany?: string;
+    // remove_user
+    removeEmail?: string;
+    removeCompany?: string;
 }
 
 /**
@@ -534,6 +538,70 @@ export class BasecampNode implements NodeExecutor {
                 title:   (person.title as string | undefined)         ?? title,
                 company: (companyObj?.name as string | undefined)     ?? company,
                 status:  'invited',
+            };
+        }
+
+        if (action === 'remove_user') {
+            const email   = this.resolver.resolveTemplate(config.removeEmail   ?? '', context).trim().toLowerCase();
+            const company = this.resolver.resolveTemplate(config.removeCompany ?? '', context).trim().toLowerCase();
+
+            if (!email) throw new Error('Basecamp remove_user: email address is required');
+
+            // Fetch all account people and find the matching person
+            const people = await this.fetchAllPages(`${baseUrl}/people.json`, headers);
+
+            let candidates = people.filter(
+                (p) => (p.email_address as string ?? '').toLowerCase() === email,
+            );
+
+            // If a company name was provided, narrow down further
+            if (company && candidates.length > 1) {
+                const filtered = candidates.filter((p) => {
+                    const co = p.company as { name?: string } | null | undefined;
+                    return String(co?.name ?? '').toLowerCase() === company;
+                });
+                if (filtered.length > 0) candidates = filtered;
+            }
+
+            if (candidates.length === 0) {
+                throw new Error(
+                    `Basecamp remove_user: no person found with email "${email}"` +
+                    (company ? ` and company "${company}"` : '') + '.',
+                );
+            }
+
+            if (candidates.length > 1) {
+                const names = candidates
+                    .map((p) => {
+                        const co = p.company as { name?: string } | null | undefined;
+                        return `${p.name} (${co?.name ?? 'no company'})`;
+                    })
+                    .join(', ');
+                throw new Error(
+                    `Basecamp remove_user: multiple people found with email "${email}": ${names}. ` +
+                    'Provide the Company field to disambiguate.',
+                );
+            }
+
+            const person   = candidates[0];
+            const personId = person.id as number;
+
+            const res = await fetch(`${baseUrl}/people/users/${personId}.json`, {
+                method: 'DELETE', headers,
+            });
+
+            // 204 No Content = success; Basecamp also returns 200 in some cases
+            if (!res.ok && res.status !== 204) {
+                throw new Error(`Basecamp remove_user failed (${res.status}): ${await res.text()}`);
+            }
+
+            const coObj = person.company as Record<string, unknown> | null | undefined;
+            return {
+                id:      personId,
+                name:    person.name    as string | undefined,
+                email:   person.email_address as string | undefined,
+                company: (coObj?.name as string | undefined) ?? null,
+                status:  'removed',
             };
         }
 

@@ -10510,9 +10510,12 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
     (action === 'complete_todo' || action === 'uncomplete_todo') ? credentialId : '', safeTodolistId, todoStatus
   );
   const { data: people = [],    isLoading: loadingPeople }    = useBasecampPeople(credentialId, isExprVal(projectId) ? undefined : (projectId || undefined));
-  const { data: companies = [], isLoading: loadingCompanies } = useBasecampCompanies(action === 'invite_users' ? credentialId : '');
+  const { data: companies = [], isLoading: loadingCompanies } = useBasecampCompanies(
+    (action === 'invite_users' || action === 'remove_user') ? credentialId : ''
+  );
 
-  const [companyMode, setCompanyMode] = useState<'select' | 'expr'>(() => isExprVal(String(cfg.inviteCompany ?? '')) ? 'expr' : 'select');
+  const [companyMode,       setCompanyMode]       = useState<'select' | 'expr'>(() => isExprVal(String(cfg.inviteCompany  ?? '')) ? 'expr' : 'select');
+  const [removeCompanyMode, setRemoveCompanyMode] = useState<'select' | 'expr'>(() => isExprVal(String(cfg.removeCompany  ?? '')) ? 'expr' : 'select');
 
   const needsProject  = ['create_todo', 'post_message', 'send_campfire', 'list_todos'].includes(action);
   const needsTodolist = ['create_todo', 'list_todos'].includes(action);
@@ -10537,6 +10540,7 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
           { value: 'send_campfire',   label: 'Send Campfire Message' },
           { value: 'list_todos',      label: 'List To-Dos' },
           { value: 'invite_users',       label: 'Invite User to Organization' },
+          { value: 'remove_user',        label: 'Remove User from Organization' },
           { value: 'list_organizations', label: 'List Organizations' },
         ]}
       />
@@ -11010,6 +11014,93 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
             Include completed to-dos (including hidden)
           </label>
         </div>
+      )}
+
+      {/* ── remove_user fields ────────────────────────────────────────── */}
+      {action === 'remove_user' && (
+        <>
+          <p className="text-[10px] text-slate-400 dark:text-slate-500">
+            Permanently removes the person from your Basecamp account. Requires admin privileges. The user is looked up by email address; provide a Company to disambiguate if needed.
+          </p>
+          <ExpressionInput
+            label="Email Address"
+            value={String(cfg.removeEmail ?? '')}
+            onChange={(v) => onChange({ removeEmail: v })}
+            placeholder="jane@example.com"
+            nodes={otherNodes}
+            testResults={testResults}
+            hint="The email address of the person to remove from your Basecamp account."
+          />
+
+          {/* Company — dropdown from account with variable fallback */}
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+                Company <span className="text-slate-600 font-normal">(optional, to disambiguate)</span>
+              </span>
+              {credentialId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = removeCompanyMode === 'select' ? 'expr' : 'select';
+                    setRemoveCompanyMode(next);
+                    if (next === 'select') onChange({ removeCompany: '' });
+                  }}
+                  className="flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded transition-colors text-blue-400 hover:text-white hover:bg-blue-700"
+                  title="Toggle between picking from the list and entering a variable expression"
+                >
+                  <Braces className="w-2.5 h-2.5" />
+                  {removeCompanyMode === 'select' ? 'Use variable' : 'Select from list'}
+                </button>
+              )}
+            </div>
+            {removeCompanyMode === 'expr' ? (
+              <ExpressionInput
+                value={String(cfg.removeCompany ?? '')}
+                onChange={(v) => onChange({ removeCompany: v })}
+                placeholder="{{nodes.trigger.items[0].company}}"
+                nodes={otherNodes}
+                testResults={testResults}
+                hint="Enter a company name directly or insert a variable expression."
+              />
+            ) : loadingCompanies ? (
+              <div className="flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500 py-1">
+                <Loader2 className="w-3 h-3 animate-spin" /> Loading companies…
+              </div>
+            ) : (
+              <div className="max-h-36 overflow-y-auto rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 divide-y divide-slate-200 dark:divide-slate-700">
+                <button
+                  type="button"
+                  onClick={() => onChange({ removeCompany: '' })}
+                  className={`w-full text-left px-2.5 py-1.5 text-xs transition-colors ${
+                    !cfg.removeCompany
+                      ? 'bg-green-100 dark:bg-green-600/30 text-green-800 dark:text-green-300 font-medium'
+                      : 'text-slate-400 dark:text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  (any company)
+                </button>
+                {companies.length === 0 && (
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 px-2.5 py-2">No companies found in this account.</p>
+                )}
+                {companies.map((co) => (
+                  <button
+                    key={co.id}
+                    type="button"
+                    onClick={() => onChange({ removeCompany: co.name })}
+                    className={`w-full text-left px-2.5 py-1.5 text-xs transition-colors ${
+                      cfg.removeCompany === co.name
+                        ? 'bg-green-100 dark:bg-green-600/30 text-green-800 dark:text-green-300 font-medium'
+                        : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                    }`}
+                  >
+                    {co.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       {/* ── list_organizations fields ─────────────────────────────────── */}
