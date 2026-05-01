@@ -4328,6 +4328,17 @@ const EXTRACT_PREPROCESS_OPTIONS = [
   { value: 'strip-signature',    label: 'Strip HTML + signature block' },
 ];
 
+const EXTRACT_PREPROCESS_DESCRIPTIONS: Record<string, string> = {
+  'none':
+    'Use the source text exactly as it arrives. Pick this only when the input is already clean plain text (e.g. a previous AI step produced it).',
+  'plain-text':
+    'Removes HTML tags, scripts, and styles, and collapses extra whitespace. Best when the source is an HTML email — letters, not markup, are what your rules will see.',
+  'strip-quoted-reply':
+    'Plain-text cleaning, plus drops the quoted reply chain ("On Tue, X wrote:", "> ...", "From: ..."). Stops you from accidentally extracting from older emails further down the thread.',
+  'strip-signature':
+    'Plain-text cleaning, plus drops the signature block (after a "-- " or "---" line). Stops you from picking up the sender\'s own contact info instead of the request\'s.',
+};
+
 const EXTRACT_STRATEGY_OPTIONS = [
   { value: 'between',  label: 'Between anchors' },
   { value: 'labeled',  label: 'After a label' },
@@ -4335,6 +4346,19 @@ const EXTRACT_STRATEGY_OPTIONS = [
   { value: 'jsonpath', label: 'JSONPath (structured input)' },
   { value: 'ai',       label: 'AI (natural language)' },
 ];
+
+const EXTRACT_STRATEGY_DESCRIPTIONS: Record<string, string> = {
+  between:
+    'Find the text that sits between two short markers — anything before it, the value, anything after it. Easiest when the value has clear text on either side, e.g. "Email: …<newline>".',
+  labeled:
+    'Find the value that comes right after a label like "Manager:" or "Team -". Reads up to the end of the line by default.',
+  regex:
+    'Use a regular expression. Best for advanced or repeated patterns. Wrap the part you want in parentheses; that "capture group" is what gets returned.',
+  jsonpath:
+    'Pull a value out of already-structured data (a JSON object or array). Use this when your source is a node\'s output object, not free-form text.',
+  ai:
+    'Describe what you want in plain English; the AI reads the source and returns the value. Most robust against messy or unpredictable formats — costs an LLM call.',
+};
 
 const EXTRACT_TRANSFORM_OPTIONS = [
   { value: '',                 label: 'No post-processing' },
@@ -4471,17 +4495,34 @@ function ExtractConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) 
   // have test results) but stays user-editable so they can paste anything.
   const [sampleText, setSampleText] = useState<string>('');
   const [sampleAuto, setSampleAuto] = useState(true);
+  const [sampleStatus, setSampleStatus] = useState<'idle' | 'loaded' | 'unresolved'>('idle');
   const sampleRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (!sampleAuto) return;
     const resolved = resolveValue(source, testResults);
-    if (resolved == null) return;
+    if (resolved == null) {
+      setSampleStatus('unresolved');
+      return;
+    }
     // Run the same lightweight preprocessing the backend does so the preview
     // matches what the node will actually see at runtime.
     const cleaned = clientPreprocess(resolved, preprocess);
     setSampleText(cleaned);
+    setSampleStatus('loaded');
   }, [source, preprocess, testResults, sampleAuto]);
+
+  /** Pull whatever the source resolves to RIGHT NOW into the sample pane. */
+  function reloadSampleFromSource() {
+    const resolved = resolveValue(source, testResults);
+    if (resolved == null) {
+      setSampleStatus('unresolved');
+      return;
+    }
+    setSampleAuto(true);
+    setSampleText(clientPreprocess(resolved, preprocess));
+    setSampleStatus('loaded');
+  }
 
   function setFields(next: ExtractFieldShape[]) { onChange({ fields: next }); }
 
@@ -4579,9 +4620,11 @@ function ExtractConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) 
         onChange={(e) => onChange({ preprocess: e.target.value })}
         options={EXTRACT_PREPROCESS_OPTIONS}
       />
-      <p className="text-[10px] text-slate-400 dark:text-slate-500 -mt-1">
-        Cleans up the source before any extraction runs. Helps a lot with HTML emails.
-      </p>
+      {EXTRACT_PREPROCESS_DESCRIPTIONS[preprocess] && (
+        <p className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/60 rounded-md px-2.5 py-2 leading-relaxed -mt-1">
+          {EXTRACT_PREPROCESS_DESCRIPTIONS[preprocess]}
+        </p>
+      )}
 
       {/* Sample text + highlight-to-define */}
       <div className="border-t border-slate-200 dark:border-slate-700" />
@@ -4600,15 +4643,39 @@ function ExtractConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) 
             Auto-fill from source
           </label>
         </div>
+        <p className="text-[10px] text-slate-400 dark:text-slate-500 -mt-0.5">
+          A real example of what the source will look like at runtime. We use it to preview your rules below.
+        </p>
         <textarea
           ref={sampleRef}
           rows={6}
           value={sampleText}
           onChange={(e) => { setSampleAuto(false); setSampleText(e.target.value); }}
-          placeholder="Paste a sample email body here, or test an upstream node so we can auto-fill it."
+          placeholder="Paste a sample email body here, or click 'Reload from source' to pull a real upstream output."
           className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 font-mono whitespace-pre-wrap resize-y"
         />
-        <div className="flex flex-wrap gap-1.5 pt-1">
+
+        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+          <button
+            type="button"
+            onClick={reloadSampleFromSource}
+            disabled={!source.trim()}
+            className="text-[11px] text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 border border-emerald-300 dark:border-emerald-700/50 rounded-md px-2.5 py-1 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Resolve the Source expression against the latest test results from upstream nodes and load the result here."
+          >
+            ⟳ Reload from source
+          </button>
+          {sampleStatus === 'loaded' && (
+            <span className="text-[10px] text-emerald-600 dark:text-emerald-400">Loaded from upstream test result.</span>
+          )}
+          {sampleStatus === 'unresolved' && source.trim() && (
+            <span className="text-[10px] text-amber-600 dark:text-amber-400">
+              Source can't be resolved yet — run the upstream node's test first.
+            </span>
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-1.5 pt-1.5">
           <button
             type="button"
             onClick={addFieldFromHighlight}
@@ -4643,6 +4710,10 @@ function ExtractConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) 
       <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold">
         Fields ({fields.length})
       </p>
+      <p className="text-[10px] text-slate-500 dark:text-slate-400 -mt-1 leading-relaxed">
+        Each field becomes one value in this node's output. Other nodes can read it as
+        {' '}<span className="font-mono text-blue-500 dark:text-blue-400">{`{{nodes.<this-node>.<fieldName>}}`}</span>.
+      </p>
 
       {fields.length === 0 && (
         <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">
@@ -4664,50 +4735,78 @@ function ExtractConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) 
         />
       ))}
 
-      {hasAiField && (
-        <>
-          <div className="border-t border-slate-200 dark:border-slate-700" />
-          <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold">
-            AI Settings
-          </p>
-          <p className="text-[10px] text-slate-400 dark:text-slate-500 -mt-1">
-            All AI fields with the same source are extracted in a single LLM call.
-          </p>
-          <div className="grid grid-cols-2 gap-2">
+      {hasAiField && (() => {
+        const providerModels = LLM_MODELS[aiProvider] ?? LLM_MODELS.openai;
+        const modelValue = providerModels.some((m) => m.value === aiModel)
+          ? aiModel
+          : providerModels[0].value;
+        const providerInfo = LLM_PROVIDERS[aiProvider];
+        const modelInfo = providerModels.find((m) => m.value === modelValue);
+
+        function handleAiProviderChange(newProvider: string) {
+          const firstModel = (LLM_MODELS[newProvider] ?? LLM_MODELS.openai)[0].value;
+          onChange({ aiProvider: newProvider, aiModel: firstModel });
+        }
+
+        return (
+          <>
+            <div className="border-t border-slate-200 dark:border-slate-700" />
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold">
+              AI Settings
+            </p>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 -mt-1">
+              All AI fields with the same source are extracted in a single LLM call to keep cost low.
+            </p>
             <Select
               label="Provider"
               value={aiProvider}
-              onChange={(e) => onChange({ aiProvider: e.target.value })}
-              options={[
-                { value: 'openai',    label: 'OpenAI' },
-                { value: 'anthropic', label: 'Anthropic' },
-                { value: 'gemini',    label: 'Gemini' },
-                { value: 'meta',      label: 'Meta' },
-              ]}
+              onChange={(e) => handleAiProviderChange(e.target.value)}
+              options={Object.entries(LLM_PROVIDERS).map(([value, info]) => ({ value, label: info.label }))}
             />
+            {providerInfo && (
+              <p className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/60 rounded-md px-2.5 py-2 leading-relaxed -mt-1">
+                {providerInfo.description}
+              </p>
+            )}
+
+            <Select
+              label="Model"
+              value={modelValue}
+              onChange={(e) => onChange({ aiModel: e.target.value })}
+              options={providerModels}
+            />
+            {modelInfo && (
+              <p className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/60 rounded-md px-2.5 py-2 leading-relaxed -mt-1">
+                {modelInfo.description}
+              </p>
+            )}
+            {modelInfo?.preview && (
+              <div className="flex gap-2 items-start bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-md px-2.5 py-2 -mt-1">
+                <span className="text-amber-500 dark:text-amber-400 mt-px shrink-0">⚠</span>
+                <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
+                  <strong>Preview model</strong> — not yet generally available. Behavior, pricing, or availability may change. Not recommended for critical production workflows.
+                </p>
+              </div>
+            )}
+
             <div className="space-y-1">
-              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Model</label>
+              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+                Temperature ({aiTemperature.toFixed(1)})
+              </label>
               <input
-                type="text"
-                value={aiModel}
-                onChange={(e) => onChange({ aiModel: e.target.value })}
-                className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2 py-1 text-xs placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                type="range" min={0} max={1} step={0.1}
+                value={aiTemperature}
+                onChange={(e) => onChange({ aiTemperature: Number(e.target.value) })}
+                className="w-full"
               />
+              <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                Lower (0.0) = strict, deterministic answers. Higher = more creative.
+                For structured extraction, keep this near 0.
+              </p>
             </div>
-          </div>
-          <div className="space-y-1">
-            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
-              Temperature ({aiTemperature.toFixed(1)})
-            </label>
-            <input
-              type="range" min={0} max={1} step={0.1}
-              value={aiTemperature}
-              onChange={(e) => onChange({ aiTemperature: Number(e.target.value) })}
-              className="w-full"
-            />
-          </div>
-        </>
-      )}
+          </>
+        );
+      })()}
     </>
   );
 }
@@ -4752,81 +4851,105 @@ function ExtractFieldRow({
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   return (
-    <div className="rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 p-2 space-y-1.5">
-      {/* Header: name + strategy + actions */}
-      <div className="flex items-center gap-1">
-        <input
-          className="flex-1 min-w-0 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
-          value={field.name}
-          onChange={(e) => onChange({ name: e.target.value })}
-          placeholder="fieldName"
-        />
+    <div className="rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 p-2 space-y-2">
+      {/* Header: name + actions */}
+      <div className="space-y-0.5">
+        <div className="flex items-center gap-1">
+          <div className="flex-1 min-w-0 space-y-0.5">
+            <label className="block text-[9px] uppercase tracking-wider font-semibold text-slate-400 dark:text-slate-500">field name</label>
+            <input
+              className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
+              value={field.name}
+              onChange={(e) => onChange({ name: e.target.value })}
+              placeholder="fieldName"
+            />
+          </div>
+          <div className="flex items-center shrink-0 self-end pb-0.5">
+            {onMoveUp && (
+              <button onClick={onMoveUp} title="Move up" className="text-slate-400 dark:text-slate-500 hover:text-gray-700 dark:hover:text-white px-1 text-xs">↑</button>
+            )}
+            {onMoveDown && (
+              <button onClick={onMoveDown} title="Move down" className="text-slate-400 dark:text-slate-500 hover:text-gray-700 dark:hover:text-white px-1 text-xs">↓</button>
+            )}
+            <button onClick={onRemove} title="Remove field" className="text-slate-400 dark:text-slate-500 hover:text-red-400 px-1 text-sm">×</button>
+          </div>
+        </div>
+        <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-snug">
+          The key downstream nodes use to read this value (e.g. <span className="font-mono">requesterEmail</span>). Use a short identifier — letters, numbers, no spaces.
+        </p>
+      </div>
+
+      {/* Strategy picker + description */}
+      <div className="space-y-0.5">
         <Select
+          label="how to find it"
           value={field.strategy.kind}
           onChange={(e) => onChangeStrategyKind(e.target.value as ExtractStrategyKind)}
           options={EXTRACT_STRATEGY_OPTIONS}
         />
-        <div className="flex items-center shrink-0">
-          {onMoveUp && (
-            <button onClick={onMoveUp} title="Move up" className="text-slate-400 dark:text-slate-500 hover:text-gray-700 dark:hover:text-white px-1 text-xs">↑</button>
-          )}
-          {onMoveDown && (
-            <button onClick={onMoveDown} title="Move down" className="text-slate-400 dark:text-slate-500 hover:text-gray-700 dark:hover:text-white px-1 text-xs">↓</button>
-          )}
-          <button onClick={onRemove} title="Remove field" className="text-slate-400 dark:text-slate-500 hover:text-red-400 px-1 text-sm">×</button>
-        </div>
+        {EXTRACT_STRATEGY_DESCRIPTIONS[field.strategy.kind] && (
+          <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug">
+            {EXTRACT_STRATEGY_DESCRIPTIONS[field.strategy.kind]}
+          </p>
+        )}
       </div>
 
       {/* Strategy-specific inputs */}
       {field.strategy.kind === 'between' && (
-        <div className="grid grid-cols-2 gap-1.5">
+        <div className="grid grid-cols-1 gap-2">
           <LabeledMiniInput
             label="before"
             value={field.strategy.before ?? ''}
             onChange={(v) => onChangeStrategy({ before: v })}
             placeholder="Email: "
+            hint="The text that appears immediately BEFORE the value you want. Match it exactly, including punctuation and spaces."
           />
           <LabeledMiniInput
             label="after"
             value={field.strategy.after ?? ''}
             onChange={(v) => onChangeStrategy({ after: v })}
-            placeholder="(end of line)"
+            placeholder="(empty = end of line)"
+            hint="The text that appears immediately AFTER the value. Leave empty to read until the end of the current line."
           />
         </div>
       )}
 
       {field.strategy.kind === 'labeled' && (
-        <div className="grid grid-cols-2 gap-1.5">
+        <div className="grid grid-cols-1 gap-2">
           <LabeledMiniInput
             label="label"
             value={field.strategy.label ?? ''}
             onChange={(v) => onChangeStrategy({ label: v })}
             placeholder="Manager:"
+            hint="The label that introduces the value (e.g. 'Manager:'). The colon is optional — we'll handle it for you."
           />
           <LabeledMiniInput
             label="stop at"
             value={field.strategy.stopAt ?? ''}
             onChange={(v) => onChangeStrategy({ stopAt: v })}
-            placeholder="(end of line)"
+            placeholder="(empty = end of line)"
+            hint="Where to stop reading. Leave empty to stop at the end of the line. Set to ',' or ' and' for inline lists."
           />
         </div>
       )}
 
       {field.strategy.kind === 'regex' && (
-        <div className="space-y-1">
+        <div className="space-y-2">
           <LabeledMiniInput
             label="pattern"
             value={field.strategy.pattern ?? ''}
             onChange={(v) => onChangeStrategy({ pattern: v })}
             placeholder="Email:\\s*(\\S+)"
             mono
+            hint="A regular expression. Wrap the part you want returned in parentheses (...) — that's the capture group."
           />
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className="grid grid-cols-2 gap-2">
             <LabeledMiniInput
               label="flags"
               value={field.strategy.flags ?? ''}
               onChange={(v) => onChangeStrategy({ flags: v })}
               placeholder="i"
+              hint="i = ignore case · s = . matches newlines · m = multi-line ^/$. Leave empty for none."
             />
             <div className="space-y-0.5">
               <label className="block text-[9px] uppercase tracking-wider font-semibold text-slate-400 dark:text-slate-500">capture group</label>
@@ -4836,6 +4959,9 @@ function ExtractFieldRow({
                 onChange={(e) => onChangeStrategy({ group: Number(e.target.value) })}
                 className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded px-2 py-1 text-xs text-gray-900 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-snug">
+                Which group to return. 0 = the whole match · 1 = the first (...) group · 2 = the second, and so on.
+              </p>
             </div>
           </div>
         </div>
@@ -4848,11 +4974,12 @@ function ExtractFieldRow({
           onChange={(v) => onChangeStrategy({ path: v })}
           placeholder="$.user.email"
           mono
+          hint="A JSONPath expression. $ means the root. Examples: $.users[0].email · $.threads[*].subject"
         />
       )}
 
       {field.strategy.kind === 'ai' && (
-        <div className="space-y-1.5">
+        <div className="space-y-2">
           <div className="space-y-0.5">
             <label className="block text-[9px] uppercase tracking-wider font-semibold text-slate-400 dark:text-slate-500">describe what to extract</label>
             <textarea
@@ -4862,18 +4989,27 @@ function ExtractFieldRow({
               placeholder="The requester's email address"
               className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded px-2 py-1 text-xs text-gray-900 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y"
             />
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-snug">
+              Describe the value in plain English, like you would to a colleague. The AI reads the source and returns just this value.
+            </p>
           </div>
-          <Select
-            label="output type"
-            value={field.strategy.type ?? 'string'}
-            onChange={(e) => onChangeStrategy({ type: e.target.value as 'string' | 'number' | 'boolean' | 'string[]' })}
-            options={[
-              { value: 'string',   label: 'string'    },
-              { value: 'number',   label: 'number'    },
-              { value: 'boolean',  label: 'boolean'   },
-              { value: 'string[]', label: 'string[]'  },
-            ]}
-          />
+          <div className="space-y-0.5">
+            <Select
+              label="output type"
+              value={field.strategy.type ?? 'string'}
+              onChange={(e) => onChangeStrategy({ type: e.target.value as 'string' | 'number' | 'boolean' | 'string[]' })}
+              options={[
+                { value: 'string',   label: 'string'    },
+                { value: 'number',   label: 'number'    },
+                { value: 'boolean',  label: 'boolean'   },
+                { value: 'string[]', label: 'string[]'  },
+              ]}
+            />
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-snug">
+              How to interpret the AI's answer. Use <span className="font-mono">number</span> for amounts/counts,
+              <span className="font-mono"> boolean</span> for yes/no, <span className="font-mono">string[]</span> for lists.
+            </p>
+          </div>
         </div>
       )}
 
@@ -4929,13 +5065,15 @@ function ExtractFieldRow({
 }
 
 function LabeledMiniInput({
-  label, value, onChange, placeholder, mono = false,
+  label, value, onChange, placeholder, mono = false, hint,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   mono?: boolean;
+  /** Plain-language description shown beneath the input. */
+  hint?: string;
 }) {
   return (
     <div className="space-y-0.5">
@@ -4947,6 +5085,9 @@ function LabeledMiniInput({
         placeholder={placeholder}
         className={`w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded px-2 py-1 text-xs text-gray-900 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 ${mono ? 'font-mono' : ''}`}
       />
+      {hint && (
+        <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-snug">{hint}</p>
+      )}
     </div>
   );
 }
