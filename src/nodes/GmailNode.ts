@@ -44,6 +44,8 @@ interface GmailConfig {
     maxResults?: number;
     // read / mark_read / mark_unread / add_label / remove_label / delete_message
     messageId?: string;
+    // mark_read / mark_unread — apply to a single message or the entire thread
+    markTarget?: 'message' | 'thread';
     // add_label / remove_label
     labelIds?: string[];
     // delete_message / delete_conversation — permanent delete vs. move to trash (default = trash)
@@ -711,30 +713,61 @@ export class GmailNode implements NodeExecutor {
 
         // ── mark_read ──────────────────────────────────────────────────────────
 
-        if (action === 'mark_read') {
+        if (action === 'mark_read' || action === 'mark_unread') {
             const messageId = this.resolver.resolveTemplate(config.messageId ?? '', context);
-            if (!messageId) throw new Error('Gmail mark as read: messageId is required');
+            const verb = action === 'mark_read' ? 'as read' : 'as unread';
+            if (!messageId) throw new Error(`Gmail mark ${verb}: messageId is required`);
 
-            const res = await gmail.users.messages.modify({
+            const isUnread     = action === 'mark_unread';
+            const labelChanges = isUnread
+                ? { addLabelIds:    ['UNREAD'] }
+                : { removeLabelIds: ['UNREAD'] };
+            const markedAs = isUnread ? 'unread' : 'read';
+            const target   = config.markTarget === 'thread' ? 'thread' : 'message';
+
+            // ── single message ────────────────────────────────────────────────
+            if (target === 'message') {
+                const res = await gmail.users.messages.modify({
+                    userId: 'me',
+                    id: messageId,
+                    requestBody: labelChanges,
+                });
+                return {
+                    messageId: res.data.id,
+                    threadId:  res.data.threadId,
+                    markedAs,
+                    target,
+                    labelIds:  res.data.labelIds,
+                };
+            }
+
+            // ── entire thread ─────────────────────────────────────────────────
+            // Look up the parent threadId first so the user can pass either a
+            // message ID or a thread ID — both work seamlessly.
+            const meta = await gmail.users.messages.get({
                 userId: 'me',
                 id: messageId,
-                requestBody: { removeLabelIds: ['UNREAD'] },
+                format: 'minimal',
             });
-            return { messageId: res.data.id, markedAs: 'read', labelIds: res.data.labelIds };
-        }
+            const threadId = meta.data.threadId;
+            if (!threadId) {
+                throw new Error(`Gmail mark ${verb}: could not determine threadId for the given message`);
+            }
 
-        // ── mark_unread ────────────────────────────────────────────────────────
-
-        if (action === 'mark_unread') {
-            const messageId = this.resolver.resolveTemplate(config.messageId ?? '', context);
-            if (!messageId) throw new Error('Gmail mark as unread: messageId is required');
-
-            const res = await gmail.users.messages.modify({
+            const res = await gmail.users.threads.modify({
                 userId: 'me',
-                id: messageId,
-                requestBody: { addLabelIds: ['UNREAD'] },
+                id: threadId,
+                requestBody: labelChanges,
             });
-            return { messageId: res.data.id, markedAs: 'unread', labelIds: res.data.labelIds };
+            const messageCount = (res.data.messages ?? []).length;
+
+            return {
+                threadId:     res.data.id,
+                markedAs,
+                target,
+                messageCount,
+                labelIds:     (res.data.messages ?? []).map((m) => m.labelIds ?? []),
+            };
         }
 
         // ── delete_message ─────────────────────────────────────────────────────

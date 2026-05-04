@@ -69,9 +69,13 @@ const NODE_OUTPUT_FIELDS: Record<string, OutputField[]> = {
   output: [{ key: 'value', label: 'Resolved output value' }],
   gmail: [
     // send / reply
-    { key: 'messageId',    label: 'Message ID (send / reply / send_flux / reply_flux)' },
-    { key: 'threadId',     label: 'Thread ID (send / reply / reply_flux)' },
-    { key: 'labelIds',     label: 'Label IDs applied (send / reply)' },
+    { key: 'messageId',    label: 'Message ID (send / reply / send_flux / reply_flux / mark_read|mark_unread message mode)' },
+    { key: 'threadId',     label: 'Thread ID (send / reply / reply_flux / mark_read|mark_unread thread mode)' },
+    { key: 'labelIds',     label: 'Label IDs applied (send / reply / mark_*)' },
+    // mark_read / mark_unread
+    { key: 'markedAs',     label: 'Resulting state — "read" or "unread" (mark_read / mark_unread)' },
+    { key: 'target',       label: 'Whether the action applied to a "message" or the entire "thread"' },
+    { key: 'messageCount', label: 'Number of messages affected when target is "thread"' },
     // send_flux / reply_flux
     { key: 'accepted',     label: 'Accepted recipients array (send_flux / reply_flux)' },
     { key: 'rejected',     label: 'Rejected recipients array (send_flux / reply_flux)' },
@@ -1616,15 +1620,33 @@ function GmailResultDisplay({ result }: { result: NodeTestResult }) {
 
   // ── Mark as Read / Unread ────────────────────────────────────────────────
   if (out.markedAs !== undefined) {
-    const markedAs = String(out.markedAs);
+    const markedAs    = String(out.markedAs);
+    const isThread    = out.target === 'thread';
+    const messageCount = typeof out.messageCount === 'number' ? out.messageCount : 0;
+
+    const bannerText = isThread
+      ? `Conversation marked as ${markedAs}${messageCount ? ` (${messageCount} ${messageCount === 1 ? 'message' : 'messages'})` : ''}`
+      : `Message marked as ${markedAs}`;
+    const bannerSub = isThread
+      ? (out.threadId  ? `Thread ID: ${String(out.threadId)}`   : undefined)
+      : (out.messageId ? `Message ID: ${String(out.messageId)}` : undefined);
+
+    // For single-message mode, labelIds is a flat string array.
+    // For thread mode, labelIds is an array of arrays (one per message) — flatten and dedupe.
+    const flatLabels = Array.isArray(out.labelIds)
+      ? Array.from(new Set(
+          (out.labelIds as unknown[]).flatMap((l) => Array.isArray(l) ? l : [l]).filter((l) => typeof l === 'string') as string[]
+        ))
+      : [];
+
     return (
       <div className="p-3 space-y-2">
-        <SuccessBanner text={`Message marked as ${markedAs}`} sub={out.messageId ? `Message ID: ${String(out.messageId)}` : undefined} />
-        {Array.isArray(out.labelIds) && (
+        <SuccessBanner text={bannerText} sub={bannerSub} />
+        {flatLabels.length > 0 && (
           <div className="space-y-0.5">
-            <SectionLabel>Current labels</SectionLabel>
+            <SectionLabel>Current labels{isThread ? ' (across thread)' : ''}</SectionLabel>
             <div className="flex flex-wrap gap-1 mt-1">
-              {(out.labelIds as string[]).map((l) => (
+              {flatLabels.map((l) => (
                 <span key={l} className="text-[10px] bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded px-1.5 py-0.5 font-mono">{l}</span>
               ))}
             </div>
@@ -7057,16 +7079,35 @@ function GmailConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
         </>
       )}
 
-      {/* ── Mark as Read ───────────────────────────────────── */}
-      {action === 'mark_read' && (
-        <GmailMessageIdInput cfg={cfg} onChange={onChange} otherNodes={otherNodes}
-          testResults={testResults} placeholder="ID of the message to mark as read" />
-      )}
-
-      {/* ── Mark as Unread ─────────────────────────────────── */}
-      {action === 'mark_unread' && (
-        <GmailMessageIdInput cfg={cfg} onChange={onChange} otherNodes={otherNodes}
-          testResults={testResults} placeholder="ID of the message to mark as unread" />
+      {/* ── Mark as Read / Unread ──────────────────────────── */}
+      {(action === 'mark_read' || action === 'mark_unread') && (
+        <>
+          <GmailMessageIdInput cfg={cfg} onChange={onChange} otherNodes={otherNodes}
+            testResults={testResults}
+            placeholder={`ID of the message or thread to mark as ${action === 'mark_read' ? 'read' : 'unread'}`} />
+          <div className="space-y-1.5">
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Apply to</label>
+            <div className="flex gap-4">
+              {([
+                { value: 'message', label: 'This message only' },
+                { value: 'thread',  label: 'Entire conversation' },
+              ] as const).map(({ value, label }) => (
+                <label key={value} className="flex items-center gap-1.5 cursor-pointer">
+                  <input type="radio" name={`gmail-${action}-target`}
+                    checked={(cfg.markTarget as string | undefined ?? 'message') === value}
+                    onChange={() => onChange({ markTarget: value })}
+                    className="w-3 h-3 accent-blue-500" />
+                  <span className="text-xs text-slate-600 dark:text-slate-300">{label}</span>
+                </label>
+              ))}
+            </div>
+            {(cfg.markTarget as string | undefined) === 'thread' && (
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-relaxed">
+                Marks every message in the conversation as {action === 'mark_read' ? 'read' : 'unread'} in a single API call. You can pass either a message ID or a thread ID — the parent thread is resolved automatically.
+              </p>
+            )}
+          </div>
+        </>
       )}
 
       {/* ── Add Label ──────────────────────────────────────── */}
