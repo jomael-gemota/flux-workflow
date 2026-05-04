@@ -49,6 +49,8 @@ interface BasecampConfig {
     // remove_user
     removeEmail?: string;
     removeCompany?: string;
+    removeFirstName?: string;
+    removeLastName?: string;
 }
 
 /**
@@ -718,31 +720,80 @@ export class BasecampNode implements NodeExecutor {
         }
 
         if (action === 'remove_user') {
-            const email   = this.resolver.resolveTemplate(config.removeEmail   ?? '', context).trim().toLowerCase();
-            const company = this.resolver.resolveTemplate(config.removeCompany ?? '', context).trim().toLowerCase();
+            const email     = this.resolver.resolveTemplate(config.removeEmail     ?? '', context).trim().toLowerCase();
+            const company   = this.resolver.resolveTemplate(config.removeCompany   ?? '', context).trim().toLowerCase();
+            const firstName = this.resolver.resolveTemplate(config.removeFirstName ?? '', context).trim().toLowerCase();
+            const lastName  = this.resolver.resolveTemplate(config.removeLastName  ?? '', context).trim().toLowerCase();
 
-            if (!email) throw new Error('Basecamp remove_user: email address is required');
+            if (!email && !firstName && !lastName) {
+                throw new Error(
+                    'Basecamp remove_user: provide at least an Email Address or both First Name and Last Name.'
+                );
+            }
+            if ((firstName && !lastName) || (lastName && !firstName)) {
+                throw new Error(
+                    'Basecamp remove_user: when searching by name, both First Name and Last Name are required ' +
+                    'so the match is unambiguous.'
+                );
+            }
 
-            // Fetch all account people and find the matching person
+            // Fetch all account people once, then filter in memory
             const people = await this.fetchAllPages(`${baseUrl}/people.json`, headers);
 
-            let candidates = people.filter(
-                (p) => (p.email_address as string ?? '').toLowerCase() === email,
-            );
+            // Compose a human-readable description of the search criteria for error messages
+            const criteriaParts: string[] = [];
+            if (email)               criteriaParts.push(`email "${email}"`);
+            if (firstName && lastName) criteriaParts.push(`name "${firstName} ${lastName}"`);
+            if (company)             criteriaParts.push(`company "${company}"`);
+            const criteriaSummary = criteriaParts.join(' and ');
 
-            // If a company name was provided, narrow down further
-            if (company && candidates.length > 1) {
+            /**
+             * Split a Basecamp `name` field into ["first", "last"].  Basecamp
+             * stores the display name as a single string ("Jane Smith"), so we
+             * treat the first whitespace-separated token as the first name and
+             * the remainder as the last name.  When the name has only one
+             * token, the last name is empty.
+             */
+            const splitName = (full: string): { first: string; last: string } => {
+                const trimmed = full.trim();
+                if (!trimmed) return { first: '', last: '' };
+                const idx = trimmed.indexOf(' ');
+                if (idx === -1) return { first: trimmed.toLowerCase(), last: '' };
+                return {
+                    first: trimmed.slice(0, idx).toLowerCase(),
+                    last:  trimmed.slice(idx + 1).trim().toLowerCase(),
+                };
+            };
+
+            // Apply each filter in sequence — every provided criterion must match.
+            let candidates = people;
+
+            if (email) {
+                candidates = candidates.filter(
+                    (p) => (p.email_address as string ?? '').toLowerCase() === email
+                );
+            }
+
+            if (firstName && lastName) {
+                candidates = candidates.filter((p) => {
+                    const { first, last } = splitName(String(p.name ?? ''));
+                    return first === firstName && last === lastName;
+                });
+            }
+
+            if (company) {
                 const filtered = candidates.filter((p) => {
                     const co = p.company as { name?: string } | null | undefined;
                     return String(co?.name ?? '').toLowerCase() === company;
                 });
+                // Only narrow when the company filter actually matches something —
+                // otherwise the user gets a more useful "not found" error
                 if (filtered.length > 0) candidates = filtered;
             }
 
             if (candidates.length === 0) {
                 throw new Error(
-                    `Basecamp remove_user: no person found with email "${email}"` +
-                    (company ? ` and company "${company}"` : '') + '.',
+                    `Basecamp remove_user: no person found with ${criteriaSummary}.`
                 );
             }
 
@@ -750,12 +801,17 @@ export class BasecampNode implements NodeExecutor {
                 const names = candidates
                     .map((p) => {
                         const co = p.company as { name?: string } | null | undefined;
-                        return `${p.name} (${co?.name ?? 'no company'})`;
+                        const em = p.email_address as string | undefined;
+                        return `${p.name}${em ? ` <${em}>` : ''} (${co?.name ?? 'no company'})`;
                     })
                     .join(', ');
+                const suggestions: string[] = [];
+                if (!email)                  suggestions.push('Email Address');
+                if (!company)                suggestions.push('Company');
+                if (!(firstName && lastName)) suggestions.push('First Name + Last Name');
                 throw new Error(
-                    `Basecamp remove_user: multiple people found with email "${email}": ${names}. ` +
-                    'Provide the Company field to disambiguate.',
+                    `Basecamp remove_user: multiple people found with ${criteriaSummary}: ${names}. ` +
+                    `Provide ${suggestions.length ? suggestions.join(' or ') : 'additional details'} to disambiguate.`
                 );
             }
 

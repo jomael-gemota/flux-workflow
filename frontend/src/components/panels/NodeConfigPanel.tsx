@@ -11247,18 +11247,38 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
       {/* ── remove_user fields ────────────────────────────────────────── */}
       {action === 'remove_user' && (
         <>
-          <p className="text-[10px] text-slate-400 dark:text-slate-500">
-            Permanently removes the person from your Basecamp account. Requires admin privileges. The user is looked up by email address; provide a Company to disambiguate if needed.
+          <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-relaxed">
+            Permanently removes the person from your Basecamp account. Requires admin privileges. Search by Email Address, by First Name + Last Name (both required when used together), or any combination. Add a Company to disambiguate when multiple people match.
           </p>
           <ExpressionInput
-            label="Email Address"
+            label="Email Address (optional when First + Last Name are provided)"
             value={String(cfg.removeEmail ?? '')}
             onChange={(v) => onChange({ removeEmail: v })}
             placeholder="jane@example.com"
             nodes={otherNodes}
             testResults={testResults}
-            hint="The email address of the person to remove from your Basecamp account."
+            hint="Exact email match. Leave blank to search by name only."
           />
+          <div className="grid grid-cols-2 gap-2">
+            <ExpressionInput
+              label="First Name"
+              value={String(cfg.removeFirstName ?? '')}
+              onChange={(v) => onChange({ removeFirstName: v })}
+              placeholder="Jane"
+              nodes={otherNodes}
+              testResults={testResults}
+              hint="Case-insensitive. Required when Last Name is provided."
+            />
+            <ExpressionInput
+              label="Last Name"
+              value={String(cfg.removeLastName ?? '')}
+              onChange={(v) => onChange({ removeLastName: v })}
+              placeholder="Smith"
+              nodes={otherNodes}
+              testResults={testResults}
+              hint="Case-insensitive. Required when First Name is provided."
+            />
+          </div>
 
           {/* Company — dropdown from account with variable fallback */}
           <div className="space-y-1">
