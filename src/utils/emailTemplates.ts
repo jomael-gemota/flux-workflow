@@ -87,7 +87,7 @@ export function buildFluxMessageHtml(subject: string, bodyContent: string, isHtm
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${escHtml(subject)}</title>
 </head>
-<body style="margin:0;padding:0;background:#f0f0f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;color:#111827;">
+<body style="margin:0;padding:0;background:#f0f0f5;font-family:Helvetica,'Helvetica Neue',Arial,sans-serif;color:#111827;">
 
   <!-- Outer wrapper -->
   <table width="100%" cellpadding="0" cellspacing="0" role="presentation"
