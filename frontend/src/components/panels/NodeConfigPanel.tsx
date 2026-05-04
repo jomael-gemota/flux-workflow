@@ -6883,7 +6883,7 @@ function GmailConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
             </div>
             {Boolean(cfg.replyAll) && (
               <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-relaxed">
-                Replies to the original sender and all other recipients (To + Cc), excluding your own address.
+                Replies to all original recipients (From + To + Cc). If the connected Gmail account appears in the thread it will be included.
               </p>
             )}
           </div>
@@ -6933,7 +6933,7 @@ function GmailConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
             </div>
             {Boolean(cfg.replyAll) && (
               <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-relaxed">
-                Replies to the original sender and all other recipients (To + Cc), excluding the connected Gmail account and the Flux SMTP sender address.
+                Replies to all original recipients (From + To + Cc). The Flux SMTP sender address is excluded since it is the one sending this reply; the connected Gmail account is kept if it appears in the thread.
               </p>
             )}
           </div>

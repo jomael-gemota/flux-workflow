@@ -399,11 +399,6 @@ export class GmailNode implements NodeExecutor {
             let replyCc: string | undefined;
 
             if (config.replyAll) {
-                // Fetch the authenticated account's own email so we can exclude
-                // it from the recipient lists (you never reply to yourself).
-                const me = await gmail.users.getProfile({ userId: 'me' });
-                const myEmail = (me.data.emailAddress ?? '').toLowerCase();
-
                 /** Split a raw header value into trimmed address tokens. */
                 const splitAddrs = (raw: string): string[] =>
                     raw ? raw.split(',').map((a) => a.trim()).filter(Boolean) : [];
@@ -414,11 +409,10 @@ export class GmailNode implements NodeExecutor {
                     return (m ? m[1] : addr).trim().toLowerCase();
                 };
 
-                const excludeMe = (addrs: string[]): string[] =>
-                    addrs.filter((a) => bareEmail(a) !== myEmail);
-
-                // To = original From + original To recipients (minus me), deduplicated
-                const toPool  = [origFrom, ...excludeMe(splitAddrs(origTo))];
+                // To = original From + original To recipients, deduplicated.
+                // The connected Gmail account is intentionally kept if it appears
+                // in the thread — no self-exclusion applied here.
+                const toPool  = [origFrom, ...splitAddrs(origTo)];
                 const seen    = new Set<string>();
                 const toFinal = toPool.filter((a) => {
                     const addr = bareEmail(a);
@@ -428,8 +422,8 @@ export class GmailNode implements NodeExecutor {
                 });
 
                 replyTo = toFinal.join(', ');
-                const ccFinal = excludeMe(splitAddrs(origCc));
-                replyCc = ccFinal.length ? ccFinal.join(', ') : undefined;
+                const ccList = splitAddrs(origCc);
+                replyCc = ccList.length ? ccList.join(', ') : undefined;
             } else {
                 replyTo = origFrom;
                 replyCc = undefined;
@@ -512,10 +506,9 @@ export class GmailNode implements NodeExecutor {
             let replyCc: string | undefined;
 
             if (config.replyAll) {
-                // Exclude both the authenticated Gmail account and the Flux SMTP
-                // sender so neither appears in the reply recipients.
-                const me = await gmail.users.getProfile({ userId: 'me' });
-                const myEmail   = (me.data.emailAddress ?? '').toLowerCase();
+                // Only exclude the Flux SMTP sender address (since that is the
+                // actual sender of this reply). The connected Gmail account is
+                // kept if it appears in the thread.
                 const fluxEmail = smtpFrom.toLowerCase();
 
                 const splitAddrs = (raw: string): string[] =>
@@ -526,13 +519,10 @@ export class GmailNode implements NodeExecutor {
                     return (m ? m[1] : addr).trim().toLowerCase();
                 };
 
-                const excludeSelf = (addrs: string[]): string[] =>
-                    addrs.filter((a) => {
-                        const addr = bareEmail(a);
-                        return addr !== myEmail && addr !== fluxEmail;
-                    });
+                const excludeFlux = (addrs: string[]): string[] =>
+                    addrs.filter((a) => bareEmail(a) !== fluxEmail);
 
-                const toPool  = [origFrom, ...excludeSelf(splitAddrs(origTo))];
+                const toPool  = [origFrom, ...excludeFlux(splitAddrs(origTo))];
                 const seen    = new Set<string>();
                 const toFinal = toPool.filter((a) => {
                     const addr = bareEmail(a);
@@ -542,7 +532,7 @@ export class GmailNode implements NodeExecutor {
                 });
 
                 replyTo = toFinal.join(', ');
-                const ccFinal = excludeSelf(splitAddrs(origCc));
+                const ccFinal = excludeFlux(splitAddrs(origCc));
                 replyCc = ccFinal.length ? ccFinal.join(', ') : undefined;
             } else {
                 replyTo = origFrom;
