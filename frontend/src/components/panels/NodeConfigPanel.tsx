@@ -160,13 +160,15 @@ const NODE_OUTPUT_FIELDS: Record<string, OutputField[]> = {
     { key: 'createdAt',   label: 'Creation timestamp ISO (create)' },
     { key: 'projectId',   label: 'Project ID used (create)' },
     { key: 'todolistId',  label: 'To-do list ID used (create)' },
-    { key: 'status',      label: 'Action status (created / posted / sent / invited)' },
+    { key: 'status',      label: 'Action status (created / posted / sent / invited / granted_project_access / already_member)' },
+    { key: 'message',     label: 'Human-readable summary when an existing user was matched (invite_users)' },
     { key: 'completed',   label: 'Completion flag (complete / uncomplete)' },
     { key: 'todos',       label: 'To-do list array (list_todos)' },
     { key: 'count',       label: 'To-do count (list_todos)' },
-    { key: 'name',          label: 'Invited person\'s name (invite_users)' },
-    { key: 'email',         label: 'Invited person\'s email address (invite_users)' },
-    { key: 'company',       label: 'Invited person\'s company name (invite_users)' },
+    { key: 'name',                label: 'Invited person\'s name (invite_users)' },
+    { key: 'email',               label: 'Invited person\'s email address (invite_users)' },
+    { key: 'company',             label: 'Invited person\'s company name (invite_users)' },
+    { key: 'projectAutoSelected', label: 'True when no Project was specified and one was auto-picked (invite_users)' },
     { key: 'organizations', label: 'Organizations array [{id, name}] (list_organizations)' },
   ],
   slack: [
@@ -10638,7 +10640,7 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
   const [companyMode,       setCompanyMode]       = useState<'select' | 'expr'>(() => isExprVal(String(cfg.inviteCompany  ?? '')) ? 'expr' : 'select');
   const [removeCompanyMode, setRemoveCompanyMode] = useState<'select' | 'expr'>(() => isExprVal(String(cfg.removeCompany  ?? '')) ? 'expr' : 'select');
 
-  const needsProject  = ['create_todo', 'post_message', 'send_campfire', 'list_todos'].includes(action);
+  const needsProject  = ['create_todo', 'post_message', 'send_campfire', 'list_todos', 'invite_users'].includes(action);
   const needsTodolist = ['create_todo', 'list_todos'].includes(action);
 
   return (
@@ -10670,22 +10672,36 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
       {needsProject && (
         <div className="space-y-1">
           <div className="flex items-center justify-between">
-            <span className="block text-xs font-medium text-slate-500 dark:text-slate-400">Project</span>
-            {credentialId && (
-              <button
-                type="button"
-                onClick={() => {
-                  const next = projectMode === 'select' ? 'expr' : 'select';
-                  setProjectMode(next);
-                  if (next === 'select') onChange({ projectId: '', todolistId: '', groupId: '', todoId: '' });
-                }}
-                className="flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded transition-colors text-blue-400 hover:text-white hover:bg-blue-700"
-                title="Toggle between picking from the list and entering a variable expression"
-              >
-                <Braces className="w-2.5 h-2.5" />
-                {projectMode === 'select' ? 'Use variable' : 'Select from list'}
-              </button>
-            )}
+            <span className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+              Project{action === 'invite_users' && <span className="text-slate-600 font-normal"> (optional)</span>}
+            </span>
+            <div className="flex items-center gap-1">
+              {action === 'invite_users' && projectId && (
+                <button
+                  type="button"
+                  onClick={() => onChange({ projectId: '', todolistId: '', groupId: '', todoId: '' })}
+                  className="text-[9px] px-1.5 py-0.5 rounded text-slate-400 hover:text-white hover:bg-slate-600 transition-colors"
+                  title="Clear selection — a project will be auto-picked at run time"
+                >
+                  Clear
+                </button>
+              )}
+              {credentialId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = projectMode === 'select' ? 'expr' : 'select';
+                    setProjectMode(next);
+                    if (next === 'select') onChange({ projectId: '', todolistId: '', groupId: '', todoId: '' });
+                  }}
+                  className="flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded transition-colors text-blue-400 hover:text-white hover:bg-blue-700"
+                  title="Toggle between picking from the list and entering a variable expression"
+                >
+                  <Braces className="w-2.5 h-2.5" />
+                  {projectMode === 'select' ? 'Use variable' : 'Select from list'}
+                </button>
+              )}
+            </div>
           </div>
 
           {!credentialId ? (
@@ -10729,6 +10745,11 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
           {projectMode === 'select' && projectId && projects.length > 0 && (
             <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate">
               Selected: <span className="text-slate-700 dark:text-slate-300">{projects.find((p) => String(p.id) === projectId)?.name ?? projectId}</span>
+            </p>
+          )}
+          {action === 'invite_users' && !projectId && projectMode === 'select' && (
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-relaxed">
+              Leave blank to mirror the Basecamp website's "Invite a teammate" flow — a project will be auto-picked just to satisfy Basecamp's API requirement.
             </p>
           )}
         </div>
@@ -11234,8 +11255,8 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
       {/* ── invite_users fields ───────────────────────────────────────── */}
       {action === 'invite_users' && (
         <>
-          <p className="text-[10px] text-slate-400 dark:text-slate-500">
-            Sends an invitation email to the specified address. The user must accept before they become active. Requires admin privileges.
+          <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-relaxed">
+            Sends an invitation to the specified address. Basecamp's public API has no organization-only invite endpoint — under the hood the person must be added via a project, but you can leave the Project field blank above and we'll pick one for you (matching the Basecamp website's "Invite a teammate" behavior). If the person is already in the org, they'll simply be granted access. Requires admin privileges.
           </p>
           <ExpressionInput
             label="Email Address"
@@ -11244,7 +11265,7 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
             placeholder="jane@example.com"
             nodes={otherNodes}
             testResults={testResults}
-            hint="The email address of the person to invite to your Basecamp account."
+            hint="The email address of the person to invite to the project (and your Basecamp account)."
           />
           <ExpressionInput
             label="Name"

@@ -549,6 +549,34 @@ export class BasecampNode implements NodeExecutor {
         }
 
         if (action === 'invite_users') {
+            // Basecamp 3 has no organization-wide invite endpoint.
+            // The only way to add a new person is via the project access endpoint:
+            //   PUT /projects/{projectId}/people/users.json  with a `create` array.
+            // Granting them access to a project automatically adds them to the
+            // organization (they receive an invitation email to set up their account).
+            //
+            // To match the Basecamp website's UX — where you can invite a teammate
+            // without picking a project — we auto-select the first available
+            // project when none is provided.  The end result is identical: the
+            // person becomes an org member; the project is only required as the
+            // API transport.
+            let projectId = await this.resolveProjectId(
+                this.resolver.resolveTemplate(config.projectId ?? '', context), baseUrl, headers,
+            );
+            const projectWasAutoSelected = !projectId;
+            if (!projectId) {
+                const allProjects = await this.fetchAllPages(`${baseUrl}/projects.json`, headers);
+                const firstProject = allProjects[0];
+                if (!firstProject?.id) {
+                    throw new Error(
+                        'Basecamp invite_users: no Project was provided and no projects were found in the ' +
+                        'account to use as the invite container. Create at least one project, or pick a ' +
+                        'specific Project in the node settings.'
+                    );
+                }
+                projectId = String(firstProject.id);
+            }
+
             const email   = this.resolver.resolveTemplate(config.inviteEmail   ?? '', context).trim();
             const name    = this.resolver.resolveTemplate(config.inviteName    ?? '', context).trim();
             const title   = this.resolver.resolveTemplate(config.inviteTitle   ?? '', context).trim();
@@ -557,33 +585,101 @@ export class BasecampNode implements NodeExecutor {
             if (!email) throw new Error('Basecamp invite_users: email address is required');
             if (!name)  throw new Error('Basecamp invite_users: name is required');
 
-            const body: Record<string, unknown> = { email_address: email, name };
-            if (title)   body.title        = title;
-            if (company) body.company_name = company;
+            // First, check if this person is already in the account so we can
+            // either grant them access (if they're not on the project yet) or
+            // return early with a clear message (if they're already on it).
+            const accountPeople = await this.fetchAllPages(`${baseUrl}/people.json`, headers);
+            const existingAccountPerson = accountPeople.find(
+                (p) => String(p.email_address ?? '').toLowerCase() === email.toLowerCase()
+            );
 
-            const res = await fetch(`${baseUrl}/people/users.json`, {
-                method: 'POST', headers, body: JSON.stringify(body),
+            if (existingAccountPerson) {
+                const projectPeople = await this.fetchAllPages(
+                    `${baseUrl}/projects/${projectId}/people.json`, headers,
+                );
+                const alreadyOnProject = projectPeople.some(
+                    (p) => String(p.email_address ?? '').toLowerCase() === email.toLowerCase()
+                );
+
+                if (alreadyOnProject) {
+                    const co = existingAccountPerson.company as Record<string, unknown> | undefined;
+                    return {
+                        id:        existingAccountPerson.id,
+                        name:      existingAccountPerson.name,
+                        email:     existingAccountPerson.email_address,
+                        title:     existingAccountPerson.title,
+                        company:   (co?.name as string | undefined) ?? null,
+                        status:    'already_member',
+                        message:   `${email} is already a member of this organization.`,
+                        projectId,
+                        projectAutoSelected: projectWasAutoSelected,
+                    };
+                }
+
+                // Grant existing user access to this project
+                const grantRes = await fetch(`${baseUrl}/projects/${projectId}/people/users.json`, {
+                    method:  'PUT',
+                    headers,
+                    body:    JSON.stringify({ grant: [existingAccountPerson.id] }),
+                });
+                if (!grantRes.ok) {
+                    throw new Error(`Basecamp invite_users (grant) failed (${grantRes.status}): ${await extractBasecampError(grantRes)}`);
+                }
+                const co = existingAccountPerson.company as Record<string, unknown> | undefined;
+                return {
+                    id:        existingAccountPerson.id,
+                    name:      existingAccountPerson.name,
+                    email:     existingAccountPerson.email_address,
+                    title:     existingAccountPerson.title,
+                    company:   (co?.name as string | undefined) ?? null,
+                    status:    'granted_project_access',
+                    message:   projectWasAutoSelected
+                        ? `${email} was already in the organization. Granted access to the default project (none was specified).`
+                        : `${email} was already in the organization. Granted access to this project.`,
+                    projectId,
+                    projectAutoSelected: projectWasAutoSelected,
+                };
+            }
+
+            // Brand-new person — create them via the project people endpoint
+            const newPerson: Record<string, unknown> = { name, email_address: email };
+            if (title)   newPerson.title        = title;
+            if (company) newPerson.company_name = company;
+
+            const res = await fetch(`${baseUrl}/projects/${projectId}/people/users.json`, {
+                method:  'PUT',
+                headers,
+                body:    JSON.stringify({ create: [newPerson] }),
             });
             if (!res.ok) {
-                const errMsg = await extractBasecampError(res);
-                if (res.status === 404) {
-                    throw new Error(
-                        `Basecamp invite_users: "${email}" may already be a member of this organization, ` +
-                        `or the account endpoint could not be found. Basecamp said: ${errMsg}`
-                    );
-                }
-                throw new Error(`Basecamp invite_users failed (${res.status}): ${errMsg}`);
+                throw new Error(`Basecamp invite_users failed (${res.status}): ${await extractBasecampError(res)}`);
             }
-            const person = await res.json() as Record<string, unknown>;
 
-            const companyObj = person.company as Record<string, unknown> | undefined;
+            const result = await res.json() as { granted?: Array<Record<string, unknown>> };
+            const granted = result.granted ?? [];
+            // Find the person matching this email (Basecamp returns everyone who
+            // was added, which includes both newly-created people and existing ones)
+            const created = granted.find(
+                (p) => String(p.email_address ?? '').toLowerCase() === email.toLowerCase()
+            ) ?? granted[0];
+
+            if (!created) {
+                throw new Error(
+                    `Basecamp invite_users: invitation request succeeded but Basecamp returned no person ` +
+                    `matching "${email}". This usually means the email address was rejected.`
+                );
+            }
+
+            const companyObj = created.company as Record<string, unknown> | undefined;
             return {
-                id:      person.id,
-                name:    (person.name as string | undefined)          ?? name,
-                email:   (person.email_address as string | undefined) ?? email,
-                title:   (person.title as string | undefined)         ?? title,
-                company: (companyObj?.name as string | undefined)     ?? company,
-                status:  'invited',
+                id:        created.id,
+                name:      (created.name as string | undefined)          ?? name,
+                email:     (created.email_address as string | undefined) ?? email,
+                title:     (created.title as string | undefined)         ?? title,
+                company:   (companyObj?.name as string | undefined)      ?? company,
+                status:    'invited',
+                projectId,
+                projectAutoSelected: projectWasAutoSelected,
             };
         }
 
