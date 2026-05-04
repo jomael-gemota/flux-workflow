@@ -748,25 +748,103 @@ export class BasecampNode implements NodeExecutor {
             const criteriaSummary = criteriaParts.join(' and ');
 
             /**
-             * Split a Basecamp `name` field into ["first", "last"].  Basecamp
-             * stores the display name as a single string ("Jane Smith"), so we
-             * treat the first whitespace-separated token as the first name and
-             * the remainder as the last name.  When the name has only one
-             * token, the last name is empty.
+             * Split a name string into lowercase whitespace-separated tokens.
+             * "Jules O. Manguroban" → ["jules", "o.", "manguroban"]
              */
-            const splitName = (full: string): { first: string; last: string } => {
-                const trimmed = full.trim();
-                if (!trimmed) return { first: '', last: '' };
-                const idx = trimmed.indexOf(' ');
-                if (idx === -1) return { first: trimmed.toLowerCase(), last: '' };
-                return {
-                    first: trimmed.slice(0, idx).toLowerCase(),
-                    last:  trimmed.slice(idx + 1).trim().toLowerCase(),
-                };
+            const tokenize = (full: string): string[] =>
+                full.trim().toLowerCase().split(/\s+/).filter(Boolean);
+
+            /**
+             * Strict matcher — Basecamp tokens START WITH every first-name
+             * token AND END WITH every last-name token, both in order.
+             * The cleanest possible match.
+             *
+             *   first="Jules", last="Manguroban"   → "Jules O. Manguroban"           ✓
+             *   first="Mary",  last="Smith"        → "Mary Anne Smith"               ✓
+             *   first="Sczali Jewess", last="Fe Caintic" → "Sczali Jewess M. Fe Caintic"  ✓
+             */
+            const nameMatchesStrict = (
+                bcName:    string,
+                wantFirst: string,
+                wantLast:  string,
+            ): boolean => {
+                const bcTokens  = tokenize(bcName);
+                const firstToks = tokenize(wantFirst);
+                const lastToks  = tokenize(wantLast);
+                if (firstToks.length + lastToks.length > bcTokens.length) return false;
+                for (let i = 0; i < firstToks.length; i++) {
+                    if (bcTokens[i] !== firstToks[i]) return false;
+                }
+                for (let i = 0; i < lastToks.length; i++) {
+                    if (bcTokens[bcTokens.length - lastToks.length + i] !== lastToks[i]) return false;
+                }
+                return true;
+            };
+
+            /**
+             * Subsequence matcher — every search token (from the combined
+             * first-name + last-name fields) appears in the Basecamp display
+             * name in the SAME ORDER, with arbitrary tokens allowed between
+             * them. This handles "middle bits in the wrong field" without
+             * the user having to think about where to split their input:
+             *
+             *   first="Sczali Jewess Fe", last="Caintic"
+             *     → "Sczali Jewess M. Fe Caintic"   ✓ (m. appears between fe and caintic)
+             *   first="Sczali", last="Fe Caintic"
+             *     → "Sczali Jewess M. Fe Caintic"   ✓
+             *
+             * Order is still preserved on purpose: "Jewess Sczali" should NOT
+             * silently match "Sczali Jewess..." — that's almost always a typo
+             * or different person worth surfacing.
+             */
+            const nameMatchesSubsequence = (
+                bcName:    string,
+                wantFirst: string,
+                wantLast:  string,
+            ): boolean => {
+                const bcTokens     = tokenize(bcName);
+                const searchTokens = [...tokenize(wantFirst), ...tokenize(wantLast)];
+                if (searchTokens.length === 0)                       return false;
+                if (searchTokens.length > bcTokens.length)           return false;
+
+                let bcIdx = 0;
+                for (const tok of searchTokens) {
+                    while (bcIdx < bcTokens.length && bcTokens[bcIdx] !== tok) bcIdx++;
+                    if (bcIdx >= bcTokens.length) return false;
+                    bcIdx++; // step past the matched token so the next search token must come after
+                }
+                return true;
+            };
+
+            /**
+             * Tolerant matcher — last-resort fallback. Compares only the
+             * FIRST token of the first-name field and the LAST token of the
+             * last-name field against the corresponding ends of the Basecamp
+             * display name. Handles the case where the SEARCH has more
+             * tokens than the Basecamp record:
+             *
+             *   first="Lawrence Kent",     last="Daan"      → "Lawrence Daan"   ✓
+             *   first="Lawrence Kent P.",  last="Daan"      → "Lawrence Daan"   ✓
+             *   first="Lawrence",          last="P. Daan"   → "Lawrence Daan"   ✓
+             */
+            const nameMatchesTolerant = (
+                bcName:    string,
+                wantFirst: string,
+                wantLast:  string,
+            ): boolean => {
+                const bcTokens  = tokenize(bcName);
+                const firstToks = tokenize(wantFirst);
+                const lastToks  = tokenize(wantLast);
+                if (bcTokens.length === 0 || firstToks.length === 0 || lastToks.length === 0) {
+                    return false;
+                }
+                return bcTokens[0] === firstToks[0] &&
+                    bcTokens[bcTokens.length - 1] === lastToks[lastToks.length - 1];
             };
 
             // Apply each filter in sequence — every provided criterion must match.
-            let candidates = people;
+            let candidates: Array<Record<string, unknown>> = people;
+            let nameMatchType: 'exact' | 'partial' | 'tolerant' | undefined;
 
             if (email) {
                 candidates = candidates.filter(
@@ -775,10 +853,31 @@ export class BasecampNode implements NodeExecutor {
             }
 
             if (firstName && lastName) {
-                candidates = candidates.filter((p) => {
-                    const { first, last } = splitName(String(p.name ?? ''));
-                    return first === firstName && last === lastName;
-                });
+                // Tier 1 — clean strict match
+                const strictMatches = candidates.filter(
+                    (p) => nameMatchesStrict(String(p.name ?? ''), firstName, lastName)
+                );
+
+                if (strictMatches.length > 0) {
+                    candidates = strictMatches;
+                    nameMatchType = 'exact';
+                } else {
+                    // Tier 2 — subsequence match: every search token appears in BC in order
+                    const subsequenceMatches = candidates.filter(
+                        (p) => nameMatchesSubsequence(String(p.name ?? ''), firstName, lastName)
+                    );
+                    if (subsequenceMatches.length > 0) {
+                        candidates = subsequenceMatches;
+                        nameMatchType = 'partial';
+                    } else {
+                        // Tier 3 — tolerant first/last token match (search has more tokens than BC)
+                        const tolerantMatches = candidates.filter(
+                            (p) => nameMatchesTolerant(String(p.name ?? ''), firstName, lastName)
+                        );
+                        candidates = tolerantMatches;
+                        if (tolerantMatches.length > 0) nameMatchType = 'tolerant';
+                    }
+                }
             }
 
             if (company) {
@@ -828,12 +927,25 @@ export class BasecampNode implements NodeExecutor {
             }
 
             const coObj = person.company as Record<string, unknown> | null | undefined;
+            const matchNote =
+                nameMatchType === 'partial'
+                    ? `Search "${firstName} ${lastName}" did not match any Basecamp display name ` +
+                      `exactly, so a subsequence match (every search token present in order, with ` +
+                      `extra tokens allowed in between) was used and resolved to "${String(person.name ?? '')}".`
+                : nameMatchType === 'tolerant'
+                    ? `Search "${firstName} ${lastName}" did not match any Basecamp display name ` +
+                      `via strict or subsequence matching, so a tolerant first-/last-token match was ` +
+                      `used and resolved to "${String(person.name ?? '')}".`
+                : undefined;
+
             return {
                 id:      personId,
                 name:    person.name    as string | undefined,
                 email:   person.email_address as string | undefined,
                 company: (coObj?.name as string | undefined) ?? null,
                 status:  'removed',
+                ...(nameMatchType ? { nameMatchType }                : {}),
+                ...(matchNote     ? { nameMatchNote: matchNote }      : {}),
             };
         }
 

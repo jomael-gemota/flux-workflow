@@ -174,6 +174,8 @@ const NODE_OUTPUT_FIELDS: Record<string, OutputField[]> = {
     { key: 'email',               label: 'Invited person\'s email address (invite_users)' },
     { key: 'company',             label: 'Invited person\'s company name (invite_users)' },
     { key: 'projectAutoSelected', label: 'True when no Project was specified and one was auto-picked (invite_users)' },
+    { key: 'nameMatchType',       label: 'How the name was matched — "exact", "partial" or "tolerant" (remove_user, when searching by First/Last Name)' },
+    { key: 'nameMatchNote',       label: 'Explanation of which Basecamp user was resolved when a partial or tolerant name match was used (remove_user)' },
     { key: 'organizations', label: 'Organizations array [{id, name}] (list_organizations)' },
   ],
   slack: [
@@ -11279,6 +11281,13 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
               hint="Case-insensitive. Required when First Name is provided."
             />
           </div>
+          <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed -mt-1">
+            <span className="text-slate-700 dark:text-slate-300">Names are matched in three tiers (each falls back if no candidates):</span><br />
+            • <span className="text-slate-700 dark:text-slate-300">Exact</span> — search tokens line up with the start &amp; end of the Basecamp name. Example: <code className="font-mono bg-slate-100 dark:bg-slate-800 px-0.5 rounded">Jules</code> + <code className="font-mono bg-slate-100 dark:bg-slate-800 px-0.5 rounded">Manguroban</code> → "Jules O. Manguroban".<br />
+            • <span className="text-slate-700 dark:text-slate-300">Partial</span> — every search token appears in the Basecamp name, in order, with extras allowed between them. Example: <code className="font-mono bg-slate-100 dark:bg-slate-800 px-0.5 rounded">Sczali Jewess Fe</code> + <code className="font-mono bg-slate-100 dark:bg-slate-800 px-0.5 rounded">Caintic</code> → "Sczali Jewess M. Fe Caintic".<br />
+            • <span className="text-slate-700 dark:text-slate-300">Tolerant</span> — only the first and last tokens are compared. Example: <code className="font-mono bg-slate-100 dark:bg-slate-800 px-0.5 rounded">Lawrence Kent</code> + <code className="font-mono bg-slate-100 dark:bg-slate-800 px-0.5 rounded">P. Daan</code> → "Lawrence Daan".<br />
+            The output includes <code className="font-mono bg-slate-100 dark:bg-slate-800 px-0.5 rounded">nameMatchType</code> (<code className="font-mono">exact</code> / <code className="font-mono">partial</code> / <code className="font-mono">tolerant</code>) and a <code className="font-mono bg-slate-100 dark:bg-slate-800 px-0.5 rounded">nameMatchNote</code> for the loose tiers, so you can branch on it downstream.
+          </p>
 
           {/* Company — dropdown from account with variable fallback */}
           <div className="space-y-1">
