@@ -69,16 +69,17 @@ const NODE_OUTPUT_FIELDS: Record<string, OutputField[]> = {
   output: [{ key: 'value', label: 'Resolved output value' }],
   gmail: [
     // send / reply
-    { key: 'messageId',    label: 'Message ID (send / reply / send_flux)' },
-    { key: 'threadId',     label: 'Thread ID (send / reply)' },
+    { key: 'messageId',    label: 'Message ID (send / reply / send_flux / reply_flux)' },
+    { key: 'threadId',     label: 'Thread ID (send / reply / reply_flux)' },
     { key: 'labelIds',     label: 'Label IDs applied (send / reply)' },
-    // send_flux
-    { key: 'accepted',     label: 'Accepted recipients array (send_flux)' },
-    { key: 'rejected',     label: 'Rejected recipients array (send_flux)' },
+    // send_flux / reply_flux
+    { key: 'accepted',     label: 'Accepted recipients array (send_flux / reply_flux)' },
+    { key: 'rejected',     label: 'Rejected recipients array (send_flux / reply_flux)' },
     { key: 'from',         label: 'From address used (send_flux / read)' },
     { key: 'to',           label: 'To address (send_flux)' },
-    { key: 'subject',      label: 'Subject line (send_flux / read)' },
-    { key: 'usedTemplate', label: 'Whether Flux template was applied (send_flux)' },
+    { key: 'subject',      label: 'Subject line (send_flux / reply_flux / read)' },
+    { key: 'usedTemplate', label: 'Whether Flux template was applied (send_flux / reply_flux)' },
+    { key: 'repliedTo',    label: 'Original message ID that was replied to (reply / reply_flux)' },
     // list / get_many — thread structure
     { key: 'threads',         label: 'Thread list — array of { threadId, messages[] } (list)' },
     { key: 'totalThreads',    label: 'Total threads returned (list)' },
@@ -6735,7 +6736,8 @@ function GmailConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
         onChange={(e) => onChange({ action: e.target.value })}
         options={[
           { group: 'Flux Actions', options: [
-            { value: 'send_flux', label: '⚡ Send via Flux (SMTP)' },
+            { value: 'send_flux',  label: '⚡ Send via Flux (SMTP)' },
+            { value: 'reply_flux', label: '⚡ Reply via Flux (SMTP)' },
           ]},
           { group: 'Message Actions', options: [
             { value: 'send',           label: 'Send Email' },
@@ -6877,6 +6879,49 @@ function GmailConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
             <label htmlFor="gmail-reply-html" className="text-xs text-slate-500 dark:text-slate-400">Send as HTML</label>
           </div>
           <GmailAttachmentInput cfg={cfg} onChange={onChange} otherNodes={otherNodes} testResults={testResults} />
+        </>
+      )}
+
+      {/* ── Reply via Flux (SMTP) ───────────────────────────── */}
+      {action === 'reply_flux' && (
+        <>
+          <ExpressionInput label="Message ID to reply to"
+            value={String(cfg.replyToMessageId ?? '')}
+            onChange={(v) => onChange({ replyToMessageId: v })}
+            placeholder="ID of the message you're replying to"
+            nodes={otherNodes} testResults={testResults} />
+          <div className="space-y-1">
+            <div className="flex items-center justify-between gap-1">
+              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Reply body</label>
+              <button type="button" onClick={autoFormatBody}
+                className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded text-violet-500 dark:text-violet-400 hover:text-gray-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+                <Wand2 className="w-2.5 h-2.5" />Auto format
+              </button>
+            </div>
+            <ExpressionTextArea label="" value={String(cfg.body ?? '')} onChange={(v) => onChange({ body: v })}
+              placeholder="Your reply…" nodes={otherNodes} testResults={testResults} rows={5} resizable />
+          </div>
+          <div className="space-y-2 rounded-md border border-slate-200 dark:border-slate-700 px-3 py-2.5">
+            <div className="flex items-center gap-2">
+              <input type="checkbox" id="reply-flux-use-template"
+                checked={cfg.useFluxTemplate !== false}
+                onChange={(e) => onChange({ useFluxTemplate: e.target.checked })}
+                className="w-3.5 h-3.5 rounded accent-blue-500" />
+              <label htmlFor="reply-flux-use-template" className="text-xs font-medium text-slate-700 dark:text-slate-200">
+                Use Flux branded email template
+              </label>
+            </div>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-relaxed pl-5">
+              Wraps your reply in a clean branded email card with the Flux Workflow header and footer. Disable to send raw HTML or plain text.
+            </p>
+            <div className="flex items-center gap-2 pl-5">
+              <input type="checkbox" id="reply-flux-is-html"
+                checked={Boolean(cfg.isHtml)}
+                onChange={(e) => onChange({ isHtml: e.target.checked })}
+                className="w-3.5 h-3.5 rounded accent-blue-500" />
+              <label htmlFor="reply-flux-is-html" className="text-xs text-slate-500 dark:text-slate-400">Body is HTML</label>
+            </div>
+          </div>
         </>
       )}
 

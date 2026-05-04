@@ -14,7 +14,7 @@ type GmailAction =
     | 'mark_read' | 'mark_unread'
     | 'delete_message' | 'delete_conversation'
     | 'create_draft' | 'get_draft' | 'list_drafts' | 'delete_draft'
-    | 'send_flux';
+    | 'send_flux' | 'reply_flux';
 
 interface GmailConfig {
     credentialId: string;
@@ -414,6 +414,84 @@ export class GmailNode implements NodeExecutor {
                 threadId:  res.data.threadId,
                 repliedTo: replyToId,
                 labelIds:  res.data.labelIds,
+            };
+        }
+
+        // ── reply_flux ─────────────────────────────────────────────────────────
+        // Reply to an existing Gmail message using the Flux SMTP service account.
+        // Uses the Gmail API only to look up the original message metadata (recipient
+        // address, subject, threading headers); the reply itself is delivered via
+        // the platform SMTP credentials configured in .env.
+
+        if (action === 'reply_flux') {
+            const smtpHost = process.env.SMTP_HOST;
+            const smtpUser = process.env.SMTP_USER;
+            const smtpPass = process.env.SMTP_PASS;
+            const smtpFrom = process.env.SMTP_FROM_ADDRESS;
+            const fromName = process.env.SMTP_FROM_NAME ?? 'Flux Workflow';
+
+            if (!smtpHost || !smtpUser || !smtpPass || !smtpFrom) {
+                throw new Error(
+                    'Gmail reply_flux: SMTP is not configured. Set SMTP_HOST, SMTP_USER, SMTP_PASS, and SMTP_FROM_ADDRESS in your .env file.'
+                );
+            }
+
+            const replyToId = this.resolver.resolveTemplate(config.replyToMessageId ?? '', context);
+            if (!replyToId) throw new Error('Gmail reply_flux: replyToMessageId is required');
+
+            const orig = await gmail.users.messages.get({
+                userId: 'me',
+                id: replyToId,
+                format: 'metadata',
+                metadataHeaders: ['From', 'Subject', 'Message-ID', 'References'],
+            });
+            const oh = (n: string) =>
+                (orig.data.payload?.headers ?? []).find((x) => x.name === n)?.value ?? '';
+
+            const origFrom      = oh('From');
+            const origSubject   = oh('Subject');
+            const origMessageId = oh('Message-ID');
+            const origRefs      = oh('References');
+            const threadId      = orig.data.threadId ?? undefined;
+
+            const replySubject = origSubject.startsWith('Re:') ? origSubject : `Re: ${origSubject}`;
+            const references   = [origRefs, origMessageId].filter(Boolean).join(' ');
+
+            const rawBody     = this.resolver.resolveTemplate(config.body ?? '', context);
+            const useTemplate = config.useFluxTemplate !== false;
+
+            const htmlBody = useTemplate
+                ? buildFluxMessageHtml(replySubject, rawBody, config.isHtml ?? false)
+                : config.isHtml
+                    ? rawBody
+                    : `<pre style="font-family:inherit;white-space:pre-wrap;">${rawBody.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>`;
+
+            const port   = Number(process.env.SMTP_PORT ?? 587);
+            const secure = process.env.SMTP_SECURE === 'true';
+
+            const transporter = nodemailer.createTransport({
+                host: smtpHost, port, secure,
+                auth: { user: smtpUser, pass: smtpPass },
+            });
+
+            const info = await transporter.sendMail({
+                from:       `"${fromName}" <${smtpFrom}>`,
+                to:         origFrom,
+                subject:    replySubject,
+                html:       htmlBody,
+                text:       rawBody,
+                inReplyTo:  origMessageId || undefined,
+                references: references || undefined,
+            });
+
+            return {
+                messageId:    info.messageId,
+                accepted:     info.accepted,
+                rejected:     info.rejected,
+                repliedTo:    replyToId,
+                threadId,
+                subject:      replySubject,
+                usedTemplate: useTemplate,
             };
         }
 
