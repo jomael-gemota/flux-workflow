@@ -91,6 +91,43 @@ function normalizeDueDate(raw: string): string {
     return trimmed; // Return as-is; let the API reject with a clear error
 }
 
+/**
+ * Extracts a concise, human-readable error description from a failed Basecamp
+ * response.  Basecamp occasionally returns full HTML error pages (e.g. their
+ * generic 404 page) instead of JSON.  This helper strips those down to the
+ * visible heading text and falls back gracefully for JSON or plain-text bodies.
+ */
+async function extractBasecampError(res: Response): Promise<string> {
+    const contentType = res.headers.get('content-type') ?? '';
+    const body = await res.text();
+
+    const looksLikeHtml =
+        contentType.includes('text/html') ||
+        body.trimStart().startsWith('<!DOCTYPE') ||
+        body.trimStart().startsWith('<html');
+
+    if (looksLikeHtml) {
+        // Prefer the prominent <h3> heading Basecamp puts on error pages
+        const h3 = body.match(/<h3[^>]*>\s*([^<]+?)\s*<\/h3>/i);
+        if (h3) return h3[1].trim();
+        // Fall back to the <title> tag
+        const title = body.match(/<title>\s*([^<]+?)\s*<\/title>/i);
+        if (title) return title[1].trim();
+        return 'Basecamp returned an HTML error page (no JSON details available)';
+    }
+
+    // JSON body — pull out the first recognisable error field
+    try {
+        const json = JSON.parse(body) as Record<string, unknown>;
+        const msg = json['error'] ?? json['message'] ?? json['errors'];
+        if (msg) return typeof msg === 'string' ? msg : JSON.stringify(msg);
+    } catch {
+        // not JSON — fall through
+    }
+
+    return body || `HTTP ${res.status}`;
+}
+
 export class BasecampNode implements NodeExecutor {
     private auth: BasecampAuthService;
     private resolver = new ExpressionResolver();
@@ -281,7 +318,7 @@ export class BasecampNode implements NodeExecutor {
                     body: fileBuffer,
                 });
                 if (!uploadRes.ok) {
-                    throw new Error(`Basecamp attachment upload failed (${uploadRes.status}): ${await uploadRes.text()}`);
+                    throw new Error(`Basecamp attachment upload failed (${uploadRes.status}): ${await extractBasecampError(uploadRes)}`);
                 }
                 const uploaded = await uploadRes.json() as { attachable_sgid: string };
                 const sgid = uploaded.attachable_sgid;
@@ -307,7 +344,7 @@ export class BasecampNode implements NodeExecutor {
             const res = await fetch(`${baseUrl}/todolists/${targetId}/todos.json`, {
                 method: 'POST', headers, body: JSON.stringify(body),
             });
-            if (!res.ok) throw new Error(`Basecamp create_todo failed (${res.status}): ${await res.text()}`);
+            if (!res.ok) throw new Error(`Basecamp create_todo failed (${res.status}): ${await extractBasecampError(res)}`);
             const todo = await res.json() as Record<string, unknown>;
 
             // Normalise assignees to a simple [{id, name, email}] list
@@ -341,7 +378,7 @@ export class BasecampNode implements NodeExecutor {
                 method: 'POST', headers,
             });
             if (!res.ok && res.status !== 204) {
-                throw new Error(`Basecamp complete_todo failed (${res.status}): ${await res.text()}`);
+                throw new Error(`Basecamp complete_todo failed (${res.status}): ${await extractBasecampError(res)}`);
             }
             return { todoId, completed: true };
         }
@@ -354,7 +391,7 @@ export class BasecampNode implements NodeExecutor {
                 method: 'DELETE', headers,
             });
             if (!res.ok && res.status !== 204) {
-                throw new Error(`Basecamp uncomplete_todo failed (${res.status}): ${await res.text()}`);
+                throw new Error(`Basecamp uncomplete_todo failed (${res.status}): ${await extractBasecampError(res)}`);
             }
             return { todoId, completed: false };
         }
@@ -370,7 +407,7 @@ export class BasecampNode implements NodeExecutor {
 
             // Fetch project to get message_board ID from the dock
             const projRes = await fetch(`${baseUrl}/projects/${projectId}.json`, { headers });
-            if (!projRes.ok) throw new Error(`Basecamp: failed to fetch project (${projRes.status})`);
+            if (!projRes.ok) throw new Error(`Basecamp: failed to fetch project (${projRes.status}): ${await extractBasecampError(projRes)}`);
             const project = await projRes.json() as { dock: Array<{ name: string; id: number; enabled: boolean }> };
             const board = project.dock.find((d) => d.name === 'message_board' && d.enabled);
             if (!board) throw new Error('Basecamp: Message Board is not enabled for this project.');
@@ -379,7 +416,7 @@ export class BasecampNode implements NodeExecutor {
             const res = await fetch(`${baseUrl}/message_boards/${board.id}/messages.json`, {
                 method: 'POST', headers, body: JSON.stringify(body),
             });
-            if (!res.ok) throw new Error(`Basecamp post_message failed (${res.status}): ${await res.text()}`);
+            if (!res.ok) throw new Error(`Basecamp post_message failed (${res.status}): ${await extractBasecampError(res)}`);
             const msg = await res.json() as Record<string, unknown>;
             return { id: msg.id, subject, status: 'posted' };
         }
@@ -393,7 +430,7 @@ export class BasecampNode implements NodeExecutor {
             const res = await fetch(`${baseUrl}/recordings/${recordingId}/comments.json`, {
                 method: 'POST', headers, body: JSON.stringify({ content }),
             });
-            if (!res.ok) throw new Error(`Basecamp post_comment failed (${res.status}): ${await res.text()}`);
+            if (!res.ok) throw new Error(`Basecamp post_comment failed (${res.status}): ${await extractBasecampError(res)}`);
             const comment = await res.json() as Record<string, unknown>;
             return { id: comment.id, recordingId, status: 'commented' };
         }
@@ -407,7 +444,7 @@ export class BasecampNode implements NodeExecutor {
             if (!content)   throw new Error('Basecamp send_campfire: content is required');
 
             const projRes = await fetch(`${baseUrl}/projects/${projectId}.json`, { headers });
-            if (!projRes.ok) throw new Error(`Basecamp: failed to fetch project (${projRes.status})`);
+            if (!projRes.ok) throw new Error(`Basecamp: failed to fetch project (${projRes.status}): ${await extractBasecampError(projRes)}`);
             const project = await projRes.json() as { dock: Array<{ name: string; id: number; enabled: boolean }> };
             const chat = project.dock.find((d) => d.name === 'chat' && d.enabled);
             if (!chat) throw new Error('Basecamp: Campfire (Chat) is not enabled for this project.');
@@ -415,7 +452,7 @@ export class BasecampNode implements NodeExecutor {
             const res = await fetch(`${baseUrl}/chats/${chat.id}/lines.json`, {
                 method: 'POST', headers, body: JSON.stringify({ content }),
             });
-            if (!res.ok) throw new Error(`Basecamp send_campfire failed (${res.status}): ${await res.text()}`);
+            if (!res.ok) throw new Error(`Basecamp send_campfire failed (${res.status}): ${await extractBasecampError(res)}`);
             const line = await res.json() as Record<string, unknown>;
             return { id: line.id, status: 'sent' };
         }
@@ -527,7 +564,16 @@ export class BasecampNode implements NodeExecutor {
             const res = await fetch(`${baseUrl}/people/users.json`, {
                 method: 'POST', headers, body: JSON.stringify(body),
             });
-            if (!res.ok) throw new Error(`Basecamp invite_users failed (${res.status}): ${await res.text()}`);
+            if (!res.ok) {
+                const errMsg = await extractBasecampError(res);
+                if (res.status === 404) {
+                    throw new Error(
+                        `Basecamp invite_users: "${email}" may already be a member of this organization, ` +
+                        `or the account endpoint could not be found. Basecamp said: ${errMsg}`
+                    );
+                }
+                throw new Error(`Basecamp invite_users failed (${res.status}): ${errMsg}`);
+            }
             const person = await res.json() as Record<string, unknown>;
 
             const companyObj = person.company as Record<string, unknown> | undefined;
@@ -592,7 +638,7 @@ export class BasecampNode implements NodeExecutor {
 
             // 204 No Content = success; Basecamp also returns 200 in some cases
             if (!res.ok && res.status !== 204) {
-                throw new Error(`Basecamp remove_user failed (${res.status}): ${await res.text()}`);
+                throw new Error(`Basecamp remove_user failed (${res.status}): ${await extractBasecampError(res)}`);
             }
 
             const coObj = person.company as Record<string, unknown> | null | undefined;
