@@ -585,23 +585,30 @@ export class BasecampNode implements NodeExecutor {
             if (!email) throw new Error('Basecamp invite_users: email address is required');
             if (!name)  throw new Error('Basecamp invite_users: name is required');
 
-            // First, check if this person is already in the account so we can
-            // either grant them access (if they're not on the project yet) or
-            // return early with a clear message (if they're already on it).
+            // ── Trust-but-verify lookup ────────────────────────────────────
+            // Basecamp's people endpoints occasionally return "ghost" records
+            // for users who were once in the account but have since been
+            // removed.  Those ghosts cause `grant` calls to silently no-op.
+            // We therefore always re-fetch the project's people list after
+            // any grant/create operation and fall back to a fresh `create`
+            // if the grant didn't actually take effect.
+            const isOnProject = async (): Promise<boolean> => {
+                const projectPeople = await this.fetchAllPages(
+                    `${baseUrl}/projects/${projectId}/people.json`, headers,
+                );
+                return projectPeople.some(
+                    (p) => String(p.email_address ?? '').toLowerCase() === email.toLowerCase()
+                );
+            };
+
             const accountPeople = await this.fetchAllPages(`${baseUrl}/people.json`, headers);
             const existingAccountPerson = accountPeople.find(
                 (p) => String(p.email_address ?? '').toLowerCase() === email.toLowerCase()
             );
 
+            // ── Path 1: existing record found — try the grant route ────────
             if (existingAccountPerson) {
-                const projectPeople = await this.fetchAllPages(
-                    `${baseUrl}/projects/${projectId}/people.json`, headers,
-                );
-                const alreadyOnProject = projectPeople.some(
-                    (p) => String(p.email_address ?? '').toLowerCase() === email.toLowerCase()
-                );
-
-                if (alreadyOnProject) {
+                if (await isOnProject()) {
                     const co = existingAccountPerson.company as Record<string, unknown> | undefined;
                     return {
                         id:        existingAccountPerson.id,
@@ -616,7 +623,7 @@ export class BasecampNode implements NodeExecutor {
                     };
                 }
 
-                // Grant existing user access to this project
+                // Try to grant the existing person access to the project
                 const grantRes = await fetch(`${baseUrl}/projects/${projectId}/people/users.json`, {
                     method:  'PUT',
                     headers,
@@ -625,23 +632,32 @@ export class BasecampNode implements NodeExecutor {
                 if (!grantRes.ok) {
                     throw new Error(`Basecamp invite_users (grant) failed (${grantRes.status}): ${await extractBasecampError(grantRes)}`);
                 }
-                const co = existingAccountPerson.company as Record<string, unknown> | undefined;
-                return {
-                    id:        existingAccountPerson.id,
-                    name:      existingAccountPerson.name,
-                    email:     existingAccountPerson.email_address,
-                    title:     existingAccountPerson.title,
-                    company:   (co?.name as string | undefined) ?? null,
-                    status:    'granted_project_access',
-                    message:   projectWasAutoSelected
-                        ? `${email} was already in the organization. Granted access to the default project (none was specified).`
-                        : `${email} was already in the organization. Granted access to this project.`,
-                    projectId,
-                    projectAutoSelected: projectWasAutoSelected,
-                };
+
+                // Verify: did the grant actually land them on the project?
+                if (await isOnProject()) {
+                    const co = existingAccountPerson.company as Record<string, unknown> | undefined;
+                    return {
+                        id:        existingAccountPerson.id,
+                        name:      existingAccountPerson.name,
+                        email:     existingAccountPerson.email_address,
+                        title:     existingAccountPerson.title,
+                        company:   (co?.name as string | undefined) ?? null,
+                        status:    'granted_project_access',
+                        message:   projectWasAutoSelected
+                            ? `${email} was already in the organization. Granted access to the default project (none was specified).`
+                            : `${email} was already in the organization. Granted access to this project.`,
+                        projectId,
+                        projectAutoSelected: projectWasAutoSelected,
+                    };
+                }
+
+                // Grant returned 200 but nothing changed — Basecamp's people
+                // endpoint returned a stale "ghost" of a previously-removed
+                // person.  Fall through to the create flow to issue a proper
+                // re-invitation that actually shows up in the account.
             }
 
-            // Brand-new person — create them via the project people endpoint
+            // ── Path 2: fresh create (brand-new OR ghost recovery) ─────────
             const newPerson: Record<string, unknown> = { name, email_address: email };
             if (title)   newPerson.title        = title;
             if (company) newPerson.company_name = company;
@@ -663,6 +679,20 @@ export class BasecampNode implements NodeExecutor {
                 (p) => String(p.email_address ?? '').toLowerCase() === email.toLowerCase()
             ) ?? granted[0];
 
+            // Verify: confirm the create actually landed them on the project.
+            // If it didn't, throw a clear error rather than reporting a false
+            // success — this catches the rare case where Basecamp accepts the
+            // request but rejects the email under the hood (e.g. domain
+            // restrictions, account-level policies).
+            if (!(await isOnProject())) {
+                throw new Error(
+                    `Basecamp invite_users: invitation for "${email}" was accepted by the API but ` +
+                    `the person does not appear in the project's people list afterwards. ` +
+                    `This usually means Basecamp rejected the email address (e.g. an account-level ` +
+                    `policy or domain restriction). Please verify in Basecamp.`
+                );
+            }
+
             if (!created) {
                 throw new Error(
                     `Basecamp invite_users: invitation request succeeded but Basecamp returned no person ` +
@@ -671,13 +701,17 @@ export class BasecampNode implements NodeExecutor {
             }
 
             const companyObj = created.company as Record<string, unknown> | undefined;
+            const recoveredFromGhost = Boolean(existingAccountPerson);
             return {
                 id:        created.id,
                 name:      (created.name as string | undefined)          ?? name,
                 email:     (created.email_address as string | undefined) ?? email,
                 title:     (created.title as string | undefined)         ?? title,
                 company:   (companyObj?.name as string | undefined)      ?? company,
-                status:    'invited',
+                status:    recoveredFromGhost ? 'reinvited' : 'invited',
+                message:   recoveredFromGhost
+                    ? `${email} had a stale record from a previous removal. A fresh invitation has been sent and they now have access to the project.`
+                    : undefined,
                 projectId,
                 projectAutoSelected: projectWasAutoSelected,
             };

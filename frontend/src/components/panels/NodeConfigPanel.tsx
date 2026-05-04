@@ -161,8 +161,8 @@ const NODE_OUTPUT_FIELDS: Record<string, OutputField[]> = {
     { key: 'createdAt',   label: 'Creation timestamp ISO (create)' },
     { key: 'projectId',   label: 'Project ID used (create)' },
     { key: 'todolistId',  label: 'To-do list ID used (create)' },
-    { key: 'status',      label: 'Action status (created / posted / sent / invited / granted_project_access / already_member)' },
-    { key: 'message',     label: 'Human-readable summary when an existing user was matched (invite_users)' },
+    { key: 'status',      label: 'Action status (created / posted / sent / invited / reinvited / granted_project_access / already_member)' },
+    { key: 'message',     label: 'Human-readable summary when an existing user was matched or a ghost record was recovered (invite_users)' },
     { key: 'completed',   label: 'Completion flag (complete / uncomplete)' },
     { key: 'todos',       label: 'To-do list array (list_todos)' },
     { key: 'count',       label: 'To-do count (list_todos)' },
@@ -11301,7 +11301,7 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
       {action === 'invite_users' && (
         <>
           <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-relaxed">
-            Sends an invitation to the specified address. Basecamp's public API has no organization-only invite endpoint — under the hood the person must be added via a project, but you can leave the Project field blank above and we'll pick one for you (matching the Basecamp website's "Invite a teammate" behavior). If the person is already in the org, they'll simply be granted access. Requires admin privileges.
+            Sends an invitation to the specified address. Basecamp's public API has no organization-only invite endpoint — under the hood the person must be added via a project, but you can leave the Project field blank above and we'll pick one for you (matching the Basecamp website's "Invite a teammate" behavior). If the person is already in the org, they'll simply be granted access. If they were previously removed from the org, a fresh invitation is issued automatically (status: <code className="font-mono bg-slate-100 dark:bg-slate-800 px-0.5 rounded">reinvited</code>). Requires admin privileges.
           </p>
           <ExpressionInput
             label="Email Address"
