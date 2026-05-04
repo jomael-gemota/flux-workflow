@@ -30,8 +30,10 @@ interface GmailConfig {
     useFluxTemplate?: boolean;   // wrap body in Flux branded HTML template
     // send_and_wait — how long to poll for a reply (minutes, default 5)
     waitMinutes?: number;
-    // reply — ID of the message being replied to
+    // reply / reply_flux — ID of the message being replied to
     replyToMessageId?: string;
+    // reply / reply_flux — when true, address all original recipients (Reply All)
+    replyAll?: boolean;
     // list — user-friendly filter fields (translated to a Gmail query on the fly)
     readStatus?: 'all' | 'read' | 'unread';
     fromFilter?: string | string[];   // single address/name, or multiple (joined with OR)
@@ -377,18 +379,62 @@ export class GmailNode implements NodeExecutor {
                 userId: 'me',
                 id: replyToId,
                 format: 'metadata',
-                metadataHeaders: ['From', 'Subject', 'Message-ID', 'References'],
+                metadataHeaders: ['From', 'To', 'Cc', 'Subject', 'Message-ID', 'References'],
             });
             const oh = (n: string) =>
                 (orig.data.payload?.headers ?? []).find((x) => x.name === n)?.value ?? '';
 
             const origFrom      = oh('From');
+            const origTo        = oh('To');
+            const origCc        = oh('Cc');
             const origSubject   = oh('Subject');
             const origMessageId = oh('Message-ID');
             const origRefs      = oh('References');
 
-            const replySubject  = origSubject.startsWith('Re:') ? origSubject : `Re: ${origSubject}`;
-            const references    = [origRefs, origMessageId].filter(Boolean).join(' ');
+            const replySubject = origSubject.startsWith('Re:') ? origSubject : `Re: ${origSubject}`;
+            const references   = [origRefs, origMessageId].filter(Boolean).join(' ');
+
+            // ── recipient resolution ───────────────────────────────────────────
+            let replyTo: string;
+            let replyCc: string | undefined;
+
+            if (config.replyAll) {
+                // Fetch the authenticated account's own email so we can exclude
+                // it from the recipient lists (you never reply to yourself).
+                const me = await gmail.users.getProfile({ userId: 'me' });
+                const myEmail = (me.data.emailAddress ?? '').toLowerCase();
+
+                /** Split a raw header value into trimmed address tokens. */
+                const splitAddrs = (raw: string): string[] =>
+                    raw ? raw.split(',').map((a) => a.trim()).filter(Boolean) : [];
+
+                /** Extract the bare email from "Display Name <email@example.com>" or "email". */
+                const bareEmail = (addr: string): string => {
+                    const m = addr.match(/<([^>]+)>/);
+                    return (m ? m[1] : addr).trim().toLowerCase();
+                };
+
+                const excludeMe = (addrs: string[]): string[] =>
+                    addrs.filter((a) => bareEmail(a) !== myEmail);
+
+                // To = original From + original To recipients (minus me), deduplicated
+                const toPool  = [origFrom, ...excludeMe(splitAddrs(origTo))];
+                const seen    = new Set<string>();
+                const toFinal = toPool.filter((a) => {
+                    const addr = bareEmail(a);
+                    if (seen.has(addr)) return false;
+                    seen.add(addr);
+                    return true;
+                });
+
+                replyTo = toFinal.join(', ');
+                const ccFinal = excludeMe(splitAddrs(origCc));
+                replyCc = ccFinal.length ? ccFinal.join(', ') : undefined;
+            } else {
+                replyTo = origFrom;
+                replyCc = undefined;
+            }
+            // ──────────────────────────────────────────────────────────────────
 
             const replyBodyText = this.resolver.resolveTemplate(config.body ?? '', context);
             const { inlineAttachments: replyInline, finalBody: replyFinalBody } = await routeAttachments(
@@ -396,7 +442,8 @@ export class GmailNode implements NodeExecutor {
                 replyBodyText,
             );
             const raw = buildRaw({
-                to:          origFrom,
+                to:          replyTo,
+                cc:          replyCc,
                 subject:     replySubject,
                 body:        replyFinalBody,
                 isHtml:      config.isHtml,
@@ -413,6 +460,7 @@ export class GmailNode implements NodeExecutor {
                 messageId: res.data.id,
                 threadId:  res.data.threadId,
                 repliedTo: replyToId,
+                replyAll:  config.replyAll ?? false,
                 labelIds:  res.data.labelIds,
             };
         }
@@ -443,12 +491,14 @@ export class GmailNode implements NodeExecutor {
                 userId: 'me',
                 id: replyToId,
                 format: 'metadata',
-                metadataHeaders: ['From', 'Subject', 'Message-ID', 'References'],
+                metadataHeaders: ['From', 'To', 'Cc', 'Subject', 'Message-ID', 'References'],
             });
             const oh = (n: string) =>
                 (orig.data.payload?.headers ?? []).find((x) => x.name === n)?.value ?? '';
 
             const origFrom      = oh('From');
+            const origTo        = oh('To');
+            const origCc        = oh('Cc');
             const origSubject   = oh('Subject');
             const origMessageId = oh('Message-ID');
             const origRefs      = oh('References');
@@ -456,6 +506,49 @@ export class GmailNode implements NodeExecutor {
 
             const replySubject = origSubject.startsWith('Re:') ? origSubject : `Re: ${origSubject}`;
             const references   = [origRefs, origMessageId].filter(Boolean).join(' ');
+
+            // ── recipient resolution ───────────────────────────────────────────
+            let replyTo: string;
+            let replyCc: string | undefined;
+
+            if (config.replyAll) {
+                // Exclude both the authenticated Gmail account and the Flux SMTP
+                // sender so neither appears in the reply recipients.
+                const me = await gmail.users.getProfile({ userId: 'me' });
+                const myEmail   = (me.data.emailAddress ?? '').toLowerCase();
+                const fluxEmail = smtpFrom.toLowerCase();
+
+                const splitAddrs = (raw: string): string[] =>
+                    raw ? raw.split(',').map((a) => a.trim()).filter(Boolean) : [];
+
+                const bareEmail = (addr: string): string => {
+                    const m = addr.match(/<([^>]+)>/);
+                    return (m ? m[1] : addr).trim().toLowerCase();
+                };
+
+                const excludeSelf = (addrs: string[]): string[] =>
+                    addrs.filter((a) => {
+                        const addr = bareEmail(a);
+                        return addr !== myEmail && addr !== fluxEmail;
+                    });
+
+                const toPool  = [origFrom, ...excludeSelf(splitAddrs(origTo))];
+                const seen    = new Set<string>();
+                const toFinal = toPool.filter((a) => {
+                    const addr = bareEmail(a);
+                    if (seen.has(addr)) return false;
+                    seen.add(addr);
+                    return true;
+                });
+
+                replyTo = toFinal.join(', ');
+                const ccFinal = excludeSelf(splitAddrs(origCc));
+                replyCc = ccFinal.length ? ccFinal.join(', ') : undefined;
+            } else {
+                replyTo = origFrom;
+                replyCc = undefined;
+            }
+            // ──────────────────────────────────────────────────────────────────
 
             const rawBody     = this.resolver.resolveTemplate(config.body ?? '', context);
             const useTemplate = config.useFluxTemplate !== false;
@@ -476,7 +569,8 @@ export class GmailNode implements NodeExecutor {
 
             const info = await transporter.sendMail({
                 from:       `"${fromName}" <${smtpFrom}>`,
-                to:         origFrom,
+                to:         replyTo,
+                ...(replyCc ? { cc: replyCc } : {}),
                 subject:    replySubject,
                 html:       htmlBody,
                 text:       rawBody,
@@ -492,6 +586,7 @@ export class GmailNode implements NodeExecutor {
                 threadId,
                 subject:      replySubject,
                 usedTemplate: useTemplate,
+                replyAll:     config.replyAll ?? false,
             };
         }
 

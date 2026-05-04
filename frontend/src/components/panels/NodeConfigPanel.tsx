@@ -80,6 +80,7 @@ const NODE_OUTPUT_FIELDS: Record<string, OutputField[]> = {
     { key: 'subject',      label: 'Subject line (send_flux / reply_flux / read)' },
     { key: 'usedTemplate', label: 'Whether Flux template was applied (send_flux / reply_flux)' },
     { key: 'repliedTo',    label: 'Original message ID that was replied to (reply / reply_flux)' },
+    { key: 'replyAll',     label: 'Whether Reply All mode was used (reply / reply_flux)' },
     // list / get_many — thread structure
     { key: 'threads',         label: 'Thread list — array of { threadId, messages[] } (list)' },
     { key: 'totalThreads',    label: 'Total threads returned (list)' },
@@ -6864,6 +6865,28 @@ function GmailConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
             onChange={(v) => onChange({ replyToMessageId: v })}
             placeholder="ID of the message you're replying to"
             nodes={otherNodes} testResults={testResults} />
+          <div className="space-y-1.5">
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Reply mode</label>
+            <div className="flex gap-4">
+              {([
+                { value: false, label: 'Reply to sender' },
+                { value: true,  label: 'Reply all' },
+              ] as const).map(({ value, label }) => (
+                <label key={String(value)} className="flex items-center gap-1.5 cursor-pointer">
+                  <input type="radio" name="gmail-reply-mode"
+                    checked={Boolean(cfg.replyAll) === value}
+                    onChange={() => onChange({ replyAll: value })}
+                    className="w-3 h-3 accent-blue-500" />
+                  <span className="text-xs text-slate-600 dark:text-slate-300">{label}</span>
+                </label>
+              ))}
+            </div>
+            {cfg.replyAll && (
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-relaxed">
+                Replies to the original sender and all other recipients (To + Cc), excluding your own address.
+              </p>
+            )}
+          </div>
           <div className="space-y-1">
             <div className="flex items-center justify-between gap-1">
               <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Reply body</label>
@@ -6892,6 +6915,28 @@ function GmailConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
             onChange={(v) => onChange({ replyToMessageId: v })}
             placeholder="ID of the message you're replying to"
             nodes={otherNodes} testResults={testResults} />
+          <div className="space-y-1.5">
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Reply mode</label>
+            <div className="flex gap-4">
+              {([
+                { value: false, label: 'Reply to sender' },
+                { value: true,  label: 'Reply all' },
+              ] as const).map(({ value, label }) => (
+                <label key={String(value)} className="flex items-center gap-1.5 cursor-pointer">
+                  <input type="radio" name="reply-flux-mode"
+                    checked={Boolean(cfg.replyAll) === value}
+                    onChange={() => onChange({ replyAll: value })}
+                    className="w-3 h-3 accent-blue-500" />
+                  <span className="text-xs text-slate-600 dark:text-slate-300">{label}</span>
+                </label>
+              ))}
+            </div>
+            {cfg.replyAll && (
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-relaxed">
+                Replies to the original sender and all other recipients (To + Cc), excluding the connected Gmail account and the Flux SMTP sender address.
+              </p>
+            )}
+          </div>
           <div className="space-y-1">
             <div className="flex items-center justify-between gap-1">
               <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Reply body</label>
