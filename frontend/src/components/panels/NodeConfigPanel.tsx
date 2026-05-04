@@ -11250,10 +11250,10 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
       {action === 'remove_user' && (
         <>
           <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-relaxed">
-            Permanently removes the person from your Basecamp account. Requires admin privileges. Search by Email Address, by First Name + Last Name (both required when used together), or any combination. Add a Company to disambiguate when multiple people match.
+            Permanently removes the person from your Basecamp account. Requires admin privileges. Search by Email Address, by Full Name, or both. Add a Company to disambiguate when multiple people match.
           </p>
           <ExpressionInput
-            label="Email Address (optional when First + Last Name are provided)"
+            label="Email Address (optional when Full Name is provided)"
             value={String(cfg.removeEmail ?? '')}
             onChange={(v) => onChange({ removeEmail: v })}
             placeholder="jane@example.com"
@@ -11261,31 +11261,20 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
             testResults={testResults}
             hint="Exact email match. Leave blank to search by name only."
           />
-          <div className="grid grid-cols-2 gap-2">
-            <ExpressionInput
-              label="First Name"
-              value={String(cfg.removeFirstName ?? '')}
-              onChange={(v) => onChange({ removeFirstName: v })}
-              placeholder="Jane"
-              nodes={otherNodes}
-              testResults={testResults}
-              hint="Case-insensitive. Required when Last Name is provided."
-            />
-            <ExpressionInput
-              label="Last Name"
-              value={String(cfg.removeLastName ?? '')}
-              onChange={(v) => onChange({ removeLastName: v })}
-              placeholder="Smith"
-              nodes={otherNodes}
-              testResults={testResults}
-              hint="Case-insensitive. Required when First Name is provided."
-            />
-          </div>
+          <ExpressionInput
+            label="Full Name (optional when Email is provided)"
+            value={String(cfg.removeName ?? '')}
+            onChange={(v) => onChange({ removeName: v })}
+            placeholder="Jane Smith   or   {{nodes.trigger.items[0].fullName}}"
+            nodes={otherNodes}
+            testResults={testResults}
+            hint="Case-insensitive. Accepts a literal name or a variable expression like {{nodes.trigger.items[0].name}}."
+          />
           <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed -mt-1">
             <span className="text-slate-700 dark:text-slate-300">Names are matched in three tiers (each falls back if no candidates):</span><br />
-            • <span className="text-slate-700 dark:text-slate-300">Exact</span> — search tokens line up with the start &amp; end of the Basecamp name. Example: <code className="font-mono bg-slate-100 dark:bg-slate-800 px-0.5 rounded">Jules</code> + <code className="font-mono bg-slate-100 dark:bg-slate-800 px-0.5 rounded">Manguroban</code> → "Jules O. Manguroban".<br />
-            • <span className="text-slate-700 dark:text-slate-300">Partial</span> — every search token appears in the Basecamp name, in order, with extras allowed between them. Example: <code className="font-mono bg-slate-100 dark:bg-slate-800 px-0.5 rounded">Sczali Jewess Fe</code> + <code className="font-mono bg-slate-100 dark:bg-slate-800 px-0.5 rounded">Caintic</code> → "Sczali Jewess M. Fe Caintic".<br />
-            • <span className="text-slate-700 dark:text-slate-300">Tolerant</span> — only the first and last tokens are compared. Example: <code className="font-mono bg-slate-100 dark:bg-slate-800 px-0.5 rounded">Lawrence Kent</code> + <code className="font-mono bg-slate-100 dark:bg-slate-800 px-0.5 rounded">P. Daan</code> → "Lawrence Daan".<br />
+            • <span className="text-slate-700 dark:text-slate-300">Exact</span> — your search and the Basecamp name are identical token-for-token. Example: <code className="font-mono bg-slate-100 dark:bg-slate-800 px-0.5 rounded">Jules Manguroban</code> → "Jules Manguroban".<br />
+            • <span className="text-slate-700 dark:text-slate-300">Partial</span> — every word in your search appears in the Basecamp name, in order, with extras allowed in between. Example: <code className="font-mono bg-slate-100 dark:bg-slate-800 px-0.5 rounded">Sczali Jewess Fe Caintic</code> → "Sczali Jewess M. Fe Caintic".<br />
+            • <span className="text-slate-700 dark:text-slate-300">Tolerant</span> — only the first and last words of your search are compared. Example: <code className="font-mono bg-slate-100 dark:bg-slate-800 px-0.5 rounded">Lawrence Kent P. Daan</code> → "Lawrence Daan".<br />
             The output includes <code className="font-mono bg-slate-100 dark:bg-slate-800 px-0.5 rounded">nameMatchType</code> (<code className="font-mono">exact</code> / <code className="font-mono">partial</code> / <code className="font-mono">tolerant</code>) and a <code className="font-mono bg-slate-100 dark:bg-slate-800 px-0.5 rounded">nameMatchNote</code> for the loose tiers, so you can branch on it downstream.
           </p>
 
