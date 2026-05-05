@@ -744,22 +744,7 @@ export class BasecampNode implements NodeExecutor {
                 );
             }
 
-            // Helper used both before deletion (to filter ghosts) and after a 404
-            // (to confirm Basecamp considers the person gone).  GET /people/{id}.json
-            // returns 404 when the person has been trashed/removed, even though
-            // the same person may still appear in the (occasionally stale)
-            // /people.json listing.
-            const isPersonStillActive = async (personId: number): Promise<boolean> => {
-                const verifyRes = await fetch(`${baseUrl}/people/${personId}.json`, { headers });
-                return verifyRes.ok;
-            };
-
             // Fetch all account people once, then filter in memory.
-            // Note: /people.json *should* only return active people, but in
-            // practice it occasionally returns "ghost" records for users who
-            // have already been trashed (see invite_users for the same
-            // observation). We verify activeness with a per-candidate GET
-            // before attempting the DELETE.
             const people = await this.fetchAllPages(`${baseUrl}/people.json`, headers);
 
             // Compose a human-readable description of the search criteria for messages
@@ -889,30 +874,11 @@ export class BasecampNode implements NodeExecutor {
             }
 
             if (candidates.length === 0) {
-                // Caller asked us to surface a soft "not found" rather than
-                // failing the workflow when nobody matched the search.
                 return notFoundResult;
             }
 
-            // Filter out ghost records (people who appear in /people.json but
-            // are already trashed). Doing this *after* name/email/company
-            // filtering keeps the per-candidate verification cost minimal.
-            const activeCandidates: Array<Record<string, unknown>> = [];
-            for (const candidate of candidates) {
-                const candidateId = candidate.id as number | undefined;
-                if (typeof candidateId !== 'number') continue;
-                if (await isPersonStillActive(candidateId)) {
-                    activeCandidates.push(candidate);
-                }
-            }
-
-            if (activeCandidates.length === 0) {
-                // Every match was a ghost — the user has already been removed.
-                return notFoundResult;
-            }
-
-            if (activeCandidates.length > 1) {
-                const names = activeCandidates
+            if (candidates.length > 1) {
+                const names = candidates
                     .map((p) => {
                         const co = p.company as { name?: string } | null | undefined;
                         const em = p.email_address as string | undefined;
@@ -929,22 +895,20 @@ export class BasecampNode implements NodeExecutor {
                 );
             }
 
-            const person   = activeCandidates[0];
+            const person   = candidates[0];
             const personId = person.id as number;
 
             // Basecamp 3's documented "trash a person" endpoint is
             //   DELETE /people/{personId}.json
             // (NOT /people/users/{personId}.json — that path doesn't exist and
-            // returns Basecamp's generic HTML 404 page, which is what users
-            // saw in the wild before this fix.)
+            // returns Basecamp's generic HTML 404 page.)
             const res = await fetch(`${baseUrl}/people/${personId}.json`, {
                 method: 'DELETE', headers,
             });
 
-            // 404 here means a race: the person was trashed between our active-
-            // check and the DELETE, OR our token isn't an admin so the endpoint
-            // hides them.  Either way the practical result is the same — the
-            // user isn't there to remove. Surface it as a soft not-found.
+            // 404 means the person was already trashed (deleted) by the time
+            // our DELETE arrived. Surface it as a soft not-found rather than
+            // failing the workflow.
             if (res.status === 404) {
                 return notFoundResult;
             }
