@@ -165,8 +165,8 @@ const NODE_OUTPUT_FIELDS: Record<string, OutputField[]> = {
     { key: 'createdAt',   label: 'Creation timestamp ISO (create)' },
     { key: 'projectId',   label: 'Project ID used (create)' },
     { key: 'todolistId',  label: 'To-do list ID used (create)' },
-    { key: 'status',      label: 'Action status (created / posted / sent / invited / reinvited / granted_project_access / already_member)' },
-    { key: 'message',     label: 'Human-readable summary when an existing user was matched or a ghost record was recovered (invite_users)' },
+    { key: 'status',      label: 'Action status (created / posted / sent / invited / reinvited / granted_project_access / already_member / removed / not_found)' },
+    { key: 'message',     label: 'Human-readable summary — set when an existing user was matched, a ghost record was recovered (invite_users), or the user no longer exists (remove_user)' },
     { key: 'completed',   label: 'Completion flag (complete / uncomplete)' },
     { key: 'todos',       label: 'To-do list array (list_todos)' },
     { key: 'count',       label: 'To-do count (list_todos)' },
@@ -11250,7 +11250,7 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
       {action === 'remove_user' && (
         <>
           <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-relaxed">
-            Permanently removes the person from your Basecamp account. Requires admin privileges. Search by Email Address, by Full Name, or both. Add a Company to disambiguate when multiple people match.
+            Removes the person from your Basecamp account (soft-trash — historical data is retained). Requires admin privileges. Search by Email Address, by Full Name, or both. Add a Company to disambiguate when multiple people match. Only active users are eligible; if the person was already removed the node returns <code className="font-mono bg-slate-100 dark:bg-slate-800 px-0.5 rounded">status: "not_found"</code> with a message instead of failing.
           </p>
           <ExpressionInput
             label="Email Address (optional when Full Name is provided)"
@@ -11271,11 +11271,11 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
             hint="Case-insensitive. Accepts a literal name or a variable expression like {{nodes.trigger.items[0].name}}."
           />
           <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed -mt-1">
-            <span className="text-slate-700 dark:text-slate-300">Names are matched in three tiers (each falls back if no candidates):</span><br />
-            • <span className="text-slate-700 dark:text-slate-300">Exact</span> — your search and the Basecamp name are identical token-for-token. Example: <code className="font-mono bg-slate-100 dark:bg-slate-800 px-0.5 rounded">Jules Manguroban</code> → "Jules Manguroban".<br />
-            • <span className="text-slate-700 dark:text-slate-300">Partial</span> — every word in your search appears in the Basecamp name, in order, with extras allowed in between. Example: <code className="font-mono bg-slate-100 dark:bg-slate-800 px-0.5 rounded">Sczali Jewess Fe Caintic</code> → "Sczali Jewess M. Fe Caintic".<br />
-            • <span className="text-slate-700 dark:text-slate-300">Tolerant</span> — only the first and last words of your search are compared. Example: <code className="font-mono bg-slate-100 dark:bg-slate-800 px-0.5 rounded">Lawrence Kent P. Daan</code> → "Lawrence Daan".<br />
-            The output includes <code className="font-mono bg-slate-100 dark:bg-slate-800 px-0.5 rounded">nameMatchType</code> (<code className="font-mono">exact</code> / <code className="font-mono">partial</code> / <code className="font-mono">tolerant</code>) and a <code className="font-mono bg-slate-100 dark:bg-slate-800 px-0.5 rounded">nameMatchNote</code> for the loose tiers, so you can branch on it downstream.
+            <span className="text-slate-700 dark:text-slate-300">Names are resolved through three progressive matching tiers, each used only when the previous yields no candidates:</span><br />
+            • <span className="text-slate-700 dark:text-slate-300">Exact</span> — the search and the Basecamp display name are identical token-for-token.<br />
+            • <span className="text-slate-700 dark:text-slate-300">Partial</span> — every search token appears in the Basecamp name in the same order, with additional tokens permitted in between.<br />
+            • <span className="text-slate-700 dark:text-slate-300">Tolerant</span> — only the first and last tokens of the search are compared against the corresponding tokens of the Basecamp name.<br />
+            The result includes <code className="font-mono bg-slate-100 dark:bg-slate-800 px-0.5 rounded">nameMatchType</code> (<code className="font-mono">exact</code> / <code className="font-mono">partial</code> / <code className="font-mono">tolerant</code>) and a <code className="font-mono bg-slate-100 dark:bg-slate-800 px-0.5 rounded">nameMatchNote</code> for the looser tiers, enabling conditional handling in downstream nodes.
           </p>
 
           {/* Company — dropdown from account with variable fallback */}

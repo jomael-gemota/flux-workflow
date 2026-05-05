@@ -744,15 +744,41 @@ export class BasecampNode implements NodeExecutor {
                 );
             }
 
-            // Fetch all account people once, then filter in memory
+            // Helper used both before deletion (to filter ghosts) and after a 404
+            // (to confirm Basecamp considers the person gone).  GET /people/{id}.json
+            // returns 404 when the person has been trashed/removed, even though
+            // the same person may still appear in the (occasionally stale)
+            // /people.json listing.
+            const isPersonStillActive = async (personId: number): Promise<boolean> => {
+                const verifyRes = await fetch(`${baseUrl}/people/${personId}.json`, { headers });
+                return verifyRes.ok;
+            };
+
+            // Fetch all account people once, then filter in memory.
+            // Note: /people.json *should* only return active people, but in
+            // practice it occasionally returns "ghost" records for users who
+            // have already been trashed (see invite_users for the same
+            // observation). We verify activeness with a per-candidate GET
+            // before attempting the DELETE.
             const people = await this.fetchAllPages(`${baseUrl}/people.json`, headers);
 
-            // Compose a human-readable description of the search criteria for error messages
+            // Compose a human-readable description of the search criteria for messages
             const criteriaParts: string[] = [];
             if (email)    criteriaParts.push(`email "${email}"`);
             if (fullName) criteriaParts.push(`name "${fullName}"`);
             if (company)  criteriaParts.push(`company "${company}"`);
             const criteriaSummary = criteriaParts.join(' and ');
+
+            // Shape used whenever the search yields no active match — workflows
+            // can branch on `status === 'not_found'` rather than catching an error.
+            const notFoundResult = {
+                id:      null as number | null,
+                name:    fullName || null,
+                email:   email    || null,
+                company: company  || null,
+                status:  'not_found' as const,
+                message: 'The user does not exist anymore.',
+            };
 
             /**
              * Split a name string into lowercase whitespace-separated tokens.
@@ -863,13 +889,30 @@ export class BasecampNode implements NodeExecutor {
             }
 
             if (candidates.length === 0) {
-                throw new Error(
-                    `Basecamp remove_user: no person found with ${criteriaSummary}.`
-                );
+                // Caller asked us to surface a soft "not found" rather than
+                // failing the workflow when nobody matched the search.
+                return notFoundResult;
             }
 
-            if (candidates.length > 1) {
-                const names = candidates
+            // Filter out ghost records (people who appear in /people.json but
+            // are already trashed). Doing this *after* name/email/company
+            // filtering keeps the per-candidate verification cost minimal.
+            const activeCandidates: Array<Record<string, unknown>> = [];
+            for (const candidate of candidates) {
+                const candidateId = candidate.id as number | undefined;
+                if (typeof candidateId !== 'number') continue;
+                if (await isPersonStillActive(candidateId)) {
+                    activeCandidates.push(candidate);
+                }
+            }
+
+            if (activeCandidates.length === 0) {
+                // Every match was a ghost — the user has already been removed.
+                return notFoundResult;
+            }
+
+            if (activeCandidates.length > 1) {
+                const names = activeCandidates
                     .map((p) => {
                         const co = p.company as { name?: string } | null | undefined;
                         const em = p.email_address as string | undefined;
@@ -886,12 +929,25 @@ export class BasecampNode implements NodeExecutor {
                 );
             }
 
-            const person   = candidates[0];
+            const person   = activeCandidates[0];
             const personId = person.id as number;
 
-            const res = await fetch(`${baseUrl}/people/users/${personId}.json`, {
+            // Basecamp 3's documented "trash a person" endpoint is
+            //   DELETE /people/{personId}.json
+            // (NOT /people/users/{personId}.json — that path doesn't exist and
+            // returns Basecamp's generic HTML 404 page, which is what users
+            // saw in the wild before this fix.)
+            const res = await fetch(`${baseUrl}/people/${personId}.json`, {
                 method: 'DELETE', headers,
             });
+
+            // 404 here means a race: the person was trashed between our active-
+            // check and the DELETE, OR our token isn't an admin so the endpoint
+            // hides them.  Either way the practical result is the same — the
+            // user isn't there to remove. Surface it as a soft not-found.
+            if (res.status === 404) {
+                return notFoundResult;
+            }
 
             // 204 No Content = success; Basecamp also returns 200 in some cases
             if (!res.ok && res.status !== 204) {
