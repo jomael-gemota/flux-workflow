@@ -144,16 +144,33 @@ export class BasecampNode implements NodeExecutor {
         this.auth = auth;
     }
 
-    /** Follows Basecamp's Link: rel="next" pagination headers and collects all pages. */
+    /**
+     * Follows Basecamp's Link: rel="next" pagination headers and collects all pages.
+     *
+     * @param throwOnError - When true, a non-OK response throws with the Basecamp
+     *   error message instead of silently returning whatever was collected so far.
+     *   Defaults to false to preserve the fall-through behaviour used by resolvers
+     *   (project/todolist/group name → ID) that degrade gracefully on failure.
+     *   Set to true wherever an empty result would be silently mistaken for
+     *   "no records exist" (e.g. looking up a person before removing them).
+     */
     private async fetchAllPages(
         startUrl: string,
         headers: Record<string, string>,
+        throwOnError = false,
     ): Promise<Array<Record<string, unknown>>> {
         const results: Array<Record<string, unknown>> = [];
         let nextUrl: string | null = startUrl;
         while (nextUrl) {
             const r: Response = await fetch(nextUrl, { headers });
-            if (!r.ok) break;
+            if (!r.ok) {
+                if (throwOnError) {
+                    throw new Error(
+                        `Basecamp API request to ${nextUrl} failed (${r.status}): ${await extractBasecampError(r)}`
+                    );
+                }
+                break;
+            }
             const page = await r.json() as Array<Record<string, unknown>>;
             results.push(...page);
             const linkHeader: string = r.headers.get('Link') ?? '';
@@ -609,7 +626,7 @@ export class BasecampNode implements NodeExecutor {
                 );
             };
 
-            const accountPeople = await this.fetchAllPages(`${baseUrl}/people.json`, headers);
+            const accountPeople = await this.fetchAllPages(`${baseUrl}/people.json`, headers, true);
             const existingAccountPerson = accountPeople.find(
                 (p) => String(p.email_address ?? '').toLowerCase() === email.toLowerCase()
             );
@@ -745,7 +762,10 @@ export class BasecampNode implements NodeExecutor {
             }
 
             // Fetch all account people once, then filter in memory.
-            const people = await this.fetchAllPages(`${baseUrl}/people.json`, headers);
+            // throwOnError=true so that a failed API call (expired token, 403,
+            // 429 rate-limit, etc.) surfaces as a real error rather than an
+            // empty list that is silently mistaken for "person not found".
+            const people = await this.fetchAllPages(`${baseUrl}/people.json`, headers, true);
 
             // Compose a human-readable description of the search criteria for messages
             const criteriaParts: string[] = [];
