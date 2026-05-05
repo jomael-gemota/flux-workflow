@@ -181,6 +181,66 @@ export class BasecampNode implements NodeExecutor {
     }
 
     /**
+     * Returns the full set of people on the Basecamp account, deduplicated by
+     * person ID.
+     *
+     * Why this exists:
+     *   `GET /people.json` only returns people **visible to the current user**
+     *   — that is, people who share at least one project (or the same company)
+     *   with the OAuth token's user. Clients/collaborators on projects the
+     *   token-user isn't on are silently filtered out, even when the
+     *   token-user is an account admin who should be able to manage them.
+     *
+     *   `GET /circles/people.json` returns every pingable person on the
+     *   account and is not paginated. For admins this is effectively the
+     *   complete account roster.
+     *
+     * Strategy: union the two endpoints so org-management actions (remove,
+     * invite, list organizations) see clients that aren't on any of the
+     * caller's projects but still belong to the account.
+     *
+     * @param throwOnError - When true, a failure on `/people.json` surfaces
+     *   as an error instead of being silently treated as an empty list.
+     *   `/circles/people.json` is always best-effort: if it fails (older
+     *   accounts, transient errors) we still return whatever `/people.json`
+     *   produced rather than blocking the action entirely.
+     */
+    private async fetchAllAccountPeople(
+        baseUrl: string,
+        headers: Record<string, string>,
+        throwOnError = false,
+    ): Promise<Array<Record<string, unknown>>> {
+        const visiblePeople = await this.fetchAllPages(`${baseUrl}/people.json`, headers, throwOnError);
+
+        // Best-effort: pingable list = full roster for admins, broader than
+        // /people.json for everyone else. Failures here are non-fatal.
+        let pingablePeople: Array<Record<string, unknown>> = [];
+        try {
+            const r = await fetch(`${baseUrl}/circles/people.json`, { headers });
+            if (r.ok) {
+                pingablePeople = await r.json() as Array<Record<string, unknown>>;
+            }
+        } catch {
+            // swallow — we still have visiblePeople
+        }
+
+        const byId = new Map<number, Record<string, unknown>>();
+        for (const p of [...visiblePeople, ...pingablePeople]) {
+            const id = p.id as number | undefined;
+            if (typeof id !== 'number') continue;
+            // Prefer the record that actually carries an email_address —
+            // /circles/people.json sometimes returns a slimmer projection.
+            const existing = byId.get(id);
+            if (!existing) {
+                byId.set(id, p);
+            } else if (!existing.email_address && p.email_address) {
+                byId.set(id, p);
+            }
+        }
+        return [...byId.values()];
+    }
+
+    /**
      * Returns `raw` unchanged when it is already a numeric Basecamp ID.
      * Otherwise fetches all projects and returns the ID of the first project
      * whose name matches `raw` (case-insensitive). Falls back to `raw` when
@@ -558,8 +618,10 @@ export class BasecampNode implements NodeExecutor {
         if (action === 'list_organizations') {
             // Basecamp 3 has no dedicated companies endpoint.
             // Companies are embedded in each person object as { id, name }.
-            // Fetch all account people and derive the unique company list.
-            const people = await this.fetchAllPages(`${baseUrl}/people.json`, headers);
+            // Fetch the full account roster (visible + pingable) so client
+            // companies on projects the token-user isn't a member of are
+            // still surfaced.
+            const people = await this.fetchAllAccountPeople(baseUrl, headers);
 
             const seen = new Map<number, { id: number; name: string }>();
             for (const p of people) {
@@ -626,7 +688,12 @@ export class BasecampNode implements NodeExecutor {
                 );
             };
 
-            const accountPeople = await this.fetchAllPages(`${baseUrl}/people.json`, headers, true);
+            // Use the combined roster so we recognise existing clients that
+            // aren't on any of the token-user's projects (they would be
+            // silently absent from `/people.json` alone, and we'd then
+            // incorrectly fall through to the create flow and Basecamp would
+            // reject the email as already taken).
+            const accountPeople = await this.fetchAllAccountPeople(baseUrl, headers, true);
             const existingAccountPerson = accountPeople.find(
                 (p) => String(p.email_address ?? '').toLowerCase() === email.toLowerCase()
             );
@@ -761,11 +828,15 @@ export class BasecampNode implements NodeExecutor {
                 );
             }
 
-            // Fetch all account people once, then filter in memory.
+            // Fetch the full account roster (visible + pingable) so external
+            // clients on projects the token-user isn't a member of are still
+            // findable. `/people.json` alone is project-visibility-filtered
+            // and silently omits those people.
+            //
             // throwOnError=true so that a failed API call (expired token, 403,
             // 429 rate-limit, etc.) surfaces as a real error rather than an
             // empty list that is silently mistaken for "person not found".
-            const people = await this.fetchAllPages(`${baseUrl}/people.json`, headers, true);
+            const people = await this.fetchAllAccountPeople(baseUrl, headers, true);
 
             // Compose a human-readable description of the search criteria for messages
             const criteriaParts: string[] = [];
@@ -782,7 +853,9 @@ export class BasecampNode implements NodeExecutor {
                 email:   email    || null,
                 company: company  || null,
                 status:  'not_found' as const,
-                message: 'The user does not exist anymore.',
+                message: `No active Basecamp user matched ${criteriaSummary || 'the provided criteria'}. ` +
+                    'They may have already been removed, or the connected Basecamp account does not have ' +
+                    'admin permissions to see this person.',
             };
 
             /**
