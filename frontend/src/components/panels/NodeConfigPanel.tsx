@@ -165,8 +165,8 @@ const NODE_OUTPUT_FIELDS: Record<string, OutputField[]> = {
     { key: 'createdAt',   label: 'Creation timestamp ISO (create)' },
     { key: 'projectId',   label: 'Project ID used (create)' },
     { key: 'todolistId',  label: 'To-do list ID used (create)' },
-    { key: 'status',      label: 'Action status (created / posted / sent / invited / reinvited / granted_project_access / already_member / removed / not_found)' },
-    { key: 'message',     label: 'Human-readable summary — set when an existing user was matched, a ghost record was recovered (invite_users), or the user no longer exists (remove_user)' },
+    { key: 'status',      label: 'Action status (created / posted / sent / invited / reinvited / granted_project_access / already_member / removed / no_access / not_found)' },
+    { key: 'message',     label: 'Human-readable summary — set when an existing user was matched, a ghost record was recovered (invite_users), or describes which projects were revoked (remove_user)' },
     { key: 'completed',   label: 'Completion flag (complete / uncomplete)' },
     { key: 'todos',       label: 'To-do list array (list_todos)' },
     { key: 'count',       label: 'To-do count (list_todos)' },
@@ -176,6 +176,10 @@ const NODE_OUTPUT_FIELDS: Record<string, OutputField[]> = {
     { key: 'projectAutoSelected', label: 'True when no Project was specified and one was auto-picked (invite_users)' },
     { key: 'nameMatchType',       label: 'How the name was matched — "exact", "partial" or "tolerant" (remove_user, when searching by First/Last Name)' },
     { key: 'nameMatchNote',       label: 'Explanation of which Basecamp user was resolved when a partial or tolerant name match was used (remove_user)' },
+    { key: 'projectsRevoked',      label: 'Projects the user was revoked from [{id, name}] (remove_user)' },
+    { key: 'projectsRevokedCount', label: 'Number of projects the user was revoked from (remove_user)' },
+    { key: 'projectsFailed',       label: 'Projects where the revoke could not be applied [{id, name, status, reason}] (remove_user, partial failures)' },
+    { key: 'projectsInspectFailed', label: 'Projects whose roster could not be inspected [{id, name, status, reason}] (remove_user)' },
     { key: 'organizations', label: 'Organizations array [{id, name}] (list_organizations)' },
   ],
   slack: [
@@ -11250,7 +11254,7 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
       {action === 'remove_user' && (
         <>
           <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-relaxed">
-            Removes the person from your Basecamp account (soft-trash — historical data is retained). Requires admin privileges. Search by Email Address, by Full Name, or both. Add a Company to disambiguate when multiple people match. Only active users are eligible; if the person was already removed the node returns <code className="font-mono bg-slate-100 dark:bg-slate-800 px-0.5 rounded">status: "not_found"</code> with a message instead of failing.
+            Removes the person from your Basecamp organization by revoking their access from every project they belong to. The Basecamp 3 API does not expose an account-level delete endpoint, so this is the supported equivalent: once revoked from all projects the person can no longer see or interact with anything in the account. Requires admin privileges on each project. Search by Email Address, by Full Name, or both. Add a Company to disambiguate when multiple people match. Returns <code className="font-mono bg-slate-100 dark:bg-slate-800 px-0.5 rounded">status: "removed"</code> with a <code className="font-mono">projectsRevoked</code> list, <code className="font-mono">"no_access"</code> when the person had no active project memberships to revoke, or <code className="font-mono">"not_found"</code> when no active match was found. Per-project failures are surfaced under <code className="font-mono">projectsFailed</code> rather than aborting the whole removal.
           </p>
           <ExpressionInput
             label="Email Address (optional when Full Name is provided)"

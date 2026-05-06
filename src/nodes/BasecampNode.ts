@@ -991,24 +991,120 @@ export class BasecampNode implements NodeExecutor {
             const person   = candidates[0];
             const personId = person.id as number;
 
-            // Basecamp 3's documented "trash a person" endpoint is
-            //   DELETE /people/{personId}.json
-            // (NOT /people/users/{personId}.json — that path doesn't exist and
-            // returns Basecamp's generic HTML 404 page.)
-            const res = await fetch(`${baseUrl}/people/${personId}.json`, {
-                method: 'DELETE', headers,
-            });
+            // Basecamp 3's public REST API does NOT expose an endpoint to
+            // delete/trash a person at the account level. The only documented
+            // endpoints under `/people/{personId}` are GET (fetch profile) and
+            // the out-of-office sub-resource — there is no DELETE on the person
+            // itself. (Verified against the official OpenAPI spec at
+            // basecamp/basecamp-sdk.) An earlier implementation that issued
+            // `DELETE /people/{personId}.json` was hitting a non-existent route
+            // and silently doing nothing — Basecamp would return its generic
+            // 404 HTML page, which the workflow misread as "already removed",
+            // so the caller saw a successful-looking `not_found` result while
+            // the person remained fully active in Basecamp.
+            //
+            // The supported way to remove someone from the organization is to
+            // revoke their access from every project they belong to via
+            //   PUT /projects/{projectId}/people/users.json
+            //   body: { "revoke": [personId] }
+            // Once they have no project access, they can no longer see or
+            // interact with any content in the account — the practical
+            // equivalent of "remove from organization" exposed by the API.
+            // This mirrors how the official basecamp-cli `people remove`
+            // command works.
 
-            // 404 means the person was already trashed (deleted) by the time
-            // our DELETE arrived. Surface it as a soft not-found rather than
-            // failing the workflow.
-            if (res.status === 404) {
-                return notFoundResult;
+            // Fetch every project visible to the OAuth user (admins see all).
+            // We need to inspect each project's roster so we only call
+            // `revoke` on projects the person is actually on, which keeps
+            // the response focused on projects we *actually* changed and
+            // avoids unnecessary writes against archived/empty projects.
+            const allProjects = await this.fetchAllPages(`${baseUrl}/projects.json`, headers, true);
+
+            type ProjectRef    = { id: number; name: string };
+            type ProjectFailure = ProjectRef & { status: number; reason: string };
+
+            const projectsRevoked:    ProjectRef[]      = [];
+            const projectsFailed:     ProjectFailure[]  = [];
+            const projectsInspectFailed: ProjectFailure[] = [];
+
+            for (const project of allProjects) {
+                const rawPid = project.id;
+                if (typeof rawPid !== 'number' && typeof rawPid !== 'string') continue;
+                const pid = Number(rawPid);
+                if (!Number.isFinite(pid) || pid <= 0) continue;
+                const projectName = String(project.name ?? `#${pid}`);
+
+                // Check if the person is on this project's roster before
+                // attempting to revoke. `/projects/{id}/people.json` returns
+                // only active members of the project.
+                const peopleRes = await fetch(`${baseUrl}/projects/${pid}/people.json`, { headers });
+                if (!peopleRes.ok) {
+                    // We couldn't even read the roster — record it so the
+                    // caller can decide whether to retry, but don't abort the
+                    // overall removal: another project may still succeed.
+                    projectsInspectFailed.push({
+                        id:     pid,
+                        name:   projectName,
+                        status: peopleRes.status,
+                        reason: await extractBasecampError(peopleRes),
+                    });
+                    continue;
+                }
+
+                const projectPeople = await peopleRes.json() as Array<Record<string, unknown>>;
+                const isMember = projectPeople.some((p) => Number(p.id) === personId);
+                if (!isMember) continue;
+
+                const revokeRes = await fetch(`${baseUrl}/projects/${pid}/people/users.json`, {
+                    method: 'PUT',
+                    headers,
+                    body:   JSON.stringify({ revoke: [personId] }),
+                });
+                if (!revokeRes.ok) {
+                    projectsFailed.push({
+                        id:     pid,
+                        name:   projectName,
+                        status: revokeRes.status,
+                        reason: await extractBasecampError(revokeRes),
+                    });
+                    continue;
+                }
+
+                // Trust-but-verify: re-read the project's people list and
+                // confirm the person is actually gone. Basecamp occasionally
+                // 200-OKs a revoke that didn't actually take effect (typically
+                // when the OAuth user lacks admin rights on a particular
+                // project). We treat such silent no-ops as failures so they
+                // surface in the result rather than masquerading as success.
+                const verifyRes = await fetch(`${baseUrl}/projects/${pid}/people.json`, { headers });
+                if (verifyRes.ok) {
+                    const verifyPeople = await verifyRes.json() as Array<Record<string, unknown>>;
+                    if (verifyPeople.some((p) => Number(p.id) === personId)) {
+                        projectsFailed.push({
+                            id:     pid,
+                            name:   projectName,
+                            status: revokeRes.status,
+                            reason: 'Basecamp accepted the revoke but the person is still on the project — usually means the OAuth user lacks admin rights on this project.',
+                        });
+                        continue;
+                    }
+                }
+
+                projectsRevoked.push({ id: pid, name: projectName });
             }
 
-            // 204 No Content = success; Basecamp also returns 200 in some cases
-            if (!res.ok && res.status !== 204) {
-                throw new Error(`Basecamp remove_user failed (${res.status}): ${await extractBasecampError(res)}`);
+            // If we couldn't revoke anything AND every attempt failed, surface
+            // a real error so the workflow stops rather than reporting a false
+            // success.
+            if (projectsRevoked.length === 0 && projectsFailed.length > 0) {
+                const summary = projectsFailed
+                    .map((f) => `${f.name} (${f.status}: ${f.reason})`)
+                    .join('; ');
+                throw new Error(
+                    `Basecamp remove_user: failed to revoke ${person.name ?? `#${personId}`}'s access from any project. ` +
+                    `This usually means the connected Basecamp account lacks admin permissions on those projects. ` +
+                    `Failures: ${summary}`
+                );
             }
 
             const coObj = person.company as Record<string, unknown> | null | undefined;
@@ -1023,12 +1119,39 @@ export class BasecampNode implements NodeExecutor {
                       `resolved to "${String(person.name ?? '')}".`
                 : undefined;
 
+            // Status semantics:
+            //   • 'removed'      — at least one project access was revoked
+            //   • 'no_access'    — person was found but had no active project
+            //                       memberships, so there was nothing to revoke
+            //                       (already effectively out of the org)
+            //   • partial failures are still 'removed' but include details
+            //     so callers can branch / log / retry as needed.
+            const status: 'removed' | 'no_access' =
+                projectsRevoked.length > 0 ? 'removed' : 'no_access';
+
+            const message = (() => {
+                if (projectsRevoked.length === 0) {
+                    return `${person.name ?? `#${personId}`} was found in Basecamp but had no active project memberships, so there was nothing to revoke. They no longer have access to any project content in this organization.`;
+                }
+                const projectList = projectsRevoked.map((p) => p.name).join(', ');
+                const base = `Revoked ${person.name ?? `#${personId}`}'s access from ${projectsRevoked.length} project${projectsRevoked.length === 1 ? '' : 's'} (${projectList}). They can no longer access any content in this Basecamp organization.`;
+                if (projectsFailed.length > 0) {
+                    return `${base} Note: ${projectsFailed.length} project${projectsFailed.length === 1 ? '' : 's'} could not be updated — see projectsFailed for details.`;
+                }
+                return base;
+            })();
+
             return {
                 id:      personId,
                 name:    person.name    as string | undefined,
                 email:   person.email_address as string | undefined,
                 company: (coObj?.name as string | undefined) ?? null,
-                status:  'removed',
+                status,
+                projectsRevoked,
+                projectsRevokedCount: projectsRevoked.length,
+                ...(projectsFailed.length        > 0 ? { projectsFailed }       : {}),
+                ...(projectsInspectFailed.length > 0 ? { projectsInspectFailed } : {}),
+                message,
                 ...(nameMatchType ? { nameMatchType }                : {}),
                 ...(matchNote     ? { nameMatchNote: matchNote }      : {}),
             };
