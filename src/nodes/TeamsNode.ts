@@ -14,6 +14,9 @@ interface TeamsConfig {
     channelId?: string;
     // send_message / send_dm
     text?: string;
+    // Flux Bot (send_message only) — uses an Incoming Webhook URL instead of delegated Graph token
+    senderType?: 'user' | 'bot';
+    webhookUrl?: string;
     // send_dm
     userId?: string;
     // read_messages
@@ -73,18 +76,69 @@ export class TeamsNode implements NodeExecutor {
         if (!credentialId) throw new Error('Teams node: credentialId is required');
         if (!action)       throw new Error('Teams node: action is required');
 
-        const client = await this.getClient(credentialId);
+        // Skip Graph client initialisation when the Flux Bot webhook path handles the request.
+        const isWebhookOnly = action === 'send_message' && config.senderType === 'bot';
+        const client = isWebhookOnly ? null : await this.getClient(credentialId);
 
         if (action === 'send_message') {
+            const text = this.resolver.resolveTemplate(config.text ?? '', context);
+
+            // ── Flux Bot path: post via Incoming Webhook ─────────────────────
+            if (config.senderType === 'bot') {
+                const webhookUrl = this.resolver.resolveTemplate(config.webhookUrl ?? '', context).trim();
+                if (!webhookUrl) throw new Error('Teams Flux Bot: Webhook URL is required');
+                if (!text)       throw new Error('Teams Flux Bot: message text is required');
+
+                const displayText = detectContentType(text) === 'html' ? stripHtml(text) : text;
+
+                // Use Adaptive Card format — compatible with Teams Workflows webhooks
+                // (the successor to retired Office 365 Connectors).
+                const payload = {
+                    type: 'message',
+                    attachments: [
+                        {
+                            contentType: 'application/vnd.microsoft.card.adaptive',
+                            contentUrl:  null,
+                            content: {
+                                $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+                                type:    'AdaptiveCard',
+                                version: '1.2',
+                                body: [
+                                    {
+                                        type: 'TextBlock',
+                                        text: displayText,
+                                        wrap: true,
+                                    },
+                                ],
+                            },
+                        },
+                    ],
+                };
+
+                const res = await fetch(webhookUrl, {
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body:    JSON.stringify(payload),
+                });
+
+                if (!res.ok) {
+                    const body = await res.text().catch(() => '');
+                    throw new Error(`Teams Flux Bot: webhook POST failed (${res.status}): ${body}`);
+                }
+
+                return { ok: true, sentVia: 'webhook' };
+            }
+
+            // ── User (delegated) path: post via Microsoft Graph ──────────────
             const teamId    = this.resolver.resolveTemplate(config.teamId    ?? '', context);
             const channelId = this.resolver.resolveTemplate(config.channelId ?? '', context);
-            const text      = this.resolver.resolveTemplate(config.text      ?? '', context);
 
             if (!teamId)    throw new Error('Teams send_message: teamId is required');
             if (!channelId) throw new Error('Teams send_message: channelId is required');
             if (!text)      throw new Error('Teams send_message: text is required');
 
-            const res = await client
+            // client is guaranteed non-null here (isWebhookOnly === false on this path)
+            const res = await client!
                 .api(`/teams/${teamId}/channels/${channelId}/messages`)
                 .post({
                     body: {
@@ -110,7 +164,7 @@ export class TeamsNode implements NodeExecutor {
 
             // Get or create a 1:1 chat with the target user.
             // First resolve the current user's ID.
-            const me = await client.api('/me').get() as { id: string };
+            const me = await client!.api('/me').get() as { id: string };
 
             // '__self__' is a sentinel meaning "the authenticated user".
             const resolvedUserId = userId === '__self__' ? me.id : userId;
@@ -132,7 +186,7 @@ export class TeamsNode implements NodeExecutor {
                     "/me/chats?$filter=chatType eq 'oneOnOne'&$expand=members";
 
                 while (nextLink && !selfChat) {
-                    const page = await client.api(nextLink).get() as ChatPage;
+                    const page = await client!.api(nextLink).get() as ChatPage;
 
                     selfChat = (page.value ?? []).find((c) => {
                         const memberIds = (c.members ?? [])
@@ -156,7 +210,7 @@ export class TeamsNode implements NodeExecutor {
 
                 chat = { id: selfChat.id };
             } else {
-                chat = await client.api('/chats').post({
+                chat = await client!.api('/chats').post({
                     chatType: 'oneOnOne',
                     members: [
                         {
@@ -173,7 +227,7 @@ export class TeamsNode implements NodeExecutor {
                 }) as { id: string };
             }
 
-            const message = await client.api(`/chats/${chat.id}/messages`).post({
+            const message = await client!.api(`/chats/${chat.id}/messages`).post({
                 body: {
                     contentType: detectContentType(text),
                     content:     text,
@@ -195,7 +249,7 @@ export class TeamsNode implements NodeExecutor {
             if (!teamId)    throw new Error('Teams read_messages: teamId is required');
             if (!channelId) throw new Error('Teams read_messages: channelId is required');
 
-            const res = await client
+            const res = await client!
                 .api(`/teams/${teamId}/channels/${channelId}/messages`)
                 .top(limit)
                 .get() as { value: Array<Record<string, unknown>> };
@@ -250,10 +304,10 @@ export class TeamsNode implements NodeExecutor {
             };
 
             const [parentRes, repliesRes] = await Promise.all([
-                client
+                client!
                     .api(`/teams/${teamId}/channels/${channelId}/messages/${messageId}`)
                     .get() as Promise<Record<string, unknown>>,
-                client
+                client!
                     .api(`/teams/${teamId}/channels/${channelId}/messages/${messageId}/replies`)
                     .get() as Promise<{ value: Array<Record<string, unknown>> }>,
             ]);

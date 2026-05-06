@@ -10295,7 +10295,71 @@ function TeamsConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
         ]}
       />
 
-      {needsTeamChannel && (
+      {/* ── Send as (user vs Flux Bot) — channel messages only ── */}
+      {action === 'send_message' && (
+        <>
+          <div className="space-y-1">
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Send as</label>
+            <div className="grid grid-cols-2 gap-1.5">
+              {([
+                ['user', 'My Teams Account', 'Acts as you'],
+                ['bot',  'Flux Bot',          'Via Incoming Webhook'],
+              ] as const).map(([val, lbl, sub]) => (
+                <label
+                  key={val}
+                  className={`flex flex-col gap-0.5 rounded-md border px-2.5 py-2 cursor-pointer transition-colors ${
+                    (cfg.senderType ?? 'user') === val
+                      ? 'border-violet-500 bg-violet-50 dark:bg-violet-500/10'
+                      : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="teams-sender-msg"
+                    value={val}
+                    checked={(cfg.senderType ?? 'user') === val}
+                    onChange={() => onChange({ senderType: val })}
+                    className="sr-only"
+                  />
+                  <span className={`text-xs font-medium ${(cfg.senderType ?? 'user') === val ? 'text-violet-700 dark:text-violet-300' : 'text-slate-700 dark:text-slate-200'}`}>{lbl}</span>
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500">{sub}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Flux Bot — Incoming Webhook config */}
+          {(cfg.senderType ?? 'user') === 'bot' && (
+            <div className="space-y-2.5 rounded-md border border-violet-200 dark:border-violet-500/20 bg-violet-50/50 dark:bg-violet-500/5 px-3 py-2.5">
+              <p className="text-[10px] font-medium text-violet-600 dark:text-violet-400">Flux Bot — Incoming Webhook</p>
+              <ExpressionInput
+                label="Webhook URL"
+                value={String(cfg.webhookUrl ?? '')}
+                onChange={(v) => onChange({ webhookUrl: v })}
+                placeholder="https://…webhook.office.com/webhookb2/…"
+                nodes={otherNodes}
+                testResults={testResults}
+                hint="Paste the Incoming Webhook URL from your Teams channel. Supports expressions."
+              />
+              <div className="rounded-md border border-violet-100 dark:border-violet-500/10 bg-white dark:bg-slate-800/60 px-2.5 py-2 space-y-1">
+                <p className="text-[10px] font-medium text-slate-500 dark:text-slate-400">How to get a Webhook URL (Teams Workflows)</p>
+                <ol className="text-[10px] text-slate-400 dark:text-slate-500 list-decimal list-inside space-y-0.5 leading-relaxed">
+                  <li>In Teams, click <strong className="text-slate-500 dark:text-slate-400">···</strong> next to the target channel → <strong className="text-slate-500 dark:text-slate-400">Workflows</strong>.</li>
+                  <li>Search for <strong className="text-slate-500 dark:text-slate-400">"Send webhook alerts to a channel"</strong> and select it.</li>
+                  <li>Give the workflow a name (e.g. <em>Flux Bot</em>), confirm the channel, then click <strong className="text-slate-500 dark:text-slate-400">Add workflow</strong>.</li>
+                  <li>Copy the generated webhook URL and paste it above.</li>
+                </ol>
+              </div>
+              <p className="text-[10px] text-violet-500/80 dark:text-violet-400/60 leading-relaxed">
+                Uses Teams Workflows (Power Automate) — the replacement for the retired Office 365 Connectors.
+                No extra Azure permissions needed. Rich HTML from the Message Formatter is converted to plain text automatically.
+              </p>
+            </div>
+          )}
+        </>
+      )}
+
+      {needsTeamChannel && (cfg.senderType ?? 'user') !== 'bot' && (
         <>
           {/* Team picker */}
           <div className="space-y-1">
