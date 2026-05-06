@@ -1,5 +1,6 @@
 import { CredentialRepository } from '../repositories/CredentialRepository';
 import { getBaseUrl } from '../utils/baseUrl';
+import type { BasecampWebSession } from '../db/models/CredentialModel';
 
 const USER_AGENT = 'WorkflowAutomationPlatform (basecamp-integration)';
 
@@ -179,6 +180,19 @@ export class BasecampAuthService {
             throw new Error('Basecamp credential is missing accountId. Please reconnect.');
         }
         return cred.email.substring(0, colonIdx);
+    }
+
+    /**
+     * Returns the Basecamp web-session payload (cookies + identity + expiry)
+     * stored on this credential, or `null` when no session has been synced.
+     * Read-only; nothing here mutates the credential or refreshes the session.
+     */
+    async getWebSession(credentialId: string): Promise<BasecampWebSession | null> {
+        const cred = await this.credentialRepo.findById(credentialId);
+        if (!cred) {
+            throw new Error(`Basecamp credential "${credentialId}" not found.`);
+        }
+        return cred.basecampWebSession ?? null;
     }
 
     private async refreshAccessToken(credentialId: string, storedRefreshToken: string): Promise<string> {

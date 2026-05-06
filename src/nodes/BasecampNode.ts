@@ -136,6 +136,199 @@ async function extractBasecampError(res: Response): Promise<string> {
     return body || `HTTP ${res.status}`;
 }
 
+/**
+ * Render an array of `BasecampWebCookie` records (as captured by the
+ * companion browser extension) into a single HTTP `Cookie:` header value.
+ * No quoting / encoding — Basecamp's session cookies are already URL-safe
+ * base64-ish blobs, so a verbatim `name=value; ...` join is correct.
+ */
+function buildCookieHeader(cookies: Array<{ name: string; value: string }>): string {
+    return cookies.map((c) => `${c.name}=${c.value}`).join('; ');
+}
+
+/**
+ * Best-effort extraction of a Rails CSRF token from a Basecamp web-app HTML
+ * page. Basecamp emits the token in two places on every authenticated page:
+ *
+ *   1. <meta name="csrf-token" content="…">              (used by Turbo / fetch)
+ *   2. <input type="hidden" name="authenticity_token" value="…">  (form fallback)
+ *
+ * We try both because the meta tag is omitted on a few legacy admin pages
+ * but the hidden input is always present inside the relevant form.
+ */
+function extractCsrfToken(html: string): string | null {
+    const meta = html.match(/<meta\s+[^>]*name=["']csrf-token["'][^>]*content=["']([^"']+)["']/i);
+    if (meta) return meta[1];
+    const input = html.match(/<input\s+[^>]*name=["']authenticity_token["'][^>]*value=["']([^"']+)["']/i);
+    if (input) return input[1];
+    return null;
+}
+
+/**
+ * Drive the Basecamp web-app's "Remove from this account" Adminland action
+ * for the given person. This is the only way to fully purge a user from a
+ * Basecamp organisation — the public REST API does not expose the
+ * equivalent endpoint.
+ *
+ * Flow (mirrors what a human admin does in the browser):
+ *
+ *   1. GET  /{accountId}/account/people/{personId}/removal/new
+ *      → returns the confirmation form HTML, from which we pull the CSRF token.
+ *   2. POST /{accountId}/account/people/{personId}/removal
+ *      with Cookie + X-CSRF-Token + form-encoded `authenticity_token`.
+ *      → 302 redirect (`location: /…/account/people`) on success;
+ *        4xx / re-render with the form on failure.
+ *
+ * Cookies must include `_bc3_session` and the Launchpad SSO cookies — the
+ * companion extension captures both. A 302 to a Launchpad sign-in URL means
+ * the session has expired and the user needs to re-sync.
+ *
+ * Returns a discriminated result object suitable for embedding in the
+ * `remove_user` action's response payload. Never throws — Adminland purge
+ * is a best-effort enhancement on top of the project-revoke path, so a
+ * failure here should not abort the wider workflow.
+ */
+async function performAdminlandRemoval(
+    accountId: string,
+    personId:  number,
+    cookies:   Array<{ name: string; value: string }>,
+): Promise<
+    | { ok: true;  via: 'web_session'; status: number }
+    | { ok: false; via: 'web_session'; status: number; reason: string }
+> {
+    const cookieHeader = buildCookieHeader(cookies);
+    if (!cookieHeader) {
+        return { ok: false, via: 'web_session', status: 0, reason: 'no cookies in stored session' };
+    }
+
+    const newUrl = `https://3.basecamp.com/${accountId}/account/people/${personId}/removal/new`;
+    let formRes: Response;
+    try {
+        formRes = await fetch(newUrl, {
+            method:   'GET',
+            redirect: 'manual',
+            headers: {
+                Cookie:        cookieHeader,
+                Accept:        'text/html,application/xhtml+xml',
+                'User-Agent':  USER_AGENT,
+            },
+        });
+    } catch (err) {
+        return {
+            ok:     false,
+            via:    'web_session',
+            status: 0,
+            reason: `network error fetching the removal form: ${(err as Error).message}`,
+        };
+    }
+
+    if (formRes.status >= 300 && formRes.status < 400) {
+        // Redirected — typically to the Launchpad sign-in page.
+        const location = formRes.headers.get('location') ?? '';
+        return {
+            ok:     false,
+            via:    'web_session',
+            status: formRes.status,
+            reason: `session expired or unauthorised (redirected to ${location || 'sign-in'}). ` +
+                    `Re-sync your Basecamp session from Connected Accounts.`,
+        };
+    }
+    if (!formRes.ok) {
+        return {
+            ok:     false,
+            via:    'web_session',
+            status: formRes.status,
+            reason: await extractBasecampError(formRes),
+        };
+    }
+
+    const formHtml = await formRes.text();
+    const token    = extractCsrfToken(formHtml);
+    if (!token) {
+        return {
+            ok:     false,
+            via:    'web_session',
+            status: formRes.status,
+            reason: 'could not find CSRF token on the removal form — Basecamp may have changed the page layout',
+        };
+    }
+
+    const removalUrl = `https://3.basecamp.com/${accountId}/account/people/${personId}/removal`;
+    const formBody   = new URLSearchParams({
+        authenticity_token: token,
+        // Some Basecamp internal endpoints expect Rails' standard hidden field too.
+        utf8: '✓',
+    });
+
+    let postRes: Response;
+    try {
+        postRes = await fetch(removalUrl, {
+            method:   'POST',
+            redirect: 'manual',
+            headers: {
+                Cookie:           cookieHeader,
+                'Content-Type':   'application/x-www-form-urlencoded; charset=UTF-8',
+                'X-CSRF-Token':   token,
+                Accept:           'text/html,application/xhtml+xml',
+                'User-Agent':     USER_AGENT,
+                Origin:           'https://3.basecamp.com',
+                Referer:          newUrl,
+            },
+            body: formBody.toString(),
+        });
+    } catch (err) {
+        return {
+            ok:     false,
+            via:    'web_session',
+            status: 0,
+            reason: `network error submitting removal: ${(err as Error).message}`,
+        };
+    }
+
+    // Rails post-redirect-get: a 302 to /{accountId}/account/people is the
+    // canonical success signal. A 200 typically means the form re-rendered
+    // with validation errors (e.g. the person was already removed).
+    if (postRes.status >= 300 && postRes.status < 400) {
+        const location = postRes.headers.get('location') ?? '';
+        if (/\/account\/people(?:\/|$|\?)/.test(location)) {
+            return { ok: true, via: 'web_session', status: postRes.status };
+        }
+        if (/sign[_-]?in|launchpad/i.test(location)) {
+            return {
+                ok:     false,
+                via:    'web_session',
+                status: postRes.status,
+                reason: `session expired during removal (redirected to ${location})`,
+            };
+        }
+        // Unexpected redirect target — treat as success only if we cannot
+        // glean a clear failure signal, but record the location for debugging.
+        return {
+            ok:     false,
+            via:    'web_session',
+            status: postRes.status,
+            reason: `unexpected redirect target after removal: ${location}`,
+        };
+    }
+    if (postRes.ok) {
+        // 200 OK on a Rails create action almost always means the form
+        // re-rendered with errors — Basecamp would have responded with 302
+        // on a true success.
+        return {
+            ok:     false,
+            via:    'web_session',
+            status: postRes.status,
+            reason: await extractBasecampError(postRes),
+        };
+    }
+    return {
+        ok:     false,
+        via:    'web_session',
+        status: postRes.status,
+        reason: await extractBasecampError(postRes),
+    };
+}
+
 export class BasecampNode implements NodeExecutor {
     private auth: BasecampAuthService;
     private resolver = new ExpressionResolver();
@@ -1107,6 +1300,38 @@ export class BasecampNode implements NodeExecutor {
                 );
             }
 
+            // ── Adminland purge (best effort) ────────────────────────────
+            //
+            // Project revocation alone removes someone from all projects, but
+            // they remain visible in Adminland → People as a member of the
+            // organisation (just with no project access). To fully purge a
+            // user we need to drive the Basecamp web app's "Remove from this
+            // account" form, which has no public-API equivalent.
+            //
+            // We do this only when the credential has a synced web session
+            // (captured via the companion browser extension). Without it, we
+            // skip and report `adminland: { performed: false, reason: '…'}`
+            // so the caller can branch on it.
+            let adminlandResult:
+                | { performed: true;  ok: true;  via: 'web_session'; status: number }
+                | { performed: true;  ok: false; via: 'web_session'; status: number; reason: string }
+                | { performed: false; reason: string }
+                = { performed: false, reason: 'no Basecamp web session synced for this credential — Adminland purge skipped. The user has been removed from every project but will still appear in Adminland → People until you sync a session and re-run, or remove them manually in Basecamp.' };
+
+            const webSession = await this.auth.getWebSession(credentialId);
+            if (webSession) {
+                const sessionExpired = webSession.expiresAt > 0 && webSession.expiresAt < Date.now();
+                if (sessionExpired) {
+                    adminlandResult = {
+                        performed: false,
+                        reason:    `the synced Basecamp web session expired on ${new Date(webSession.expiresAt).toISOString()}. Re-sync from Connected Accounts and re-run.`,
+                    };
+                } else {
+                    const purge = await performAdminlandRemoval(accountId, personId, webSession.cookies);
+                    adminlandResult = { performed: true, ...purge };
+                }
+            }
+
             const coObj = person.company as Record<string, unknown> | null | undefined;
             const matchNote =
                 nameMatchType === 'partial'
@@ -1120,25 +1345,52 @@ export class BasecampNode implements NodeExecutor {
                 : undefined;
 
             // Status semantics:
-            //   • 'removed'      — at least one project access was revoked
+            //   • 'purged'       — Adminland removal succeeded (full purge).
+            //                      Implies project access was revoked too.
+            //   • 'removed'      — at least one project access was revoked,
+            //                      but Adminland was not synced or the purge
+            //                      did not succeed. The user can no longer
+            //                      see any project content but is still
+            //                      visible in Adminland → People.
             //   • 'no_access'    — person was found but had no active project
             //                       memberships, so there was nothing to revoke
             //                       (already effectively out of the org)
             //   • partial failures are still 'removed' but include details
             //     so callers can branch / log / retry as needed.
-            const status: 'removed' | 'no_access' =
-                projectsRevoked.length > 0 ? 'removed' : 'no_access';
+            const adminlandSucceeded =
+                adminlandResult.performed && (adminlandResult as { ok: boolean }).ok === true;
+
+            const status: 'purged' | 'removed' | 'no_access' =
+                adminlandSucceeded
+                    ? 'purged'
+                : projectsRevoked.length > 0
+                    ? 'removed'
+                    : 'no_access';
 
             const message = (() => {
+                const namedSubject = person.name ?? `#${personId}`;
+                if (status === 'purged') {
+                    const projectList = projectsRevoked.map((p) => p.name).join(', ');
+                    const projectClause = projectsRevoked.length > 0
+                        ? `Revoked their access from ${projectsRevoked.length} project${projectsRevoked.length === 1 ? '' : 's'} (${projectList}) and `
+                        : 'They had no active project memberships, and ';
+                    return `${projectClause}removed ${namedSubject} from Adminland → People. They are now fully purged from this Basecamp organization.`;
+                }
                 if (projectsRevoked.length === 0) {
-                    return `${person.name ?? `#${personId}`} was found in Basecamp but had no active project memberships, so there was nothing to revoke. They no longer have access to any project content in this organization.`;
+                    const adminlandHint = adminlandResult.performed
+                        ? ` Adminland purge attempted but failed: ${(adminlandResult as { reason?: string }).reason ?? 'unknown error'}.`
+                        : ` ${adminlandResult.reason}`;
+                    return `${namedSubject} was found in Basecamp but had no active project memberships, so there was nothing to revoke at the project level.${adminlandHint}`;
                 }
                 const projectList = projectsRevoked.map((p) => p.name).join(', ');
-                const base = `Revoked ${person.name ?? `#${personId}`}'s access from ${projectsRevoked.length} project${projectsRevoked.length === 1 ? '' : 's'} (${projectList}). They can no longer access any content in this Basecamp organization.`;
-                if (projectsFailed.length > 0) {
-                    return `${base} Note: ${projectsFailed.length} project${projectsFailed.length === 1 ? '' : 's'} could not be updated — see projectsFailed for details.`;
-                }
-                return base;
+                const base = `Revoked ${namedSubject}'s access from ${projectsRevoked.length} project${projectsRevoked.length === 1 ? '' : 's'} (${projectList}).`;
+                const adminlandHint = adminlandResult.performed
+                    ? ` Adminland purge attempted but did not complete: ${(adminlandResult as { reason?: string }).reason ?? 'unknown error'}. They are still listed in Adminland → People.`
+                    : ` ${adminlandResult.reason}`;
+                const partialHint = projectsFailed.length > 0
+                    ? ` Note: ${projectsFailed.length} project${projectsFailed.length === 1 ? '' : 's'} could not be updated — see projectsFailed for details.`
+                    : '';
+                return `${base}${adminlandHint}${partialHint}`;
             })();
 
             return {
@@ -1151,6 +1403,7 @@ export class BasecampNode implements NodeExecutor {
                 projectsRevokedCount: projectsRevoked.length,
                 ...(projectsFailed.length        > 0 ? { projectsFailed }       : {}),
                 ...(projectsInspectFailed.length > 0 ? { projectsInspectFailed } : {}),
+                adminland: adminlandResult,
                 message,
                 ...(nameMatchType ? { nameMatchType }                : {}),
                 ...(matchNote     ? { nameMatchNote: matchNote }      : {}),

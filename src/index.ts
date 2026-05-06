@@ -43,6 +43,7 @@ import { gsheetsDataRoutes } from './routes/gsheetsDataRoutes';
 import { slackDataRoutes } from './routes/slackDataRoutes';
 import { teamsDataRoutes } from './routes/teamsDataRoutes';
 import { basecampDataRoutes } from './routes/basecampDataRoutes';
+import { basecampSessionRoutes } from './routes/basecampSessionRoutes';
 import { authRoutes } from './routes/authRoutes';
 import { adminRoutes } from './routes/adminRoutes';
 import { surveillanceRoutes } from './routes/surveillanceRoutes';
@@ -208,6 +209,7 @@ async function bootstrap() {
     await fastify.register(slackDataRoutes,      { prefix: '/api', slackAuth });
     await fastify.register(teamsDataRoutes,      { prefix: '/api', teamsAuth });
     await fastify.register(basecampDataRoutes,   { prefix: '/api', basecampAuth });
+    await fastify.register(basecampSessionRoutes,{ prefix: '/api', credentialRepo, basecampAuth });
     await fastify.register(notificationRoutes, { prefix: '/api', notificationSettingsRepo, emailNotificationService });
     await fastify.register(projectRoutes, { prefix: '/api' });
     await fastify.register(fileRoutes,   { prefix: '/api' });

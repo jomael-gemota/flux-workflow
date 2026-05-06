@@ -89,6 +89,17 @@ export interface CredentialSummary {
   email: string;
   scopes: string[];
   createdAt: string;
+  /**
+   * For Basecamp credentials only: lightweight description of the synced
+   * web-session payload, when present. The cookie values themselves stay
+   * server-side; only metadata is exposed to the frontend.
+   */
+  basecampWebSession?: {
+    identity:    string;
+    expiresAt:   number;
+    syncedAt:    number;
+    cookieCount: number;
+  };
 }
 
 export interface NodeTestResult {

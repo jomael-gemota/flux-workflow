@@ -420,6 +420,72 @@ export function checkBasecampConfig() {
   return request<{ configured: boolean; redirectUri: string }>('/oauth/basecamp/status');
 }
 
+// ── Basecamp web-session helper extension ─────────────────────────────
+
+/**
+ * Single cookie record as captured by the companion browser extension.
+ * Mirrors the subset of `chrome.cookies.Cookie` fields the extension forwards.
+ * Values are sent to the backend exactly once, validated, and then stored
+ * server-side only — the frontend never persists them locally.
+ */
+export interface BasecampWebCookie {
+  name: string;
+  value: string;
+  domain: string;
+  path: string;
+  secure: boolean;
+  httpOnly: boolean;
+  sameSite?: string | null;
+  expirationDate?: number | null;
+}
+
+/**
+ * Trigger a download of the companion browser extension as a ZIP. The
+ * server pre-fills `manifest.json`'s `content_scripts.matches` and
+ * `externally_connectable.matches` with the current deployment origin so
+ * the downloaded build only ever talks to *this* server.
+ *
+ * Returns a Blob the caller is responsible for handing off to the user
+ * (typically via an anchor element + URL.createObjectURL).
+ */
+export async function downloadBasecampExtensionZip(): Promise<Blob> {
+  const origin = window.location.origin;
+  const res = await fetch(`${BASE}/basecamp/extension.zip?origin=${encodeURIComponent(origin)}`, {
+    method: 'GET',
+    headers: { ...getAuthHeader() },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { message?: string }).message ?? `HTTP ${res.status}`);
+  }
+  return res.blob();
+}
+
+/**
+ * Push a fresh batch of Basecamp web-session cookies (just collected by the
+ * extension) to the backend, which validates them against Launchpad and
+ * — only on success — stores them encrypted on the credential record.
+ */
+export function syncBasecampSession(credentialId: string, cookies: BasecampWebCookie[]) {
+  return request<{
+    ok: true;
+    identity: string;
+    expiresAt: number;
+    syncedAt: number;
+    cookieCount: number;
+  }>('/basecamp/sync-session', {
+    method: 'POST',
+    body: JSON.stringify({ credentialId, cookies }),
+  });
+}
+
+/** Drop the stored web session — clears the cookies on the server. */
+export function clearBasecampSession(credentialId: string) {
+  return request<{ ok: true }>(`/basecamp/sync-session/${encodeURIComponent(credentialId)}`, {
+    method: 'DELETE',
+  });
+}
+
 export interface BasecampProject {
   id: number;
   name: string;

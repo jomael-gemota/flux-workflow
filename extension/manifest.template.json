@@ -1,0 +1,37 @@
+{
+    "manifest_version": 3,
+    "name": "Workflow Platform — Basecamp Helper",
+    "version": "1.0.0",
+    "description": "Securely sync your Basecamp web session to the Workflow Automation Platform so the platform can complete admin actions (e.g. removing users from Adminland) that the public Basecamp API does not expose.",
+    "permissions": ["cookies"],
+    "host_permissions": [
+        "https://*.basecamp.com/*",
+        "https://*.37signals.com/*"
+    ],
+    "background": {
+        "service_worker": "service_worker.js"
+    },
+    "content_scripts": [
+        {
+            "matches": ["http://__HOST_PLACEHOLDER__/*"],
+            "js":      ["content_script.js"],
+            "run_at":  "document_idle"
+        }
+    ],
+    "externally_connectable": {
+        "matches": ["http://__HOST_PLACEHOLDER__/*"]
+    },
+    "icons": {
+        "16":  "icons/icon-16.png",
+        "48":  "icons/icon-48.png",
+        "128": "icons/icon-128.png"
+    },
+    "action": {
+        "default_title": "Workflow Platform — Basecamp Helper",
+        "default_icon":  {
+            "16":  "icons/icon-16.png",
+            "48":  "icons/icon-48.png",
+            "128": "icons/icon-128.png"
+        }
+    }
+}

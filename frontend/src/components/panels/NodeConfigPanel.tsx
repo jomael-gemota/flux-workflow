@@ -165,8 +165,8 @@ const NODE_OUTPUT_FIELDS: Record<string, OutputField[]> = {
     { key: 'createdAt',   label: 'Creation timestamp ISO (create)' },
     { key: 'projectId',   label: 'Project ID used (create)' },
     { key: 'todolistId',  label: 'To-do list ID used (create)' },
-    { key: 'status',      label: 'Action status (created / posted / sent / invited / reinvited / granted_project_access / already_member / removed / no_access / not_found)' },
-    { key: 'message',     label: 'Human-readable summary — set when an existing user was matched, a ghost record was recovered (invite_users), or describes which projects were revoked (remove_user)' },
+    { key: 'status',      label: 'Action status (created / posted / sent / invited / reinvited / granted_project_access / already_member / purged / removed / no_access / not_found)' },
+    { key: 'message',     label: 'Human-readable summary — set when an existing user was matched, a ghost record was recovered (invite_users), or describes which projects were revoked and whether the Adminland purge succeeded (remove_user)' },
     { key: 'completed',   label: 'Completion flag (complete / uncomplete)' },
     { key: 'todos',       label: 'To-do list array (list_todos)' },
     { key: 'count',       label: 'To-do count (list_todos)' },
@@ -180,6 +180,7 @@ const NODE_OUTPUT_FIELDS: Record<string, OutputField[]> = {
     { key: 'projectsRevokedCount', label: 'Number of projects the user was revoked from (remove_user)' },
     { key: 'projectsFailed',       label: 'Projects where the revoke could not be applied [{id, name, status, reason}] (remove_user, partial failures)' },
     { key: 'projectsInspectFailed', label: 'Projects whose roster could not be inspected [{id, name, status, reason}] (remove_user)' },
+    { key: 'adminland',            label: 'Adminland purge result: { performed: false, reason } when no web session was synced, or { performed: true, ok, status, reason? } when attempted (remove_user)' },
     { key: 'organizations', label: 'Organizations array [{id, name}] (list_organizations)' },
   ],
   slack: [
@@ -11319,7 +11320,7 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
       {action === 'remove_user' && (
         <>
           <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-relaxed">
-            Removes the person from your Basecamp organization by revoking their access from every project they belong to. The Basecamp 3 API does not expose an account-level delete endpoint, so this is the supported equivalent: once revoked from all projects the person can no longer see or interact with anything in the account. Requires admin privileges on each project. Search by Email Address, by Full Name, or both. Add a Company to disambiguate when multiple people match. Returns <code className="font-mono bg-slate-100 dark:bg-slate-800 px-0.5 rounded">status: "removed"</code> with a <code className="font-mono">projectsRevoked</code> list, <code className="font-mono">"no_access"</code> when the person had no active project memberships to revoke, or <code className="font-mono">"not_found"</code> when no active match was found. Per-project failures are surfaced under <code className="font-mono">projectsFailed</code> rather than aborting the whole removal.
+            Removes the person from your Basecamp organization. The node always revokes their access from every project they belong to via the public API; on top of that, when a Basecamp web session has been synced for this credential (Connected Accounts → Basecamp → "Adminland purge"), the node also drives the Adminland → People removal page to fully purge them from the account. Requires admin privileges on each project (project revoke) and an admin-level synced session (Adminland purge). Search by Email Address, by Full Name, or both. Add a Company to disambiguate when multiple people match. Returns <code className="font-mono bg-slate-100 dark:bg-slate-800 px-0.5 rounded">status: "purged"</code> when both project revoke and Adminland removal succeeded, <code className="font-mono">"removed"</code> when only project access was revoked (no session synced or Adminland step did not complete), <code className="font-mono">"no_access"</code> when the person had no active project memberships to revoke, or <code className="font-mono">"not_found"</code> when no active match was found. Per-project failures are surfaced under <code className="font-mono">projectsFailed</code>; the Adminland step's outcome is in <code className="font-mono">adminland</code>.
           </p>
           <ExpressionInput
             label="Email Address (optional when Full Name is provided)"
