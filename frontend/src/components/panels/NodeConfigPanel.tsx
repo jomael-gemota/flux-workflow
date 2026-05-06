@@ -10506,7 +10506,8 @@ function TeamsConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
           placeholder="Hello from your workflow!"
           nodes={otherNodes}
           testResults={testResults}
-          rows={3}
+          rows={5}
+          resizable
         />
       )}
 
