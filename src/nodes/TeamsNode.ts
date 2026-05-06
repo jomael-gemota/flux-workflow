@@ -3,6 +3,7 @@ import { NodeExecutor } from '../engine/NodeExecutor';
 import { WorkflowNode, ExecutionContext } from '../types/workflow.types';
 import { TeamsAuthService } from '../services/TeamsAuthService';
 import { ExpressionResolver } from '../engine/ExpressionResolver';
+import { logoDataUri } from '../utils/emailTemplates';
 
 type TeamsAction = 'send_message' | 'send_dm' | 'read_messages' | 'read_thread';
 
@@ -91,6 +92,41 @@ export class TeamsNode implements NodeExecutor {
 
                 const displayText = detectContentType(text) === 'html' ? stripHtml(text) : text;
 
+                // Build a "Flux Bot" branded header for the Adaptive Card.
+                // Teams Workflows webhooks always show the sender as Power Automate / "Unknown user" —
+                // baking the brand into the card itself is the standard workaround.
+                const logo = logoDataUri();
+                const headerColumns = [
+                    ...(logo
+                        ? [{
+                            type:  'Column',
+                            width: 'auto',
+                            items: [{
+                                type:    'Image',
+                                url:     logo,
+                                width:   '28px',
+                                height:  '28px',
+                                style:   'Default',
+                                altText: 'Flux Bot',
+                            }],
+                            verticalContentAlignment: 'Center',
+                          }]
+                        : []),
+                    {
+                        type:  'Column',
+                        width: 'stretch',
+                        items: [{
+                            type:   'TextBlock',
+                            text:   'Flux Bot',
+                            weight: 'Bolder',
+                            size:   'Medium',
+                            color:  'Accent',
+                            wrap:   true,
+                        }],
+                        verticalContentAlignment: 'Center',
+                    },
+                ];
+
                 // Use Adaptive Card format — compatible with Teams Workflows webhooks
                 // (the successor to retired Office 365 Connectors).
                 const payload = {
@@ -105,9 +141,16 @@ export class TeamsNode implements NodeExecutor {
                                 version: '1.2',
                                 body: [
                                     {
-                                        type: 'TextBlock',
-                                        text: displayText,
-                                        wrap: true,
+                                        type:    'ColumnSet',
+                                        columns: headerColumns,
+                                        spacing: 'None',
+                                    },
+                                    {
+                                        type:      'TextBlock',
+                                        text:      displayText,
+                                        wrap:      true,
+                                        spacing:   'Medium',
+                                        separator: true,
                                     },
                                 ],
                             },
