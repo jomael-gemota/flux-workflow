@@ -34,10 +34,14 @@ async function request<T>(
   });
 
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(
-      (body as { message?: string }).message ?? `HTTP ${res.status}`
-    );
+    const body = await res.json().catch(() => ({})) as {
+      message?: string;
+      reason?: string;
+      hint?: string;
+    };
+    const detail = body.message ?? body.reason;
+    const hint   = body.hint ? ` — ${body.hint}` : '';
+    throw new Error(detail ? `${detail}${hint}` : `HTTP ${res.status}`);
   }
 
   return res.json() as Promise<T>;
@@ -455,8 +459,8 @@ export async function downloadBasecampExtensionZip(): Promise<Blob> {
     headers: { ...getAuthHeader() },
   });
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error((body as { message?: string }).message ?? `HTTP ${res.status}`);
+    const body = await res.json().catch(() => ({})) as { message?: string; reason?: string };
+    throw new Error(body.message ?? body.reason ?? `HTTP ${res.status}`);
   }
   return res.blob();
 }
