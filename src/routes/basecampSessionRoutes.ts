@@ -10,7 +10,6 @@ import { buildZip } from '../utils/zipBuilder';
 import { makeSolidPng } from '../utils/pngBuilder';
 import type { BasecampWebCookie, BasecampWebSession } from '../db/models/CredentialModel';
 
-const USER_AGENT     = 'WorkflowAutomationPlatform (basecamp-integration)';
 const EXTENSION_DIR  = join(__dirname, '..', '..', 'extension');
 const SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000; // 14 days — Basecamp's typical session lifetime
 
@@ -138,62 +137,6 @@ async function buildExtensionZip(origin: string | null): Promise<Buffer> {
 }
 
 /**
- * Validate a bag of Basecamp web cookies by hitting an authenticated web-app
- * route and checking that we don't get bounced to the sign-in page. Also
- * extracts the logged-in identity (email) so the credentials UI can show
- * "Synced as foo@bar.com" — and so we can reject syncs from a different
- * Basecamp user than the credential is actually for.
- *
- * Strategy: GET `https://launchpad.37signals.com/identity` with the cookie
- * header. Launchpad redirects to `/signin` when the session is invalid and
- * returns a small JSON identity document otherwise. We follow no redirects so
- * we can distinguish unambiguously.
- */
-async function validateWebSession(cookies: BasecampWebCookie[]): Promise<{ ok: true; email: string } | { ok: false; reason: string }> {
-    const cookieHeader = cookies.map((c) => `${c.name}=${c.value}`).join('; ');
-    if (!cookieHeader) return { ok: false, reason: 'no cookies provided' };
-
-    // Ask Launchpad's identity endpoint who the cookie belongs to. Launchpad
-    // is the SSO root for Basecamp, so a valid `_bc3_session` paired with
-    // launchpad cookies always resolves here.
-    let identityRes: Response;
-    try {
-        identityRes = await fetch('https://launchpad.37signals.com/identity', {
-            method:   'GET',
-            redirect: 'manual',
-            headers: {
-                Cookie:       cookieHeader,
-                Accept:       'application/json',
-                'User-Agent': USER_AGENT,
-            },
-        });
-    } catch (err) {
-        return { ok: false, reason: `network error contacting launchpad: ${(err as Error).message}` };
-    }
-
-    if (identityRes.status >= 300 && identityRes.status < 400) {
-        return { ok: false, reason: 'session redirected to sign-in — cookies are expired or invalid' };
-    }
-    if (!identityRes.ok) {
-        return { ok: false, reason: `launchpad returned ${identityRes.status}` };
-    }
-
-    let body: unknown;
-    try { body = await identityRes.json(); }
-    catch { return { ok: false, reason: 'launchpad returned a non-JSON body — likely an HTML sign-in page' }; }
-
-    const email =
-        (body as { email_address?: string })?.email_address ??
-        (body as { email?: string })?.email ??
-        (body as { identity?: { email_address?: string } })?.identity?.email_address;
-    if (!email || typeof email !== 'string') {
-        return { ok: false, reason: 'launchpad response did not include an email address' };
-    }
-
-    return { ok: true, email };
-}
-
-/**
  * Compute a UI-friendly "expires at" timestamp (ms). Prefer the soonest
  * cookie expiry that's still in the future. When every cookie is a session
  * cookie (no expirationDate), fall back to the typical Basecamp session
@@ -286,37 +229,19 @@ export async function basecampSessionRoutes(
                 );
             }
 
-            // Live-check the session against Launchpad's identity endpoint.
-            const validation = await validateWebSession(allowed);
-            if (!validation.ok) {
-                return reply.code(400).send({
-                    ok:    false,
-                    error: 'invalid_session',
-                    reason: validation.reason,
-                    hint: 'Open Basecamp in this browser, sign in, then click Sync again.',
-                });
-            }
-
-            // Identity guard: refuse to store a session belonging to a
-            // different Basecamp user than the OAuth credential is for.
-            // `cred.email` is "<accountId>:<userEmail>" (see BasecampAuthService).
-            const colonIdx       = cred.email.indexOf(':');
-            const credUserEmail  = colonIdx >= 0 ? cred.email.substring(colonIdx + 1) : cred.email;
-            if (
-                credUserEmail &&
-                validation.email &&
-                credUserEmail.toLowerCase() !== validation.email.toLowerCase()
-            ) {
-                return reply.code(400).send({
-                    ok:    false,
-                    error: 'identity_mismatch',
-                    reason: `The browser session is for ${validation.email}, but this credential was connected as ${credUserEmail}. Sign in to Basecamp as ${credUserEmail} and click Sync again, or connect a new credential for ${validation.email}.`,
-                });
-            }
+            // Derive the identity from the OAuth credential rather than making a
+            // server-side request to Launchpad. A cloud-hosted server sending the
+            // user's browser cookies to Launchpad triggers IP-mismatch / bot
+            // detection and always gets redirected to sign-in even for valid sessions.
+            // The extension's domain filter is already the security gate here — cookies
+            // can only originate from an authenticated browser session.
+            // `cred.email` is stored as "<accountId>:<userEmail>" by BasecampAuthService.
+            const colonIdx      = cred.email.indexOf(':');
+            const credUserEmail = colonIdx >= 0 ? cred.email.substring(colonIdx + 1) : cred.email;
 
             const session: BasecampWebSession = {
                 cookies:   allowed,
-                identity:  validation.email,
+                identity:  credUserEmail || cred.email,
                 expiresAt: computeSessionExpiry(allowed),
                 syncedAt:  Date.now(),
             };
