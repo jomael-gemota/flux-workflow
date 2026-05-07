@@ -95,6 +95,7 @@ export class WorkflowService {
                     nodeNamesById,
                     nodeTypesById,
                     nodeProvidersById,
+                    input,
                     ownerUserId,
                 }).catch((err) => console.error('[WorkflowService] Email notification error:', err));
             }
@@ -134,6 +135,7 @@ export class WorkflowService {
                     nodeNamesById,
                     nodeTypesById,
                     nodeProvidersById,
+                    input,
                     ownerUserId,
                 }).catch((err) => console.error('[WorkflowService] Email notification error:', err));
 

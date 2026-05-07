@@ -16,6 +16,8 @@ export interface ExecutionNotificationPayload {
     nodeNamesById?: Record<string, string>;
     nodeTypesById?: Record<string, string>;
     nodeProvidersById?: Record<string, string>;
+    /** The execution input data (trigger payload). Included in notification emails. */
+    input?: unknown;
     /** MongoDB ObjectId string of the workflow owner — used to load per-user notification settings. */
     ownerUserId?: string;
 }
@@ -328,6 +330,81 @@ function nodeDisplayCell(
     </div>`;
 }
 
+function inputSection(input: unknown): string {
+    if (input === null || input === undefined) return '';
+
+    const truncateVal = (v: unknown, max = 220): string => {
+        if (v === null || v === undefined) return '—';
+        if (typeof v === 'string') return v.length > max ? `${v.slice(0, max - 1)}…` : v;
+        if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+        try {
+            const s = JSON.stringify(v);
+            return s.length > max ? `${s.slice(0, max - 1)}…` : s;
+        } catch { return 'complex value'; }
+    };
+
+    const kvRows = (obj: Record<string, unknown>, maxFields = 20): string => {
+        const entries = Object.entries(obj);
+        const shown = entries.slice(0, maxFields);
+        const more = entries.length > maxFields
+            ? `<tr><td colspan="2" style="padding:6px 12px;font-size:11px;color:#6b7280;font-style:italic;">+${entries.length - maxFields} more field(s)</td></tr>`
+            : '';
+        return shown.map(([key, val]) => `
+            <tr style="border-bottom:1px solid #e5e7eb;">
+              <td style="padding:7px 12px;background:#f9fafb;font-size:12px;font-weight:600;color:#374151;white-space:nowrap;width:38%;vertical-align:top;">${escHtml(key)}</td>
+              <td style="padding:7px 12px;font-size:12px;color:#111827;word-break:break-word;">${escHtml(truncateVal(val))}</td>
+            </tr>`).join('') + more;
+    };
+
+    // Sheets/webhook trigger pattern: { items: [...], count, polledAt }
+    const asObj = (typeof input === 'object' && !Array.isArray(input) && input !== null)
+        ? input as Record<string, unknown>
+        : null;
+    const items = asObj && Array.isArray(asObj.items) ? asObj.items as unknown[] : null;
+
+    let innerHtml: string;
+
+    if (items && items.length > 0) {
+        const shownItems = items.slice(0, 3);
+        const moreItems = items.length > 3
+            ? `<div style="margin-top:8px;font-size:11px;color:#6b7280;font-style:italic;">+${items.length - 3} more item(s) not shown</div>`
+            : '';
+        innerHtml = shownItems.map((item, idx) => {
+            const itemObj = (typeof item === 'object' && item !== null && !Array.isArray(item))
+                ? item as Record<string, unknown>
+                : null;
+            const label = items.length > 1
+                ? `<div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.4px;padding:8px 12px 4px;background:#f1f5f9;border-bottom:1px solid #e5e7eb;">Item ${idx + 1}</div>`
+                : '';
+            const body = itemObj
+                ? `<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">${kvRows(itemObj)}</table>`
+                : `<div style="padding:8px 12px;font-size:12px;color:#374151;">${escHtml(truncateVal(item))}</div>`;
+            return label + body;
+        }).join('') + moreItems;
+    } else if (asObj) {
+        innerHtml = `<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">${kvRows(asObj)}</table>`;
+    } else if (Array.isArray(input)) {
+        const shown = (input as unknown[]).slice(0, 3);
+        const more = input.length > 3
+            ? `<div style="padding:6px 12px;font-size:11px;color:#6b7280;font-style:italic;">+${input.length - 3} more item(s)</div>`
+            : '';
+        innerHtml = shown.map((item, idx) =>
+            `<div style="padding:6px 12px;font-size:12px;color:#374151;border-bottom:1px solid #e5e7eb;">Item ${idx + 1}: ${escHtml(truncateVal(item))}</div>`
+        ).join('') + more;
+    } else {
+        innerHtml = `<div style="padding:8px 12px;font-size:12px;color:#374151;">${escHtml(truncateVal(input))}</div>`;
+    }
+
+    return `
+      <div style="margin-top:20px;font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.4px;">
+        Trigger Input
+      </div>
+      <div style="margin-top:8px;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
+        ${innerHtml}
+      </div>
+    `;
+}
+
 function nodeResultRows(
     results: NodeResult[],
     nodeNamesById?: Record<string, string>,
@@ -498,6 +575,8 @@ function buildEmailHtml(p: ExecutionNotificationPayload, recipientTimeZone: stri
         ${summaryRows}
       </table>
 
+      ${inputSection(p.input)}
+
       <div style="margin-top:20px;font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.4px;">
         Step Summary
       </div>
@@ -562,6 +641,45 @@ function buildEmailText(p: ExecutionNotificationPayload, recipientTimeZone: stri
             return 'complex output';
         }
     };
+
+    if (p.input !== null && p.input !== undefined) {
+        const shortVal = (v: unknown, max = 200): string => {
+            if (v === null || v === undefined) return '—';
+            if (typeof v === 'string') return v.length > max ? `${v.slice(0, max - 1)}…` : v;
+            if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+            try {
+                const s = JSON.stringify(v);
+                return s.length > max ? `${s.slice(0, max - 1)}…` : s;
+            } catch { return 'complex value'; }
+        };
+        lines.push('TRIGGER INPUT');
+        lines.push('-'.repeat(40));
+        const asObj = (typeof p.input === 'object' && !Array.isArray(p.input) && p.input !== null)
+            ? p.input as Record<string, unknown>
+            : null;
+        const inputItems = asObj && Array.isArray(asObj.items) ? asObj.items as unknown[] : null;
+        if (inputItems) {
+            inputItems.slice(0, 3).forEach((item, idx) => {
+                if (inputItems.length > 1) lines.push(`  Item ${idx + 1}:`);
+                if (typeof item === 'object' && item !== null && !Array.isArray(item)) {
+                    for (const [k, v] of Object.entries(item as Record<string, unknown>)) {
+                        lines.push(`    ${k}: ${shortVal(v)}`);
+                    }
+                } else {
+                    lines.push(`    ${shortVal(item)}`);
+                }
+                lines.push('');
+            });
+            if (inputItems.length > 3) lines.push(`  (+${inputItems.length - 3} more items)`);
+        } else if (asObj) {
+            for (const [k, v] of Object.entries(asObj)) {
+                lines.push(`  ${k}: ${shortVal(v)}`);
+            }
+        } else {
+            lines.push(`  ${shortVal(p.input)}`);
+        }
+        lines.push('');
+    }
 
     if (failedNodes.length > 0) {
         lines.push('FAILED NODES');

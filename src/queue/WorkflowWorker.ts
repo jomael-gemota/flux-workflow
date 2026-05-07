@@ -60,6 +60,7 @@ export function createWorkflowWorker(
                     nodeNamesById,
                     nodeTypesById,
                     nodeProvidersById,
+                    input,
                     ownerUserId,
                 }).catch((err) => console.error('[Worker] Email notification error:', err));
             }
@@ -101,6 +102,7 @@ export function createWorkflowWorker(
                     nodeNamesById: Object.fromEntries(workflow.nodes.map((node) => [node.id, node.name])),
                     nodeTypesById: Object.fromEntries(workflow.nodes.map((node) => [node.id, node.type])),
                     nodeProvidersById: Object.fromEntries(workflow.nodes.map((node) => [node.id, (node.config as { provider?: string })?.provider ?? ''])),
+                    input: job.data.input,
                     ownerUserId: failOwnerUserId,
                 }).catch(() => {});
             }
