@@ -52,6 +52,7 @@ import type {
 } from '../../types/fluxelle';
 import type { NodeType } from '../../types/workflow';
 import { NodeIcon } from '../nodes/NodeIcons';
+import { FluxelleMarkdown } from './FluxelleMarkdown';
 
 const STARTER_PROMPTS: string[] = [
   'When a webhook fires, summarize the body with AI and post the summary to Slack.',
@@ -727,8 +728,8 @@ function MessageBubble({
       </div>
       <div className="flex-1 min-w-0 space-y-2.5">
         {message.content && (
-          <div className="text-[11.5px] leading-relaxed text-gray-800 dark:text-slate-200 whitespace-pre-wrap">
-            {message.content}
+          <div className="text-[11.5px] leading-relaxed text-gray-800 dark:text-slate-200">
+            <FluxelleMarkdown content={message.content} />
           </div>
         )}
         {message.question && (
