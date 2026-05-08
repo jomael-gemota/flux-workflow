@@ -15,9 +15,36 @@ function getRequestUserId(request: FastifyRequest): string | undefined {
 
 // ── Validation ────────────────────────────────────────────────────────────────
 
+/**
+ * A `question` block on an assistant message — a structured prompt with
+ * selectable options that the UI renders as buttons. Mirrors `FluxelleQuestion`
+ * in the service. Open shape so frontend can evolve without forcing schema bumps.
+ */
+const QuestionSchema = z.object({
+    prompt:        z.string(),
+    helperText:    z.string().optional(),
+    options:       z.array(z.object({
+        id:          z.string(),
+        label:       z.string(),
+        description: z.string().optional(),
+    })).min(1),
+    allowMultiple: z.boolean().optional(),
+    allowFreeText: z.boolean().optional(),
+});
+
+/** The user's resolution of an earlier `question`. */
+const QuestionAnswerSchema = z.object({
+    selectedOptionIds: z.array(z.string()),
+    freeText:          z.string().optional(),
+});
+
 const ChatMessageSchema = z.object({
     role:    z.enum(['user', 'assistant']),
     content: z.string(),
+    /** Open record so the schema accepts forward-compatible proposal/question shapes. */
+    proposal:       z.record(z.string(), z.unknown()).optional(),
+    question:       QuestionSchema.optional(),
+    questionAnswer: QuestionAnswerSchema.optional(),
 });
 
 const WorkflowSnapshotSchema = z.object({
@@ -45,6 +72,8 @@ const ConversationMessageSchema = z.object({
     content:        z.string(),
     proposal:       z.record(z.string(), z.unknown()).nullable().optional(),
     proposalStatus: z.enum(['applied', 'declined']).nullable().optional(),
+    question:       QuestionSchema.nullable().optional(),
+    questionAnswer: QuestionAnswerSchema.nullable().optional(),
     createdAt:      z.string(),
 });
 
@@ -90,7 +119,11 @@ export async function fluxelleRoutes(
             schema:     { body: toJsonSchema(ChatRequestSchema) },
         },
         async (request, reply) => {
-            const body = ChatRequestSchema.parse(request.body) as FluxelleChatRequest;
+            const body   = ChatRequestSchema.parse(request.body);
+            const userId = getRequestUserId(request);
+            // Zod widens `nodes[].type` to `string`; the service narrows it to
+            // NodeType internally and ignores unknowns, so this cast is safe.
+            const chatRequest = { ...body, userId } as FluxelleChatRequest;
 
             if (!fluxelle.isConfigured()) {
                 throw BadRequestError(
@@ -99,7 +132,7 @@ export async function fluxelleRoutes(
             }
 
             try {
-                const response = await fluxelle.chat(body);
+                const response = await fluxelle.chat(chatRequest);
                 return reply.code(200).send(response);
             } catch (err) {
                 // Surface the underlying provider error (model not found,

@@ -12,6 +12,10 @@ export interface FluxelleMessage {
   proposal?: WorkflowProposal;
   /** User's decision on the attached proposal — undefined while still pending. */
   proposalStatus?: ProposalStatus;
+  /** Optional structured `ask_user` question attached to an assistant turn. */
+  question?: FluxelleQuestion;
+  /** The user's resolution of the attached question (set after they pick an option). */
+  questionAnswer?: QuestionAnswer;
   /** ISO timestamp; rendered as the message timestamp. */
   createdAt: string;
 }
@@ -57,6 +61,27 @@ export interface WorkflowProposal {
   explanation?: string;
 }
 
+/** A clarifying question rendered as selectable options in the chat UI. */
+export interface FluxelleQuestion {
+  prompt: string;
+  helperText?: string;
+  options: Array<{
+    id: string;
+    label: string;
+    description?: string;
+  }>;
+  /** When true, render checkboxes + a Confirm button. */
+  allowMultiple?: boolean;
+  /** When true, also show a free-text input alongside the options. */
+  allowFreeText?: boolean;
+}
+
+/** The user's resolution of a `FluxelleQuestion`. */
+export interface QuestionAnswer {
+  selectedOptionIds: string[];
+  freeText?: string;
+}
+
 export interface FluxelleStatus {
   configured: boolean;
   model: string;
@@ -65,6 +90,7 @@ export interface FluxelleStatus {
 export interface FluxelleChatResponse {
   content: string;
   proposal?: WorkflowProposal;
+  question?: FluxelleQuestion;
   skillsUsed: string[];
 }
 
@@ -90,6 +116,8 @@ export interface PersistedMessage {
   content:        string;
   proposal?:      WorkflowProposal | null;
   proposalStatus?: ProposalStatus | null;
+  question?:      FluxelleQuestion | null;
+  questionAnswer?: QuestionAnswer | null;
   createdAt:      string;
 }
 

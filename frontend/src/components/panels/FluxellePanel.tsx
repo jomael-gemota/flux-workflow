@@ -23,6 +23,7 @@ import {
   ArrowLeft,
   MessageSquare,
   Clock,
+  HelpCircle,
 } from 'lucide-react';
 import { useWorkflowStore } from '../../store/workflowStore';
 import {
@@ -36,6 +37,8 @@ import {
 import * as api from '../../api/client';
 import type {
   FluxelleMessage,
+  FluxelleQuestion,
+  QuestionAnswer,
   WorkflowProposal,
   WorkflowSnapshot,
   ConversationSummary,
@@ -90,6 +93,8 @@ function toPersistedMessages(msgs: FluxelleMessage[]): PersistedMessage[] {
     content:        m.content,
     proposal:       m.proposal ?? null,
     proposalStatus: m.proposalStatus ?? null,
+    question:       m.question ?? null,
+    questionAnswer: m.questionAnswer ?? null,
     createdAt:      m.createdAt,
   }));
 }
@@ -102,8 +107,22 @@ function fromPersistedMessages(msgs: PersistedMessage[]): FluxelleMessage[] {
     content:        m.content,
     proposal:       m.proposal ?? undefined,
     proposalStatus: m.proposalStatus ?? undefined,
+    question:       m.question ?? undefined,
+    questionAnswer: m.questionAnswer ?? undefined,
     createdAt:      m.createdAt,
   }));
+}
+
+/** Render a human-readable summary of the user's answer to a question. */
+function describeAnswer(question: FluxelleQuestion, answer: QuestionAnswer): string {
+  const labels = answer.selectedOptionIds
+    .map((id) => question.options.find((o) => o.id === id)?.label ?? id)
+    .filter(Boolean);
+  const parts = [labels.join(', ')];
+  if (answer.freeText && answer.freeText.trim().length > 0) {
+    parts.push(`"${answer.freeText.trim()}"`);
+  }
+  return parts.filter(Boolean).join(' — ');
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -197,7 +216,20 @@ export function FluxellePanel() {
   }
 
   // ── Send a message ───────────────────────────────────────────────────────────
-  async function send(content: string) {
+  /**
+   * Append a user turn (free-text OR a structured question reply) and call the
+   * chat endpoint. Pass `extras` when the user reply is the answer to a previous
+   * question — we use it to mark that prior assistant message as answered.
+   */
+  async function send(
+    content: string,
+    extras?: {
+      /** Id of the assistant message whose `question` is being answered. */
+      answersMessageId?: string;
+      /** The structured answer (selected option ids + optional free text). */
+      answer?: QuestionAnswer;
+    },
+  ) {
     const text = content.trim();
     if (!text || chat.isPending) return;
 
@@ -207,7 +239,18 @@ export function FluxellePanel() {
       content:   text,
       createdAt: new Date().toISOString(),
     };
-    const nextMessages = [...messages, userMsg];
+
+    // If the user is answering a previous question, stamp the answer on that
+    // assistant message so the QuestionCard renders as resolved.
+    const baseMessages = extras?.answersMessageId && extras.answer
+      ? messages.map((m) =>
+          m.id === extras.answersMessageId
+            ? { ...m, questionAnswer: extras.answer }
+            : m,
+        )
+      : messages;
+
+    const nextMessages = [...baseMessages, userMsg];
     setMessages(nextMessages);
     setInput('');
 
@@ -221,6 +264,7 @@ export function FluxellePanel() {
         role:      'assistant',
         content:   response.content,
         proposal:  response.proposal,
+        question:  response.question,
         createdAt: new Date().toISOString(),
       };
       const allMessages = [...nextMessages, assistantMsg];
@@ -256,6 +300,20 @@ export function FluxellePanel() {
     } finally {
       textareaRef.current?.focus();
     }
+  }
+
+  /**
+   * Called by the QuestionCard once the user picks one or more options.
+   * Builds a friendly text representation, marks the assistant message as
+   * answered, then sends the next chat turn so Fluxelle can continue.
+   */
+  function handleAnswerQuestion(
+    messageId: string,
+    question: FluxelleQuestion,
+    answer: QuestionAnswer,
+  ) {
+    const summary = describeAnswer(question, answer);
+    void send(summary, { answersMessageId: messageId, answer });
   }
 
   function handleSubmit(e: FormEvent) {
@@ -484,6 +542,7 @@ export function FluxellePanel() {
             message={m}
             onApply={(p) => handleApply(m.id, p)}
             onDecline={() => handleDecline(m.id)}
+            onAnswerQuestion={(q, a) => handleAnswerQuestion(m.id, q, a)}
           />
         ))}
 
@@ -633,10 +692,12 @@ function MessageBubble({
   message,
   onApply,
   onDecline,
+  onAnswerQuestion,
 }: {
-  message:   FluxelleMessage;
-  onApply:   (proposal: WorkflowProposal) => void;
-  onDecline: () => void;
+  message:          FluxelleMessage;
+  onApply:          (proposal: WorkflowProposal) => void;
+  onDecline:        () => void;
+  onAnswerQuestion: (question: FluxelleQuestion, answer: QuestionAnswer) => void;
 }) {
   if (message.role === 'user') {
     return (
@@ -659,6 +720,13 @@ function MessageBubble({
             {message.content}
           </div>
         )}
+        {message.question && (
+          <QuestionCard
+            question={message.question}
+            answer={message.questionAnswer}
+            onAnswer={(a) => onAnswerQuestion(message.question!, a)}
+          />
+        )}
         {message.proposal && (
           <ProposalCard
             proposal={message.proposal}
@@ -668,6 +736,149 @@ function MessageBubble({
           />
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Question card (Claude-style selectable options) ──────────────────────────
+
+function QuestionCard({
+  question,
+  answer,
+  onAnswer,
+}: {
+  question: FluxelleQuestion;
+  answer?:  QuestionAnswer;
+  onAnswer: (answer: QuestionAnswer) => void;
+}) {
+  const [picked, setPicked]     = useState<string[]>([]);
+  const [freeText, setFreeText] = useState('');
+  const isAnswered = !!answer;
+  const isMulti    = !!question.allowMultiple;
+
+  function pickedLabels(): string[] {
+    if (!answer) return [];
+    return answer.selectedOptionIds
+      .map((id) => question.options.find((o) => o.id === id)?.label ?? id)
+      .filter(Boolean);
+  }
+
+  function toggle(id: string) {
+    if (isAnswered) return;
+    if (isMulti) {
+      setPicked((prev) => prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]);
+      return;
+    }
+    // Single-select: clicking an option commits the answer immediately.
+    onAnswer({
+      selectedOptionIds: [id],
+      ...(freeText.trim() ? { freeText: freeText.trim() } : {}),
+    });
+  }
+
+  function confirm() {
+    if (isAnswered) return;
+    if (picked.length === 0 && !freeText.trim()) return;
+    onAnswer({
+      selectedOptionIds: picked,
+      ...(freeText.trim() ? { freeText: freeText.trim() } : {}),
+    });
+  }
+
+  return (
+    <div className="border border-blue-300/60 dark:border-blue-700/40 bg-blue-50/40 dark:bg-blue-950/20 rounded-lg overflow-hidden">
+      <div className="px-2.5 py-1.5 border-b border-blue-200/60 dark:border-blue-800/40 bg-blue-100/40 dark:bg-blue-900/20 flex items-center gap-1.5">
+        <HelpCircle className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-blue-700 dark:text-blue-300">
+          Fluxelle needs your input
+        </span>
+      </div>
+
+      <div className="p-2.5 space-y-2">
+        <div className="text-[11.5px] leading-snug font-medium text-gray-900 dark:text-slate-100">
+          {question.prompt}
+        </div>
+        {question.helperText && (
+          <div className="text-[10.5px] text-slate-500 dark:text-slate-400 leading-snug">
+            {question.helperText}
+          </div>
+        )}
+
+        <div className="space-y-1">
+          {question.options.map((opt) => {
+            const isPicked = isAnswered
+              ? answer!.selectedOptionIds.includes(opt.id)
+              : picked.includes(opt.id);
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                disabled={isAnswered}
+                onClick={() => toggle(opt.id)}
+                className={`w-full text-left px-2.5 py-1.5 rounded-md border transition-colors flex items-start gap-2 ${
+                  isPicked
+                    ? 'border-blue-400 dark:border-blue-500 bg-blue-100/70 dark:bg-blue-900/40'
+                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-blue-300 dark:hover:border-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40'
+                } ${isAnswered ? 'cursor-default opacity-90' : 'cursor-pointer'}`}
+              >
+                {isMulti && (
+                  <span
+                    className={`mt-0.5 w-3 h-3 rounded border flex items-center justify-center shrink-0 ${
+                      isPicked
+                        ? 'border-blue-500 bg-blue-500'
+                        : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800'
+                    }`}
+                  >
+                    {isPicked && <Check className="w-2.5 h-2.5 text-white" />}
+                  </span>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="text-[11.5px] font-medium text-gray-900 dark:text-slate-200 leading-snug">
+                    {opt.label}
+                  </div>
+                  {opt.description && (
+                    <div className="text-[10.5px] text-slate-500 dark:text-slate-400 leading-snug mt-0.5 truncate">
+                      {opt.description}
+                    </div>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {question.allowFreeText && !isAnswered && (
+          <input
+            type="text"
+            value={freeText}
+            onChange={(e) => setFreeText(e.target.value)}
+            placeholder="Or type a custom answer…"
+            className="w-full text-[11px] px-2 py-1.5 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+          />
+        )}
+      </div>
+
+      {!isAnswered && (isMulti || question.allowFreeText) && (
+        <div className="px-2.5 py-1.5 border-t border-blue-200/60 dark:border-blue-800/40 bg-white/30 dark:bg-black/10 flex items-center justify-end">
+          <button
+            type="button"
+            onClick={confirm}
+            disabled={picked.length === 0 && !freeText.trim()}
+            className="inline-flex items-center gap-1 text-[10.5px] font-semibold px-2.5 py-1 rounded-md bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            <Check className="w-3 h-3" />
+            Send answer
+          </button>
+        </div>
+      )}
+
+      {isAnswered && (
+        <div className="px-2.5 py-1.5 border-t border-blue-200/60 dark:border-blue-800/40 bg-white/30 dark:bg-black/10 flex items-center gap-1 text-[10.5px] font-semibold text-emerald-600 dark:text-emerald-400">
+          <Check className="w-3 h-3" />
+          You answered: {pickedLabels().join(', ') || '—'}
+          {answer?.freeText && <span className="text-slate-500 dark:text-slate-400 font-normal">— "{answer.freeText}"</span>}
+        </div>
+      )}
     </div>
   );
 }

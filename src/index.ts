@@ -224,7 +224,13 @@ async function bootstrap() {
 
     // Fluxelle — in-canvas AI workflow assistant
     const skillRegistry    = new SkillRegistry();
-    const fluxelleService  = new FluxelleService(skillRegistry);
+    const fluxelleService  = new FluxelleService(skillRegistry, {
+        credentialRepo,
+        slackAuth,
+        googleAuth,
+        teamsAuth,
+        basecampAuth,
+    });
     const conversationRepo = new FluxelleConversationRepository();
     await fastify.register(fluxelleRoutes, { prefix: '/api', fluxelle: fluxelleService, skills: skillRegistry, conversations: conversationRepo });
     // Auth & admin (no prefix-level auth guard — each route manages its own)

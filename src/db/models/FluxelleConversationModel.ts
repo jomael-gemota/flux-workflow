@@ -10,6 +10,13 @@ export interface ConversationMessage {
     /** Whether the user already acted on the proposal attached to this message.
      *  `undefined` means the proposal is still pending the user's decision. */
     proposalStatus?: ProposalStatus | null;
+    /** Optional structured `ask_user` question Fluxelle attached to this turn. */
+    question?: Record<string, unknown> | null;
+    /** The user's resolution of the question above (selected option ids + free text). */
+    questionAnswer?: {
+        selectedOptionIds: string[];
+        freeText?:         string;
+    } | null;
     createdAt: Date;
 }
 
@@ -34,6 +41,8 @@ const ConversationMessageSchema = new Schema<ConversationMessage>(
         content:        { type: String, required: true },
         proposal:       { type: Schema.Types.Mixed, default: null },
         proposalStatus: { type: String, enum: ['applied', 'declined'], default: null },
+        question:       { type: Schema.Types.Mixed, default: null },
+        questionAnswer: { type: Schema.Types.Mixed, default: null },
         createdAt:      { type: Date, default: Date.now },
     },
     { _id: false },
