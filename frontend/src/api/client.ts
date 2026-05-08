@@ -38,10 +38,16 @@ async function request<T>(
       message?: string;
       reason?: string;
       hint?: string;
+      details?: Array<{ message?: string; instancePath?: string }>;
     };
     const detail = body.message ?? body.reason;
     const hint   = body.hint ? ` — ${body.hint}` : '';
-    throw new Error(detail ? `${detail}${hint}` : `HTTP ${res.status}`);
+    // Surface the first validation detail so the developer can diagnose 400s.
+    const firstDetail = body.details?.[0];
+    const validationNote = firstDetail
+      ? ` (${firstDetail.instancePath ? firstDetail.instancePath + ': ' : ''}${firstDetail.message ?? ''})`
+      : '';
+    throw new Error(detail ? `${detail}${validationNote}${hint}` : `HTTP ${res.status}`);
   }
 
   return res.json() as Promise<T>;

@@ -238,6 +238,8 @@ export function WorkflowCanvas() {
     setNodeDisabled,
     isInteractive,
     setIsInteractive,
+    pendingFitView,
+    clearFitView,
   } = useWorkflowStore();
 
   const { isLoading: isWorkflowsLoading } = useWorkflowList();
@@ -302,6 +304,16 @@ export function WorkflowCanvas() {
       }
     });
   }, [activeWorkflow?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // After Fluxelle applies a proposal that adds nodes, fit the viewport so the
+  // user can actually see the newly placed nodes instead of hunting for them.
+  useEffect(() => {
+    if (!pendingFitView || !rfInstance.current) return;
+    requestAnimationFrame(() => {
+      rfInstance.current?.fitView({ padding: 0.2, duration: 350 });
+    });
+    clearFitView();
+  }, [pendingFitView, clearFitView]);
 
   const onMoveEnd = useCallback(
     (_event: MouseEvent | TouchEvent | null, vp: Viewport) => {

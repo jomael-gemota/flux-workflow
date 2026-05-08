@@ -134,6 +134,14 @@ interface WorkflowStore {
    * the node and any edges referencing it, and proposed edges are added.
    */
   applyFluxelleProposal: (proposal: WorkflowProposal) => void;
+
+  /**
+   * Set to true by applyFluxelleProposal so WorkflowCanvas can call fitView
+   * and bring newly added nodes into the viewport. Cleared by the canvas
+   * after it fires the animation.
+   */
+  pendingFitView: boolean;
+  clearFitView: () => void;
 }
 
 export const useWorkflowStore = create<WorkflowStore>((set) => ({
@@ -397,6 +405,11 @@ export const useWorkflowStore = create<WorkflowStore>((set) => ({
         nodes: mergedNodes,
         edges: mergedEdges,
         isDirty: true,
+        // Signal WorkflowCanvas to fit the viewport so newly added nodes are visible.
+        pendingFitView: (proposal.adds?.length ?? 0) > 0,
       };
     }),
+
+  pendingFitView: false,
+  clearFitView: () => set({ pendingFitView: false }),
 }));

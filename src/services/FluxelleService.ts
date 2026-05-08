@@ -336,7 +336,11 @@ export class FluxelleService {
                                     type: 'object',
                                     properties: {
                                         id:     { type: 'string' },
-                                        type:   { type: 'string', description: 'Node type (e.g. trigger, llm, slack, gmail, condition, ...)' },
+                                        type:   {
+                                            type: 'string',
+                                            enum: [...VALID_NODE_TYPES],
+                                            description: 'The exact node type. Must be one of the listed enum values — do NOT use skill names here.',
+                                        },
                                         name:   { type: 'string' },
                                         config: { type: 'object', additionalProperties: true },
                                     },
@@ -388,6 +392,13 @@ export class FluxelleService {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Canonical list of node types accepted by the backend schema. */
+const VALID_NODE_TYPES = new Set<string>([
+    'trigger', 'llm', 'http', 'condition', 'switch', 'transform', 'extract',
+    'output', 'code', 'loop', 'formatter', 'gmail', 'gdrive', 'gdocs', 'gsheets',
+    'slack', 'teams', 'basecamp',
+]);
 
 function renderWorkflowSnapshot(wf: WorkflowSnapshot): string {
     if (wf.nodes.length === 0) return '_(empty canvas — no nodes yet)_';
@@ -444,7 +455,17 @@ function sanitizeProposal(args: Record<string, unknown>): WorkflowProposal {
                     ? { x: Number(n.position.x) || 0, y: Number(n.position.y) || 0 }
                     : undefined,
             }))
-            .filter((n) => n.id && n.type);
+            .filter((n: any) => {
+                if (!n.id || !n.type) return false;
+                if (!VALID_NODE_TYPES.has(n.type)) {
+                    console.warn(
+                        `[Fluxelle] Dropping proposed node "${n.id}" — unknown type "${n.type}". ` +
+                        `Valid types: ${[...VALID_NODE_TYPES].join(', ')}`
+                    );
+                    return false;
+                }
+                return true;
+            });
     }
 
     if (Array.isArray(args.updates)) {
