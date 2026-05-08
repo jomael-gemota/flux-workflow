@@ -37,7 +37,8 @@ export function FluxellePanel() {
   const [messages, setMessages] = useState<FluxelleMessage[]>([]);
   const [input, setInput]       = useState('');
   const [appliedIds, setAppliedIds] = useState<Set<string>>(new Set());
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollRef   = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Auto-scroll on new messages / loading state
   useEffect(() => {
@@ -108,6 +109,8 @@ export function FluxellePanel() {
         createdAt: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, errorMsg]);
+    } finally {
+      textareaRef.current?.focus();
     }
   }
 
@@ -219,6 +222,7 @@ export function FluxellePanel() {
       >
         <div className="relative bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 transition-colors">
           <textarea
+            ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}

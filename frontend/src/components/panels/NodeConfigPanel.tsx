@@ -9359,7 +9359,7 @@ function SlackConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
             <div className="grid grid-cols-2 gap-1.5">
               {([
                 ['user', 'My Slack Account', 'Acts as you'],
-                ['bot',  'Flux Bot',         'Automated bot sender'],
+                ['bot',  'Fluxelle AI',       'Automated bot sender'],
               ] as const).map(([val, lbl, sub]) => (
                 <label
                   key={val}
@@ -9384,15 +9384,15 @@ function SlackConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
             </div>
           </div>
 
-          {/* Flux Bot appearance (only when bot sender selected) */}
+          {/* Fluxelle AI appearance (only when bot sender selected) */}
           {(cfg.senderType ?? 'user') === 'bot' && (
             <div className="space-y-2 rounded-md border border-violet-200 dark:border-violet-500/20 bg-violet-50/50 dark:bg-violet-500/5 px-3 py-2.5">
-              <p className="text-[10px] font-medium text-violet-600 dark:text-violet-400">Flux Bot Appearance</p>
+              <p className="text-[10px] font-medium text-violet-600 dark:text-violet-400">Fluxelle AI Appearance</p>
               <ExpressionInput
                 label="Display Name"
                 value={String(cfg.botUsername ?? '')}
                 onChange={(v) => onChange({ botUsername: v })}
-                placeholder="Flux Bot"
+                placeholder="Fluxelle AI"
                 nodes={otherNodes}
                 testResults={testResults}
                 hint="Overrides the bot's name shown in Slack. Supports expressions for dynamic names."
@@ -9457,7 +9457,7 @@ function SlackConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
             <div className="grid grid-cols-2 gap-1.5">
               {([
                 ['user', 'My Slack Account', 'Acts as you'],
-                ['bot',  'Flux Bot',         'Automated bot sender'],
+                ['bot',  'Fluxelle AI',       'Automated bot sender'],
               ] as const).map(([val, lbl, sub]) => (
                 <label
                   key={val}
@@ -9482,15 +9482,15 @@ function SlackConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
             </div>
           </div>
 
-          {/* Flux Bot appearance (only when bot sender selected) */}
+          {/* Fluxelle AI appearance (only when bot sender selected) */}
           {(cfg.senderType ?? 'user') === 'bot' && (
             <div className="space-y-2 rounded-md border border-violet-200 dark:border-violet-500/20 bg-violet-50/50 dark:bg-violet-500/5 px-3 py-2.5">
-              <p className="text-[10px] font-medium text-violet-600 dark:text-violet-400">Flux Bot Appearance</p>
+              <p className="text-[10px] font-medium text-violet-600 dark:text-violet-400">Fluxelle AI Appearance</p>
               <ExpressionInput
                 label="Display Name"
                 value={String(cfg.botUsername ?? '')}
                 onChange={(v) => onChange({ botUsername: v })}
-                placeholder="Flux Bot"
+                placeholder="Fluxelle AI"
                 nodes={otherNodes}
                 testResults={testResults}
                 hint="Overrides the bot's name shown in Slack. Supports expressions for dynamic names."
@@ -10646,7 +10646,7 @@ function TeamsConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
         ]}
       />
 
-      {/* ── Send as (user vs Flux Bot) — channel messages only ── */}
+      {/* ── Send as (user vs Fluxelle AI) — channel messages only ── */}
       {action === 'send_message' && (
         <>
           <div className="space-y-1">
@@ -10654,7 +10654,7 @@ function TeamsConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
             <div className="grid grid-cols-2 gap-1.5">
               {([
                 ['user', 'My Teams Account', 'Acts as you'],
-                ['bot',  'Flux Bot',          'Via Incoming Webhook'],
+                ['bot',  'Fluxelle AI',        'Via Incoming Webhook'],
               ] as const).map(([val, lbl, sub]) => (
                 <label
                   key={val}
@@ -10679,10 +10679,10 @@ function TeamsConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
             </div>
           </div>
 
-          {/* Flux Bot — Incoming Webhook config */}
+          {/* Fluxelle AI — Incoming Webhook config */}
           {(cfg.senderType ?? 'user') === 'bot' && (
             <div className="space-y-2.5 rounded-md border border-violet-200 dark:border-violet-500/20 bg-violet-50/50 dark:bg-violet-500/5 px-3 py-2.5">
-              <p className="text-[10px] font-medium text-violet-600 dark:text-violet-400">Flux Bot — Incoming Webhook</p>
+              <p className="text-[10px] font-medium text-violet-600 dark:text-violet-400">Fluxelle AI — Incoming Webhook</p>
               <ExpressionInput
                 label="Webhook URL"
                 value={String(cfg.webhookUrl ?? '')}
@@ -10697,7 +10697,7 @@ function TeamsConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
                 <ol className="text-[10px] text-slate-400 dark:text-slate-500 list-decimal list-inside space-y-0.5 leading-relaxed">
                   <li>In Teams, click <strong className="text-slate-500 dark:text-slate-400">···</strong> next to the target channel → <strong className="text-slate-500 dark:text-slate-400">Workflows</strong>.</li>
                   <li>Search for <strong className="text-slate-500 dark:text-slate-400">"Send webhook alerts to a channel"</strong> and select it.</li>
-                  <li>Give the workflow a name (e.g. <em>Flux Bot</em>), confirm the channel, then click <strong className="text-slate-500 dark:text-slate-400">Add workflow</strong>.</li>
+                  <li>Give the workflow a name (e.g. <em>Fluxelle AI</em>), confirm the channel, then click <strong className="text-slate-500 dark:text-slate-400">Add workflow</strong>.</li>
                   <li>Copy the generated webhook URL and paste it above.</li>
                 </ol>
               </div>

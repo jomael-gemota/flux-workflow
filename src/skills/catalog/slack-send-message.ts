@@ -26,7 +26,7 @@ credential.
 - \`text\` (string): Message body. Supports template expressions like \`{{ nodes.<id>.output.<field> }}\`.
 
 ## Optional config
-- \`senderType\` (\`"user" | "bot"\`): Defaults to \`"user"\`. Use \`"bot"\` to send as Flux Bot.
+- \`senderType\` (\`"user" | "bot"\`): Defaults to \`"user"\`. Use \`"bot"\` to send as Fluxelle AI.
 - \`botUsername\`, \`botIconEmoji\`, \`botIconUrl\`: Only applied when \`senderType === "bot"\`.
 
 ## Output fields

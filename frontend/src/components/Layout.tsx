@@ -139,20 +139,24 @@ export function Layout({ canvas, configPanel, fluxellePanel, executionLog }: Lay
               className="flex flex-col glass-surface border-l border-black/[0.07] dark:border-white/10 shrink-0 overflow-hidden"
               style={{ width: configWidth }}
             >
-              {/* Tab strip */}
+              {/* Tab strip — only the active tab's header is shown */}
               <div className="flex items-stretch shrink-0 border-b border-black/[0.07] dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.02]">
-                <RightTabButton
-                  active={rightPanelTab === 'config'}
-                  onClick={() => setRightPanelTab('config')}
-                  icon={<Settings2 className="w-3.5 h-3.5" />}
-                  label="Config"
-                />
-                <RightTabButton
-                  active={rightPanelTab === 'fluxelle'}
-                  onClick={() => setRightPanelTab('fluxelle')}
-                  icon={<Sparkles className="w-3.5 h-3.5 text-violet-500 dark:text-violet-400" />}
-                  label="Fluxelle"
-                />
+                {rightPanelTab === 'config' && (
+                  <RightTabButton
+                    active
+                    onClick={() => setRightPanelTab('config')}
+                    icon={<Settings2 className="w-3.5 h-3.5" />}
+                    label="Config"
+                  />
+                )}
+                {rightPanelTab === 'fluxelle' && (
+                  <RightTabButton
+                    active
+                    onClick={() => setRightPanelTab('fluxelle')}
+                    icon={<Sparkles className="w-3.5 h-3.5 text-violet-500 dark:text-violet-400" />}
+                    label="Fluxelle"
+                  />
+                )}
               </div>
 
               {/* Tab body — only the active tab is mounted to keep state lean */}

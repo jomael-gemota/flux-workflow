@@ -15,7 +15,7 @@ interface TeamsConfig {
     channelId?: string;
     // send_message / send_dm
     text?: string;
-    // Flux Bot (send_message only) — uses an Incoming Webhook URL instead of delegated Graph token
+    // Fluxelle AI (send_message only) — uses an Incoming Webhook URL instead of delegated Graph token
     senderType?: 'user' | 'bot';
     webhookUrl?: string;
     // send_dm
@@ -77,22 +77,22 @@ export class TeamsNode implements NodeExecutor {
         if (!credentialId) throw new Error('Teams node: credentialId is required');
         if (!action)       throw new Error('Teams node: action is required');
 
-        // Skip Graph client initialisation when the Flux Bot webhook path handles the request.
+        // Skip Graph client initialisation when the Fluxelle AI webhook path handles the request.
         const isWebhookOnly = action === 'send_message' && config.senderType === 'bot';
         const client = isWebhookOnly ? null : await this.getClient(credentialId);
 
         if (action === 'send_message') {
             const text = this.resolver.resolveTemplate(config.text ?? '', context);
 
-            // ── Flux Bot path: post via Incoming Webhook ─────────────────────
+            // ── Fluxelle AI path: post via Incoming Webhook ──────────────────
             if (config.senderType === 'bot') {
                 const webhookUrl = this.resolver.resolveTemplate(config.webhookUrl ?? '', context).trim();
-                if (!webhookUrl) throw new Error('Teams Flux Bot: Webhook URL is required');
-                if (!text)       throw new Error('Teams Flux Bot: message text is required');
+                if (!webhookUrl) throw new Error('Teams Fluxelle AI: Webhook URL is required');
+                if (!text)       throw new Error('Teams Fluxelle AI: message text is required');
 
                 const displayText = detectContentType(text) === 'html' ? stripHtml(text) : text;
 
-                // Build a "Flux Bot" branded header for the Adaptive Card.
+                // Build a "Fluxelle AI" branded header for the Adaptive Card.
                 // Teams Workflows webhooks always show the sender as Power Automate / "Unknown user" —
                 // baking the brand into the card itself is the standard workaround.
                 const logo = logoDataUri();
@@ -107,7 +107,7 @@ export class TeamsNode implements NodeExecutor {
                                 width:   '28px',
                                 height:  '28px',
                                 style:   'Default',
-                                altText: 'Flux Bot',
+                                altText: 'Fluxelle AI',
                             }],
                             verticalContentAlignment: 'Center',
                           }]
@@ -117,7 +117,7 @@ export class TeamsNode implements NodeExecutor {
                         width: 'stretch',
                         items: [{
                             type:   'TextBlock',
-                            text:   'Flux Bot',
+                            text:   'Fluxelle AI',
                             weight: 'Bolder',
                             size:   'Medium',
                             color:  'Accent',
@@ -166,7 +166,7 @@ export class TeamsNode implements NodeExecutor {
 
                 if (!res.ok) {
                     const body = await res.text().catch(() => '');
-                    throw new Error(`Teams Flux Bot: webhook POST failed (${res.status}): ${body}`);
+                    throw new Error(`Teams Fluxelle AI: webhook POST failed (${res.status}): ${body}`);
                 }
 
                 return { ok: true, sentVia: 'webhook' };

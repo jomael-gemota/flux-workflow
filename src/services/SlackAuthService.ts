@@ -159,7 +159,7 @@ export class SlackAuthService {
     }
 
     /**
-     * Returns the Flux Bot token (bot access token stored in refreshToken).
+     * Returns the Fluxelle AI token (bot access token stored in refreshToken).
      * Falls back to the user token if no separate bot token was issued.
      */
     async getFluxBotToken(credentialId: string): Promise<string> {

@@ -17,10 +17,10 @@ type SlackAction =
 interface SlackConfig {
     credentialId: string;
     action: SlackAction;
-    /** Who sends the message: 'bot' = Flux Bot, 'user' = connected Slack account (default) */
+    /** Who sends the message: 'bot' = Fluxelle AI, 'user' = connected Slack account (default) */
     senderType?: 'bot' | 'user';
-    /** Flux Bot appearance overrides (only applied when senderType === 'bot') */
-    botUsername?: string;    // display name override, e.g. "Flux Bot"
+    /** Fluxelle AI appearance overrides (only applied when senderType === 'bot') */
+    botUsername?: string;    // display name override, e.g. "Fluxelle AI"
     botIconEmoji?: string;   // emoji icon, e.g. ":robot_face:"
     botIconUrl?: string;     // public image URL for the bot icon
     // send_message — one or more channels (comma-separated IDs / names)
@@ -90,7 +90,7 @@ export class SlackNode implements NodeExecutor {
             : await this.slackAuth.getToken(credentialId);
         const client = new WebClient(token);
 
-        // ── Resolve Flux Bot appearance overrides (used in send actions) ─────
+        // ── Resolve Fluxelle AI appearance overrides (used in send actions) ────
         // Built as a plain Record to avoid discriminated-union conflicts in
         // ChatPostMessageArguments (icon_emoji and icon_url are mutually exclusive
         // in the @slack/web-api types). icon_url takes priority over icon_emoji.
