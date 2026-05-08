@@ -60,6 +60,6 @@ Fetches recent messages from a Slack channel or DM.
 }
 \`\`\`
 
-Downstream: reference messages as \`{{ nodes.slack-read-1.output.messages }}\`.
+Downstream: reference messages as \`{{ nodes.slack-read-1.messages }}\`.
 `,
 };

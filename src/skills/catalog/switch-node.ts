@@ -31,7 +31,7 @@ branch, or falls through to \`defaultNext\`.
 
 ## Condition shape
 Same as the condition-branch node:
-- \`{ "type": "leaf", "left": "{{ nodes.x.output.field }}", "operator": "eq", "right": "billing" }\`
+- \`{ "type": "leaf", "left": "{{ nodes.x.field }}", "operator": "eq", "right": "billing" }\`
 - Operators: \`"eq"\`, \`"neq"\`, \`"contains"\`, \`"startsWith"\`, \`"endsWith"\`, \`"gt"\`, \`"gte"\`, \`"lt"\`, \`"lte"\`, \`"isNull"\`, \`"isNotNull"\`
 - Compound: \`{ "type": "group", "operator": "and", "conditions": [...] }\`
 
@@ -58,12 +58,12 @@ Same as the condition-branch node:
   "config": {
     "cases": [
       {
-        "condition": { "type": "leaf", "left": "{{ nodes.llm-classify.output.content }}", "operator": "contains", "right": "billing" },
+        "condition": { "type": "leaf", "left": "{{ nodes.llm-classify.content }}", "operator": "contains", "right": "billing" },
         "next": "billing-handler",
         "label": "Billing"
       },
       {
-        "condition": { "type": "leaf", "left": "{{ nodes.llm-classify.output.content }}", "operator": "contains", "right": "technical" },
+        "condition": { "type": "leaf", "left": "{{ nodes.llm-classify.content }}", "operator": "contains", "right": "technical" },
         "next": "tech-handler",
         "label": "Technical"
       }

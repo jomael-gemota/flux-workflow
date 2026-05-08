@@ -48,7 +48,7 @@ corresponding notification node.
   "name": "Format Slack Summary",
   "config": {
     "medium": "slack",
-    "template": "*Daily Report* — {{ nodes.trigger-1.output.scheduledAt }}\\n\\n{{ nodes.transform-1.output }}"
+    "template": "*Daily Report* — {{ nodes.trigger-1.scheduledAt }}\\n\\n{{ nodes.transform-1.output }}"
   },
   "next": ["slack-1"]
 }
@@ -64,7 +64,7 @@ Then reference the output:
     "credentialId": "<resolved-from-list_credentials>",
     "action": "send_message",
     "channels": "#reports",
-    "text": "{{ nodes.formatter-1.output.text }}"
+    "text": "{{ nodes.formatter-1.text }}"
   },
   "next": []
 }

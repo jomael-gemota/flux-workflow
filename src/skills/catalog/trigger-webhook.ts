@@ -37,6 +37,6 @@ request body / headers / query as the trigger output.
 \`\`\`
 
 Downstream nodes can reference inbound data with expressions like
-\`{{ nodes.trigger-1.output.body.email }}\`.
+\`{{ nodes.trigger-1.body.email }}\`.
 `,
 };

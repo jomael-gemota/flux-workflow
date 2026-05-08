@@ -25,7 +25,7 @@ Adds a new row to the bottom of a sheet range.
 - \`range\` (string): A1-notation range — e.g. \`"Sheet1!A:Z"\`.
   After the user picks a spreadsheet, call \`list_gsheet_tabs\` to offer real
   tab names. Combine with column range: \`"<TabName>!A:Z"\`.
-- \`values\` (array): One row as an array of cell values, e.g. \`["{{ nodes.trigger-1.output.body.name }}", "{{ nodes.trigger-1.output.body.email }}"]\`.
+- \`values\` (array): One row as an array of cell values, e.g. \`["{{ nodes.trigger-1.body.name }}", "{{ nodes.trigger-1.body.email }}"]\`.
   May also be an array-of-arrays for multiple rows.
 
 ## Optional config
@@ -47,9 +47,9 @@ Adds a new row to the bottom of a sheet range.
     "spreadsheetId": "1abc...xyz",
     "range": "Submissions!A:C",
     "values": [
-      "{{ nodes.trigger-1.output.triggeredAt }}",
-      "{{ nodes.trigger-1.output.body.email }}",
-      "{{ nodes.llm-1.output.content }}"
+      "{{ nodes.trigger-1.triggeredAt }}",
+      "{{ nodes.trigger-1.body.email }}",
+      "{{ nodes.llm-1.content }}"
     ]
   },
   "next": []

@@ -43,7 +43,7 @@ Sends a 1:1 chat message to a Teams user via Microsoft Graph.
     "credentialId": "<resolved-from-list_credentials>",
     "action": "send_dm",
     "userId": "<resolved-from-list_teams_users>",
-    "text": "Your report is ready: {{ nodes.llm-1.output.content }}"
+    "text": "Your report is ready: {{ nodes.llm-1.content }}"
   },
   "next": []
 }

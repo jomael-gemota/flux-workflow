@@ -41,7 +41,7 @@ Posts a message to a specific Teams channel via Microsoft Graph.
     "action": "send_message",
     "teamId": "<resolved-from-list_teams>",
     "channelId": "<resolved-from-list_teams_channels>",
-    "text": "{{ nodes.llm-1.output.content }}"
+    "text": "{{ nodes.llm-1.content }}"
   },
   "next": []
 }

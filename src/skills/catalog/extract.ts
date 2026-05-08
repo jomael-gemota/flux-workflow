@@ -19,12 +19,12 @@ the results as named fields.
 
 ## Required config
 - \`source\` (string): Expression for the text/object to extract from.
-  E.g. \`"{{ nodes.llm-1.output.content }}"\` or \`"{{ nodes.http-1.output.body }}"\`.
+  E.g. \`"{{ nodes.llm-1.content }}"\` or \`"{{ nodes.http-1.body }}"\`.
 - \`fields\` (array): One entry per field to extract.
 
 ## Field shape
 Each field has:
-- \`name\` (string): Output key — accessible as \`{{ nodes.<extractId>.output.<name> }}\`.
+- \`name\` (string): Output key — accessible as \`{{ nodes.<extractId>.<name> }}\`.
 - \`strategy\` (object): How to extract the value.
 - \`required\` (boolean, optional): Throw if missing. Default \`false\`.
 - \`default\` (string, optional): Fallback when not found.
@@ -56,7 +56,7 @@ Types: \`"string"\`, \`"number"\`, \`"boolean"\`, \`"string[]"\`.
 
 ## Output
 Each \`name\` becomes a key on the node output:
-\`{{ nodes.extract-1.output.invoiceNumber }}\`, \`{{ nodes.extract-1.output.amount }}\`, etc.
+\`{{ nodes.extract-1.invoiceNumber }}\`, \`{{ nodes.extract-1.amount }}\`, etc.
 
 ## Fluxelle workflow
 1. Ask the user what fields they want to extract.
@@ -73,7 +73,7 @@ Each \`name\` becomes a key on the node output:
   "type": "extract",
   "name": "Parse Invoice Fields",
   "config": {
-    "source": "{{ nodes.gmail-read-1.output.messages[0].body }}",
+    "source": "{{ nodes.gmail-read-1.messages[0].body }}",
     "preprocess": "strip-quoted-reply",
     "fields": [
       {

@@ -41,7 +41,7 @@ Sends a request to any URL and returns the response.
     "method": "POST",
     "url": "https://api.example.com/events",
     "headers": { "Content-Type": "application/json", "Authorization": "Bearer xxx" },
-    "body": "{ \\"summary\\": \\"{{ nodes.llm-1.output.content }}\\" }"
+    "body": "{ \\"summary\\": \\"{{ nodes.llm-1.content }}\\" }"
   },
   "next": []
 }

@@ -42,7 +42,7 @@ or \`{ "type": "group", "operator": "or", "conditions": [...] }\`.
   "config": {
     "condition": {
       "type": "leaf",
-      "left": "{{ nodes.llm-classify.output.content }}",
+      "left": "{{ nodes.llm-classify.content }}",
       "operator": "contains",
       "right": "urgent"
     },

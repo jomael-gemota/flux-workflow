@@ -123,6 +123,19 @@ export interface FluxelleChatRequest {
     userId?: string;
 }
 
+/** One step in Fluxelle's reasoning trace — surfaced in the UI so users can
+ *  see what the assistant actually did behind the scenes. */
+export interface FluxelleTraceStep {
+    /** Tool name (e.g. 'search_skills', 'load_skill', 'propose_workflow_changes'). */
+    tool: string;
+    /** Human-readable description shown in the UI. */
+    label: string;
+    /** Optional extra detail (e.g. skill name, credential count). */
+    detail?: string;
+    /** Whether the tool call succeeded. */
+    status: 'ok' | 'error';
+}
+
 export interface FluxelleChatResponse {
     /** The assistant's text reply. May be empty if a proposal/question carries the message. */
     content: string;
@@ -132,6 +145,9 @@ export interface FluxelleChatResponse {
     question?: FluxelleQuestion;
     /** Exposed for debugging — names of skills the agent loaded this turn. */
     skillsUsed: string[];
+    /** Ordered log of tool calls made during this turn — rendered in the UI
+     *  as a collapsible "Reasoning" section inside the assistant bubble. */
+    trace: FluxelleTraceStep[];
 }
 
 // ── Service ──────────────────────────────────────────────────────────────────
@@ -182,6 +198,7 @@ export class FluxelleService {
         const tools = this.buildTools();
         const messages = this.buildMessages(req);
         const skillsUsed: string[] = [];
+        const trace: FluxelleTraceStep[] = [];
         let proposal: WorkflowProposal | undefined;
         let question: FluxelleQuestion | undefined;
 
@@ -210,13 +227,25 @@ export class FluxelleService {
                     proposal,
                     question,
                     skillsUsed,
+                    trace,
                 };
             }
 
             for (const call of toolCalls) {
+                const toolName = (call as any).function?.name as string | undefined ?? '';
+                let toolArgs: Record<string, unknown> = {};
+                try { toolArgs = JSON.parse((call as any).function?.arguments ?? '{}'); } catch { /* */ }
+
                 const result = await this.runTool(call, skillsUsed, req.userId);
                 if (result.proposal) proposal = result.proposal;
                 if (result.question) question = result.question;
+
+                trace.push({
+                    tool:   toolName,
+                    label:  buildTraceLabel(toolName, toolArgs, result.payload),
+                    detail: buildTraceDetail(toolName, toolArgs, result.payload),
+                    status: result.payload['error'] ? 'error' : 'ok',
+                });
 
                 messages.push({
                     role: 'tool',
@@ -232,6 +261,7 @@ export class FluxelleService {
                         proposal,
                         question,
                         skillsUsed,
+                        trace,
                     };
                 }
             }
@@ -243,6 +273,7 @@ export class FluxelleService {
             proposal,
             question,
             skillsUsed,
+            trace,
         };
     }
 
@@ -290,6 +321,27 @@ export class FluxelleService {
                         title:    skill.title,
                         nodeType: skill.nodeType,
                         body:     skill.body,
+                    },
+                };
+            }
+
+            // ── Node output schema lookup ───────────────────────────────────────
+            case 'get_node_output_schema': {
+                const nodeType = String(args.nodeType ?? '');
+                const schema = NODE_OUTPUT_SCHEMAS[nodeType];
+                if (!schema) {
+                    const known = Object.keys(NODE_OUTPUT_SCHEMAS).join(', ');
+                    return { payload: { error: `Unknown nodeType "${nodeType}". Known types: ${known}` } };
+                }
+                return {
+                    payload: {
+                        nodeType,
+                        expressionFormat: `{{ nodes.<nodeId>.<field> }}`,
+                        note: 'Do NOT insert ".output." between the nodeId and the field — the path is direct.',
+                        fields: schema,
+                        examples: schema.slice(0, 3).map((f) =>
+                            `{{ nodes.${nodeType}-1.${f.field} }}`
+                        ),
                     },
                 };
             }
@@ -890,14 +942,24 @@ export class FluxelleService {
             '3. If you need to know what credentials / channels / sheets / projects the user',
             '   actually has, call the appropriate `list_*` data tool. NEVER guess ids and',
             '   NEVER ask the user to type an id you could look up yourself.',
-            '4. If the user must choose between multiple options (e.g. which Slack workspace,',
+            '4. Before inserting a `{{ nodes.<id>.<field> }}` expression, call',
+            '   `get_node_output_schema({ nodeType })` to confirm the exact field names',
+            '   the upstream node produces. NEVER guess field names.',
+            '5. If the user must choose between multiple options (e.g. which Slack workspace,',
             '   which channel, which sheet), call `ask_user` with a clear `prompt` and a',
             '   selectable `options` list. This is a TERMINAL tool — the loop ends, the user',
             '   picks an option in the UI, and their reply will arrive on the next turn.',
-            '5. When you\'re ready to suggest workflow changes, call `propose_workflow_changes`',
+            '6. When you\'re ready to suggest workflow changes, call `propose_workflow_changes`',
             '   with `adds`, `updates`, `deletes`, and `edges` describing the EXACT diff.',
             '   This is the OTHER terminal tool — after you call it, the loop ends and the',
             '   user reviews the diff before anything is applied.',
+            '',
+            '## Variable / template expression rules  ⚠️ READ CAREFULLY',
+            '- The template syntax is `{{ nodes.<nodeId>.<field> }}`.',
+            '- ❌ WRONG: `{{ nodes.trigger-1.output.body.email }}`  (the ".output." segment does NOT exist)',
+            '- ✅ CORRECT: `{{ nodes.trigger-1.body.email }}`',
+            '- The node\'s output is stored directly under its id — there is no ".output." wrapper.',
+            '- Always verify exact field names using `get_node_output_schema` BEFORE writing expressions.',
             '',
             '## Critical rules',
             '- NEVER leave `credentialId: ""` on a node config. Resolve it first via',
@@ -906,7 +968,6 @@ export class FluxelleService {
             '- For Slack/Teams channels, sheets, Drive folders, Basecamp projects, etc. —',
             '  prefer resolving real ids via the `list_*` tools and surfacing them as',
             '  `ask_user` options instead of asking the user to paste raw ids or names.',
-            '- Always reference earlier-node output via `{{ nodes.<id>.output.<field> }}`.',
             '- Use kebab-case ids that hint at the node\'s purpose: `trigger-1`, `llm-summarize`, `slack-notify`.',
             '- For condition nodes, set `trueNext` / `falseNext` in the config — DO NOT also list them in `next`.',
             '- For switch nodes, set each case\'s `next` and `defaultNext` — leave the top-level `next` empty.',
@@ -966,6 +1027,26 @@ export class FluxelleService {
                             },
                         },
                         required: ['name'],
+                    },
+                },
+            },
+            {
+                type: 'function',
+                function: {
+                    name: 'get_node_output_schema',
+                    description:
+                        'Return the exact output fields produced by a node type at runtime. ALWAYS call this before writing a `{{ nodes.<id>.<field> }}` expression to confirm the field name exists. The expression format is `{{ nodes.<nodeId>.<field> }}` — NEVER add ".output." between the nodeId and the field.',
+                    parameters: {
+                        type: 'object',
+                        properties: {
+                            nodeType: {
+                                type: 'string',
+                                enum: [...VALID_NODE_TYPES],
+                                description: 'The node type whose output schema you want to inspect.',
+                            },
+                        },
+                        required: ['nodeType'],
+                        additionalProperties: false,
                     },
                 },
             },
@@ -1439,6 +1520,162 @@ function sanitizeQuestion(args: Record<string, unknown>): FluxelleQuestion | nul
         allowMultiple: Boolean(args.allowMultiple),
         allowFreeText: Boolean(args.allowFreeText),
     };
+}
+
+// ── Node output schemas ───────────────────────────────────────────────────────
+
+interface OutputField { field: string; type: string; description: string; }
+
+const NODE_OUTPUT_SCHEMAS: Record<string, OutputField[]> = {
+    trigger: [
+        { field: 'triggerType',  type: 'string',         description: 'The trigger type (manual, cron, webhook)' },
+        { field: 'triggeredAt',  type: 'string (ISO)',   description: 'Timestamp when the workflow was triggered' },
+        { field: 'body',         type: 'object',         description: 'Parsed request body (webhook triggers only)' },
+        { field: 'headers',      type: 'object',         description: 'HTTP request headers (webhook triggers only)' },
+        { field: 'query',        type: 'object',         description: 'URL query string parameters (webhook triggers only)' },
+        { field: 'scheduledAt',  type: 'string (ISO)',   description: 'Scheduled fire time (cron triggers only)' },
+    ],
+    llm: [
+        { field: 'content',  type: 'string', description: "The model's response text" },
+        { field: 'model',    type: 'string', description: 'Model id that was used' },
+        { field: 'usage',    type: 'object', description: 'Token counts: { totalTokens, promptTokens, completionTokens }' },
+    ],
+    http: [
+        { field: 'status',   type: 'number', description: 'HTTP response status code' },
+        { field: 'body',     type: 'any',    description: 'Parsed response body (JSON, text, etc.)' },
+        { field: 'headers',  type: 'object', description: 'Response headers as key/value pairs' },
+    ],
+    condition: [
+        { field: 'result',     type: 'boolean', description: 'true if the condition matched, false otherwise' },
+        { field: 'nextNodeId', type: 'string',  description: 'ID of the node that will execute next' },
+    ],
+    switch: [
+        { field: 'matchedCase',  type: 'number | "default"', description: '0-based index of the matched case, or "default"' },
+        { field: 'matchedLabel', type: 'string',             description: 'Display label of the matched case' },
+        { field: 'nextNodeId',   type: 'string',             description: 'ID of the node that will execute next' },
+    ],
+    transform: [
+        { field: '(mapped fields)', type: 'any', description: 'Each key in the mappings config becomes a top-level output field at the same key name' },
+    ],
+    extract: [
+        { field: '(field names)', type: 'any', description: 'Each named field in the fields config becomes a top-level output field' },
+    ],
+    code: [
+        { field: 'result', type: 'any',   description: 'The value returned by the code block' },
+        { field: 'logs',   type: 'array', description: 'Console output: Array of { level, message, timestamp }' },
+    ],
+    loop: [
+        { field: 'results', type: 'array',  description: 'Return value from each iteration' },
+        { field: 'acc',     type: 'any',    description: 'Final accumulator value (reduce pattern)' },
+        { field: 'count',   type: 'number', description: 'Total number of iterations completed' },
+    ],
+    formatter: [
+        { field: 'text', type: 'string', description: 'The formatted output string' },
+    ],
+    output: [
+        { field: 'value', type: 'any', description: 'The final output value passed to this node' },
+    ],
+    gmail: [
+        { field: 'messageId',  type: 'string',   description: 'Gmail message ID (send / reply)' },
+        { field: 'threadId',   type: 'string',   description: 'Gmail thread ID (send / reply)' },
+        { field: 'labelIds',   type: 'string[]', description: 'Label IDs on the message' },
+        { field: 'messages',   type: 'array',    description: 'Array of { id, threadId, subject, from, to, date, snippet, body, labels } (list / search)' },
+        { field: 'count',      type: 'number',   description: 'Number of messages returned (list / search)' },
+    ],
+    slack: [
+        { field: 'channel',   type: 'string',  description: 'Channel ID where message was posted (send_message)' },
+        { field: 'ts',        type: 'string',  description: 'Slack message timestamp / ID (send_message) — use for threading' },
+        { field: 'messageId', type: 'string',  description: 'Same as ts; the stable message identifier' },
+        { field: 'ok',        type: 'boolean', description: 'Whether the operation succeeded' },
+        { field: 'messages',  type: 'array',   description: 'Array of { ts, text, userId, username, formattedTime } (read_messages)' },
+        { field: 'users',     type: 'array',   description: 'Array of { id, name, realName, displayName } (list_users)' },
+    ],
+    teams: [
+        { field: 'messageId', type: 'string',  description: 'Teams message ID (send_message)' },
+        { field: 'ok',        type: 'boolean', description: 'Whether the operation succeeded' },
+        { field: 'messages',  type: 'array',   description: 'Array of { id, body, from, createdDateTime } (read_messages)' },
+    ],
+    gsheets: [
+        { field: 'rows',         type: 'array',    description: 'Array of row objects (column names as keys) — read / get_rows' },
+        { field: 'count',        type: 'number',   description: 'Number of rows returned' },
+        { field: 'columns',      type: 'string[]', description: 'Column header names (read / get_rows with hasHeaders=true)' },
+        { field: 'updatedRange', type: 'string',   description: 'A1-notation range that was written (append / write)' },
+        { field: 'updatedRows',  type: 'number',   description: 'Number of rows added or updated (append / write)' },
+    ],
+    gdrive: [
+        { field: 'files',       type: 'array',  description: 'Array of { id, name, mimeType, size, modifiedTime } (list)' },
+        { field: 'fileId',      type: 'string', description: 'Drive file ID (upload / create)' },
+        { field: 'fileName',    type: 'string', description: 'Name of the uploaded/created file' },
+        { field: 'webViewLink', type: 'string', description: 'URL to open the file in browser (upload / create)' },
+        { field: 'fileContent', type: 'string', description: 'Base64-encoded file content (download)' },
+    ],
+    gdocs: [
+        { field: 'documentId',  type: 'string', description: 'Google Doc document ID' },
+        { field: 'title',       type: 'string', description: 'Document title' },
+        { field: 'documentUrl', type: 'string', description: 'URL to open the document' },
+        { field: 'content',     type: 'string', description: 'Plain-text content (read action)' },
+    ],
+    basecamp: [
+        { field: 'todoId',     type: 'number', description: 'ID of the created to-do (create_todo)' },
+        { field: 'todoUrl',    type: 'string', description: 'App URL for the to-do (create_todo)' },
+        { field: 'todos',      type: 'array',  description: 'Array of { id, content, completed, dueOn, assignees, url } (list_todos)' },
+        { field: 'messageId',  type: 'string', description: 'Message board post ID (post_message)' },
+        { field: 'chatLineId', type: 'string', description: 'Campfire chat line ID (chat)' },
+    ],
+};
+
+// ── Trace label helpers ───────────────────────────────────────────────────────
+
+function buildTraceLabel(tool: string, args: Record<string, unknown>, payload: Record<string, unknown>): string {
+    switch (tool) {
+        case 'search_skills':              return `Searched skills for "${args.query}"`;
+        case 'load_skill':                 return `Loaded skill: ${args.name}`;
+        case 'get_node_output_schema':     return `Inspected output schema for "${args.nodeType}"`;
+        case 'list_credentials':           return args.provider ? `Checked ${args.provider} credentials` : 'Listed all credentials';
+        case 'list_slack_channels':        return 'Listed Slack channels';
+        case 'list_slack_users':           return 'Listed Slack users';
+        case 'list_teams':                 return 'Listed Microsoft Teams';
+        case 'list_teams_channels':        return 'Listed Teams channels';
+        case 'list_teams_users':           return 'Listed Teams users';
+        case 'list_gmail_labels':          return 'Listed Gmail labels';
+        case 'list_gsheets':               return 'Listed Google Sheets';
+        case 'list_gsheet_tabs':           return 'Listed sheet tabs';
+        case 'list_gdrive_items':          return 'Browsed Google Drive';
+        case 'list_basecamp_projects':     return 'Listed Basecamp projects';
+        case 'list_basecamp_todolists':    return 'Listed Basecamp to-do lists';
+        case 'list_basecamp_people':       return 'Listed Basecamp people';
+        case 'ask_user':                   return 'Preparing question for you';
+        case 'propose_workflow_changes':   return 'Generated workflow proposal';
+        default:                           return tool;
+    }
+}
+
+function buildTraceDetail(tool: string, args: Record<string, unknown>, payload: Record<string, unknown>): string | undefined {
+    if (payload['error']) return `Error: ${payload['error']}`;
+    switch (tool) {
+        case 'search_skills': {
+            const results = payload['results'];
+            if (Array.isArray(results)) return `${results.length} skill${results.length !== 1 ? 's' : ''} found`;
+            return undefined;
+        }
+        case 'list_credentials': {
+            const count = payload['count'];
+            if (typeof count === 'number') return `${count} credential${count !== 1 ? 's' : ''} found`;
+            return undefined;
+        }
+        case 'list_slack_channels': {
+            const count = payload['count'];
+            if (typeof count === 'number') return `${count} channel${count !== 1 ? 's' : ''}`;
+            return undefined;
+        }
+        case 'list_gsheets': {
+            const sheets = payload['spreadsheets'];
+            if (Array.isArray(sheets)) return `${sheets.length} spreadsheet${sheets.length !== 1 ? 's' : ''}`;
+            return undefined;
+        }
+        default:
+            return undefined;
+    }
 }
 
 // Re-export for caller convenience

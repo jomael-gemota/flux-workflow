@@ -18,8 +18,8 @@ one to execute wins.
 
 ## Required config
 - \`value\` (string): An expression resolving to the result value. Common forms:
-    - \`"{{ nodes.llm-1.output.content }}"\` — bare token (returns the raw value)
-    - \`"Done — {{ nodes.transform-1.output.summary }}"\` — mixed template (returns string)
+    - \`"{{ nodes.llm-1.content }}"\` — bare token (returns the raw value)
+    - \`"Done — {{ nodes.transform-1.summary }}"\` — mixed template (returns string)
 
 ## Example
 \`\`\`json

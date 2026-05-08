@@ -23,7 +23,7 @@ Sends a reply within an existing Gmail thread.
 - \`action\` (string): \`"reply"\`.
 - \`replyToMessageId\` (string): Gmail message id to reply to.
   Typically an expression from an upstream gmail-read node:
-  \`"{{ nodes.gmail-read-1.output.messages[0].id }}"\`.
+  \`"{{ nodes.gmail-read-1.messages[0].id }}"\`.
 - \`body\` (string): Reply text. Supports template expressions.
 
 ## Optional config
@@ -52,8 +52,8 @@ Sends a reply within an existing Gmail thread.
   "config": {
     "credentialId": "<resolved-from-list_credentials>",
     "action": "reply",
-    "replyToMessageId": "{{ nodes.gmail-read-1.output.messages[0].id }}",
-    "body": "{{ nodes.llm-1.output.content }}",
+    "replyToMessageId": "{{ nodes.gmail-read-1.messages[0].id }}",
+    "body": "{{ nodes.llm-1.content }}",
     "replyAll": false
   },
   "next": []

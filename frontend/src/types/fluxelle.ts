@@ -3,6 +3,14 @@ import type { NodeType } from './workflow';
 /** Tracks whether the user has acted on a proposal attached to a message. */
 export type ProposalStatus = 'applied' | 'declined';
 
+/** One step in Fluxelle's reasoning trace (returned by the backend). */
+export interface FluxelleTraceStep {
+  tool:    string;
+  label:   string;
+  detail?: string;
+  status:  'ok' | 'error';
+}
+
 export interface FluxelleMessage {
   /** Stable id for keying the React list. */
   id: string;
@@ -16,6 +24,8 @@ export interface FluxelleMessage {
   question?: FluxelleQuestion;
   /** The user's resolution of the attached question (set after they pick an option). */
   questionAnswer?: QuestionAnswer;
+  /** Ordered trace of tool calls Fluxelle made to produce this message. */
+  trace?: FluxelleTraceStep[];
   /** ISO timestamp; rendered as the message timestamp. */
   createdAt: string;
 }
@@ -92,6 +102,7 @@ export interface FluxelleChatResponse {
   proposal?: WorkflowProposal;
   question?: FluxelleQuestion;
   skillsUsed: string[];
+  trace: FluxelleTraceStep[];
 }
 
 export interface SkillSummary {
@@ -118,6 +129,7 @@ export interface PersistedMessage {
   proposalStatus?: ProposalStatus | null;
   question?:      FluxelleQuestion | null;
   questionAnswer?: QuestionAnswer | null;
+  trace?:         FluxelleTraceStep[] | null;
   createdAt:      string;
 }
 

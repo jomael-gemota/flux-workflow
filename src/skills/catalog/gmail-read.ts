@@ -65,6 +65,6 @@ filter criteria.
 }
 \`\`\`
 
-Downstream: reference emails as \`{{ nodes.gmail-read-1.output.messages }}\`.
+Downstream: reference emails as \`{{ nodes.gmail-read-1.messages }}\`.
 `,
 };

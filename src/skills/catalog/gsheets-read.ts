@@ -61,6 +61,6 @@ Reads rows from a Google Sheet range and returns them as structured objects.
 }
 \`\`\`
 
-Downstream: reference rows as \`{{ nodes.gsheets-read-1.output.rows }}\`.
+Downstream: reference rows as \`{{ nodes.gsheets-read-1.rows }}\`.
 `,
 };

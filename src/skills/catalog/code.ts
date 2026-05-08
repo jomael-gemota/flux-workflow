@@ -22,7 +22,7 @@ Executes user-supplied JavaScript and exposes the return value as the node outpu
 
 ## Globals available in code
 - \`nodes\` — all prior node outputs, keyed by node id.
-  E.g. \`nodes['trigger-1'].output.body.email\`
+  E.g. \`nodes['trigger-1'].body.email\`
 - \`input\` — workflow-level input payload
 - \`console\` — captured into \`output.logs\` (array of \`{ level, message, timestamp }\`)
 - \`workflow\` — \`{ id }\`
@@ -35,7 +35,7 @@ Executes user-supplied JavaScript and exposes the return value as the node outpu
 
 ## Fluxelle workflow
 1. Describe to the user what the code will compute.
-2. Write the code using \`nodes['<nodeId>'].output.<field>\` to reference upstream data.
+2. Write the code using \`nodes['<nodeId>'].<field>\` to reference upstream data.
 3. Propose the node with the \`code\` field fully written — never leave it blank.
 
 ## Example — compute days until due date
@@ -45,13 +45,13 @@ Executes user-supplied JavaScript and exposes the return value as the node outpu
   "type": "code",
   "name": "Days Until Due",
   "config": {
-    "code": "const due = new Date(nodes['extract-1'].output.dueDate);\\nconst today = new Date();\\nconst diff = Math.ceil((due - today) / (1000 * 60 * 60 * 24));\\nreturn { daysRemaining: diff, overdue: diff < 0 };"
+    "code": "const due = new Date(nodes['extract-1'].dueDate);\\nconst today = new Date();\\nconst diff = Math.ceil((due - today) / (1000 * 60 * 60 * 24));\\nreturn { daysRemaining: diff, overdue: diff < 0 };"
   },
   "next": []
 }
 \`\`\`
 
-Output: \`{{ nodes.code-1.output.result.daysRemaining }}\`.
+Output: \`{{ nodes.code-1.result.daysRemaining }}\`.
 
 ## Example — call a third-party API with fetch
 \`\`\`json

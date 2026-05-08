@@ -88,7 +88,7 @@ Delete rows or columns by index.
     "spreadsheetId": "<resolved-from-list_gsheets>",
     "range": "Report!A2:C10",
     "values": [
-      ["{{ nodes.transform-1.output.date }}", "{{ nodes.transform-1.output.total }}", "{{ nodes.transform-1.output.status }}"]
+      ["{{ nodes.transform-1.date }}", "{{ nodes.transform-1.total }}", "{{ nodes.transform-1.status }}"]
     ],
     "valueInputOption": "USER_ENTERED"
   },

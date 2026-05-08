@@ -37,10 +37,10 @@ A 2-node template:
       "spreadsheetId": "",
       "range": "Submissions!A:D",
       "values": [
-        "{{ nodes.trigger-1.output.triggeredAt }}",
-        "{{ nodes.trigger-1.output.body.name }}",
-        "{{ nodes.trigger-1.output.body.email }}",
-        "{{ nodes.trigger-1.output.body.message }}"
+        "{{ nodes.trigger-1.triggeredAt }}",
+        "{{ nodes.trigger-1.body.name }}",
+        "{{ nodes.trigger-1.body.email }}",
+        "{{ nodes.trigger-1.body.message }}"
       ]
     },
     "next": []
@@ -55,7 +55,7 @@ A 2-node template:
 4. Ask which fields from the incoming webhook body to log (e.g. name, email, message).
 5. Propose ALL nodes in one \`propose_workflow_changes\` call with fully-populated config.
 
-The \`values\` array should reference \`{{ nodes.trigger-1.output.body.<field> }}\` for
+The \`values\` array should reference \`{{ nodes.trigger-1.body.<field> }}\` for
 each piece of data the user wants to capture.
 `,
 };

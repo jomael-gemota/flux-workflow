@@ -28,6 +28,13 @@ import {
   ChevronRight,
   ArrowRight,
   Zap,
+  ChevronDown,
+  Search,
+  BookOpen,
+  Database,
+  Cpu,
+  FileText,
+  ListChecks,
 } from 'lucide-react';
 import { useWorkflowStore } from '../../store/workflowStore';
 import { useSaveWorkflow } from '../../hooks/useSaveWorkflow';
@@ -43,6 +50,7 @@ import * as api from '../../api/client';
 import type {
   FluxelleMessage,
   FluxelleQuestion,
+  FluxelleTraceStep,
   QuestionAnswer,
   WorkflowProposal,
   WorkflowSnapshot,
@@ -101,6 +109,7 @@ function toPersistedMessages(msgs: FluxelleMessage[]): PersistedMessage[] {
     proposalStatus: m.proposalStatus ?? null,
     question:       m.question ?? null,
     questionAnswer: m.questionAnswer ?? null,
+    trace:          m.trace ?? null,
     createdAt:      m.createdAt,
   }));
 }
@@ -115,6 +124,7 @@ function fromPersistedMessages(msgs: PersistedMessage[]): FluxelleMessage[] {
     proposalStatus: m.proposalStatus ?? undefined,
     question:       m.question ?? undefined,
     questionAnswer: m.questionAnswer ?? undefined,
+    trace:          m.trace ?? undefined,
     createdAt:      m.createdAt,
   }));
 }
@@ -269,6 +279,7 @@ export function FluxellePanel() {
         content:   response.content,
         proposal:  response.proposal,
         question:  response.question,
+        trace:     response.trace?.length ? response.trace : undefined,
         createdAt: new Date().toISOString(),
       };
       const allMessages = [...nextMessages, assistantMsg];
@@ -579,17 +590,126 @@ export function FluxellePanel() {
 
 // ── Thinking indicator ────────────────────────────────────────────────────────
 
+const THINKING_PHASES = [
+  'Reading your workflow…',
+  'Checking available skills…',
+  'Analyzing requirements…',
+  'Resolving credentials…',
+  'Assembling your workflow…',
+  'Putting it all together…',
+];
+
 function ThinkingIndicator() {
+  const [phaseIdx, setPhaseIdx] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setPhaseIdx((i) => (i + 1) % THINKING_PHASES.length);
+    }, 1800);
+    return () => clearInterval(id);
+  }, []);
+
   return (
-    <div className="flex items-center gap-2">
-      <div className="w-6 h-6 rounded-md bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center shrink-0">
+    <div className="flex items-start gap-2">
+      <div className="w-6 h-6 rounded-md bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center shrink-0 mt-0.5 shadow-sm shadow-violet-500/20">
         <Sparkles className="w-3 h-3 text-white" />
       </div>
-      <div className="flex items-center gap-1 px-3 py-2 rounded-2xl rounded-bl-md bg-slate-100 dark:bg-slate-800">
-        <span className="w-1.5 h-1.5 rounded-full bg-slate-400 dark:bg-slate-500 animate-bounce [animation-delay:-0.3s]" />
-        <span className="w-1.5 h-1.5 rounded-full bg-slate-400 dark:bg-slate-500 animate-bounce [animation-delay:-0.15s]" />
-        <span className="w-1.5 h-1.5 rounded-full bg-slate-400 dark:bg-slate-500 animate-bounce" />
+      <div className="flex-1 min-w-0">
+        {/* Dots */}
+        <div className="flex items-center gap-1 px-3 py-2 rounded-2xl rounded-bl-md bg-slate-100 dark:bg-slate-800 w-fit">
+          <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce [animation-delay:-0.3s]" />
+          <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce [animation-delay:-0.15s]" />
+          <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" />
+        </div>
+        {/* Cycling status text */}
+        <div
+          key={phaseIdx}
+          className="mt-1 text-[10px] text-slate-400 dark:text-slate-500 px-1 animate-fade-in"
+        >
+          {THINKING_PHASES[phaseIdx]}
+        </div>
       </div>
+    </div>
+  );
+}
+
+// ── Trace steps (collapsible reasoning panel) ─────────────────────────────────
+
+function traceIcon(tool: string) {
+  if (tool === 'search_skills')            return <Search className="w-3 h-3" />;
+  if (tool === 'load_skill')               return <BookOpen className="w-3 h-3" />;
+  if (tool === 'get_node_output_schema')   return <FileText className="w-3 h-3" />;
+  if (tool.startsWith('list_'))            return <Database className="w-3 h-3" />;
+  if (tool === 'propose_workflow_changes') return <ListChecks className="w-3 h-3" />;
+  if (tool === 'ask_user')                 return <HelpCircle className="w-3 h-3" />;
+  return <Cpu className="w-3 h-3" />;
+}
+
+function TraceSteps({ steps }: { steps: FluxelleTraceStep[] }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="rounded-xl overflow-hidden border border-violet-200/60 dark:border-violet-800/40 text-[10.5px]">
+      {/* Toggle header */}
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-2 px-3 py-2 bg-violet-50/80 dark:bg-violet-950/30 hover:bg-violet-100/70 dark:hover:bg-violet-900/30 transition-colors text-left"
+      >
+        <div className="w-4 h-4 rounded-md bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center shrink-0">
+          <Cpu className="w-2.5 h-2.5 text-white" />
+        </div>
+        <span className="flex-1 font-semibold text-violet-700 dark:text-violet-300">
+          Reasoning steps
+        </span>
+        <span className="px-1.5 py-0.5 rounded-full bg-violet-200/70 dark:bg-violet-800/50 text-violet-600 dark:text-violet-300 font-bold text-[9.5px]">
+          {steps.length}
+        </span>
+        <ChevronDown className={`w-3 h-3 text-violet-500 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {/* Steps list */}
+      {open && (
+        <div className="divide-y divide-violet-100 dark:divide-violet-900/50 bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm">
+          {steps.map((step, i) => (
+            <div key={i} className="flex items-start gap-2.5 px-3 py-2">
+              {/* Step number + icon */}
+              <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
+                step.status === 'error'
+                  ? 'bg-red-100 dark:bg-red-900/30 text-red-500'
+                  : 'bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400'
+              }`}>
+                {traceIcon(step.tool)}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className={`font-semibold leading-snug ${
+                  step.status === 'error'
+                    ? 'text-red-600 dark:text-red-400'
+                    : 'text-gray-800 dark:text-slate-200'
+                }`}>
+                  {step.label}
+                </div>
+                {step.detail && (
+                  <div className="text-[9.5px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">
+                    {step.detail}
+                  </div>
+                )}
+              </div>
+              {/* Status badge */}
+              <div className={`shrink-0 mt-0.5 w-3.5 h-3.5 rounded-full flex items-center justify-center ${
+                step.status === 'error'
+                  ? 'bg-red-100 dark:bg-red-900/40 text-red-500'
+                  : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-500'
+              }`}>
+                {step.status === 'error'
+                  ? <X className="w-2 h-2" strokeWidth={3} />
+                  : <Check className="w-2 h-2" strokeWidth={3} />
+                }
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -727,6 +847,9 @@ function MessageBubble({
         <Sparkles className="w-3 h-3 text-white" />
       </div>
       <div className="flex-1 min-w-0 space-y-2.5">
+        {message.trace && message.trace.length > 0 && (
+          <TraceSteps steps={message.trace} />
+        )}
         {message.content && (
           <div className="text-[11.5px] leading-relaxed text-gray-800 dark:text-slate-200">
             <FluxelleMarkdown content={message.content} />

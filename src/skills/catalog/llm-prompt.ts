@@ -29,7 +29,7 @@ the response text.
     - gemini: \`"gemini-2.0-flash"\`
     - meta: \`"Llama-3.3-70B-Instruct"\`
 - \`userPrompt\` (string): The prompt sent to the model. SUPPORTS template
-  expressions referencing other nodes — e.g. \`{{ nodes.trigger-1.output.body.text }}\`.
+  expressions referencing other nodes — e.g. \`{{ nodes.trigger-1.body.text }}\`.
 
 ## Optional config
 - \`systemPrompt\` (string): System-role instruction. Use to set persona / output format.
@@ -38,7 +38,7 @@ the response text.
 
 ## Output fields
 - \`content\`: The model's response text — use this in downstream nodes via
-  \`{{ nodes.<this-node-id>.output.content }}\`.
+  \`{{ nodes.<this-node-id>.content }}\`.
 - \`model\`: Model id actually used.
 - \`usage.totalTokens\`, \`usage.promptTokens\`, \`usage.completionTokens\`: Token counts.
 
@@ -52,7 +52,7 @@ the response text.
     "provider": "openai",
     "model": "gpt-4o-mini",
     "systemPrompt": "You write concise 2-sentence summaries.",
-    "userPrompt": "Summarize this email:\\n\\n{{ nodes.trigger-1.output.body.text }}",
+    "userPrompt": "Summarize this email:\\n\\n{{ nodes.trigger-1.body.text }}",
     "temperature": 0.3,
     "maxTokens": 200
   },

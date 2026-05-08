@@ -47,7 +47,7 @@ trigger-1  →  llm-1 (summarize)  →  slack-1 / teams-1 / gmail-1
       "provider": "openai",
       "model": "gpt-4o-mini",
       "systemPrompt": "You write concise 2-sentence summaries.",
-      "userPrompt": "Summarize:\\n\\n{{ nodes.trigger-1.output.body.text }}",
+      "userPrompt": "Summarize:\\n\\n{{ nodes.trigger-1.body.text }}",
       "temperature": 0.3,
       "maxTokens": 200
     },
@@ -61,7 +61,7 @@ trigger-1  →  llm-1 (summarize)  →  slack-1 / teams-1 / gmail-1
       "credentialId": "",
       "action": "send_message",
       "channels": "#updates",
-      "text": "📰 *Summary*\\n{{ nodes.llm-1.output.content }}"
+      "text": "📰 *Summary*\\n{{ nodes.llm-1.content }}"
     },
     "next": []
   }

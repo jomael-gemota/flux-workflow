@@ -27,7 +27,7 @@ iteration and returns all results plus a final accumulator value.
 ### \`"forEach"\`
 Iterate over an array from an upstream node.
 - \`items\` (string): Expression resolving to an array.
-  E.g. \`"{{ nodes.gsheets-read-1.output.rows }}"\` or \`"nodes.gmail-read-1.output.messages"\`.
+  E.g. \`"{{ nodes.gsheets-read-1.rows }}"\` or \`"nodes.gmail-read-1.messages"\`.
 - Available in \`body\`: \`item\`, \`index\`, \`acc\`, \`nodes\`, \`input\`.
 
 ### \`"times"\`
@@ -69,7 +69,7 @@ Process an array in chunks.
   "name": "Sum Amounts",
   "config": {
     "mode": "forEach",
-    "items": "{{ nodes.gsheets-read-1.output.rows }}",
+    "items": "{{ nodes.gsheets-read-1.rows }}",
     "initialAcc": "0",
     "body": "return acc + Number(item.Amount || 0);"
   },
@@ -77,7 +77,7 @@ Process an array in chunks.
 }
 \`\`\`
 
-Output: \`{{ nodes.loop-1.output.acc }}\` = total, \`{{ nodes.loop-1.output.results }}\` = per-row values.
+Output: \`{{ nodes.loop-1.acc }}\` = total, \`{{ nodes.loop-1.results }}\` = per-row values.
 
 ## Example — process each email (forEach)
 \`\`\`json
@@ -87,7 +87,7 @@ Output: \`{{ nodes.loop-1.output.acc }}\` = total, \`{{ nodes.loop-1.output.resu
   "name": "Process Emails",
   "config": {
     "mode": "forEach",
-    "items": "{{ nodes.gmail-read-1.output.messages }}",
+    "items": "{{ nodes.gmail-read-1.messages }}",
     "body": "return { from: item.from, snippet: item.snippet };"
   },
   "next": []

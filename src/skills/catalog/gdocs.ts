@@ -89,8 +89,8 @@ Rename a Google Doc.
   "config": {
     "credentialId": "<resolved-from-list_credentials>",
     "action": "create",
-    "title": "Weekly Summary — {{ nodes.trigger-1.output.scheduledAt }}",
-    "content": "{{ nodes.llm-1.output.content }}"
+    "title": "Weekly Summary — {{ nodes.trigger-1.scheduledAt }}",
+    "content": "{{ nodes.llm-1.content }}"
   },
   "next": []
 }
@@ -106,7 +106,7 @@ Rename a Google Doc.
     "credentialId": "<resolved-from-list_credentials>",
     "action": "append",
     "documentId": "<resolved-from-list_gdrive_items>",
-    "text": "\\n\\n{{ nodes.llm-1.output.content }}"
+    "text": "\\n\\n{{ nodes.llm-1.content }}"
   },
   "next": []
 }

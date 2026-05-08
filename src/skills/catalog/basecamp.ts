@@ -121,9 +121,9 @@ Remove a person from the Basecamp account.
     "action": "create_todo",
     "projectId": "<resolved-from-list_basecamp_projects>",
     "todolistId": "<resolved-from-list_basecamp_todolists>",
-    "content": "Follow up: {{ nodes.llm-1.output.content }}",
+    "content": "Follow up: {{ nodes.llm-1.content }}",
     "assigneeIds": "<resolved-from-list_basecamp_people>",
-    "dueOn": "{{ nodes.trigger-1.output.body.dueDate }}"
+    "dueOn": "{{ nodes.trigger-1.body.dueDate }}"
   },
   "next": []
 }
@@ -139,7 +139,7 @@ Remove a person from the Basecamp account.
     "credentialId": "<resolved-from-list_credentials>",
     "action": "send_campfire",
     "projectId": "<resolved-from-list_basecamp_projects>",
-    "text": "✅ Deployment complete! {{ nodes.trigger-1.output.body.version }}"
+    "text": "✅ Deployment complete! {{ nodes.trigger-1.body.version }}"
   },
   "next": []
 }

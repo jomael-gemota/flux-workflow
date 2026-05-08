@@ -45,8 +45,8 @@ Sends an email from a connected Google account.
     "credentialId": "",
     "action": "send",
     "to": "team@example.com",
-    "subject": "Daily Summary — {{ nodes.trigger-1.output.scheduledAt }}",
-    "body": "{{ nodes.llm-1.output.content }}"
+    "subject": "Daily Summary — {{ nodes.trigger-1.scheduledAt }}",
+    "body": "{{ nodes.llm-1.content }}"
   },
   "next": []
 }

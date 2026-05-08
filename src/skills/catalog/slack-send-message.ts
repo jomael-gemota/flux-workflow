@@ -25,7 +25,7 @@ credential.
 - \`channels\` (string): Comma-separated channel names or ids — e.g. \`"#general,#alerts"\` or \`"C0123,C0456"\`.
   After resolving \`credentialId\`, call \`list_slack_channels\` and present
   matching channels via \`ask_user\` rather than leaving this blank.
-- \`text\` (string): Message body. Supports template expressions like \`{{ nodes.<id>.output.<field> }}\`.
+- \`text\` (string): Message body. Supports template expressions like \`{{ nodes.<id>.<field> }}\`.
 
 ## Optional config
 - \`senderType\` (\`"user" | "bot"\`): Defaults to \`"user"\`. Use \`"bot"\` to send as Fluxelle AI.
@@ -46,7 +46,7 @@ credential.
     "credentialId": "",
     "action": "send_message",
     "channels": "#alerts",
-    "text": "🚨 New urgent ticket: {{ nodes.llm-1.output.content }}"
+    "text": "🚨 New urgent ticket: {{ nodes.llm-1.content }}"
   },
   "next": []
 }

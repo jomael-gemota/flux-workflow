@@ -22,7 +22,7 @@ Builds a new output object by mapping each output key to an expression.
 ## Output
 The transform node's output IS the \`mappings\` object, with each value
 resolved against the workflow context. Reference downstream as
-\`{{ nodes.<this-id>.output.<outputFieldName> }}\`.
+\`{{ nodes.<this-id>.<outputFieldName> }}\`.
 
 ## Example — extract email + summary into a clean shape
 \`\`\`json
@@ -32,10 +32,10 @@ resolved against the workflow context. Reference downstream as
   "name": "Build Payload",
   "config": {
     "mappings": {
-      "email":     "{{ nodes.trigger-1.output.body.from }}",
-      "subject":   "{{ nodes.trigger-1.output.body.subject }}",
-      "summary":   "{{ nodes.llm-1.output.content }}",
-      "timestamp": "{{ nodes.trigger-1.output.triggeredAt }}"
+      "email":     "{{ nodes.trigger-1.body.from }}",
+      "subject":   "{{ nodes.trigger-1.body.subject }}",
+      "summary":   "{{ nodes.llm-1.content }}",
+      "timestamp": "{{ nodes.trigger-1.triggeredAt }}"
     }
   },
   "next": []

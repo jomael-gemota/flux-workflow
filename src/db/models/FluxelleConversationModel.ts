@@ -17,6 +17,8 @@ export interface ConversationMessage {
         selectedOptionIds: string[];
         freeText?:         string;
     } | null;
+    /** Ordered trace of tool calls made to produce this message. Stored as Mixed. */
+    trace?: Array<{ tool: string; label: string; detail?: string; status: 'ok' | 'error' }> | null;
     createdAt: Date;
 }
 
@@ -43,6 +45,7 @@ const ConversationMessageSchema = new Schema<ConversationMessage>(
         proposalStatus: { type: String, enum: ['applied', 'declined'], default: null },
         question:       { type: Schema.Types.Mixed, default: null },
         questionAnswer: { type: Schema.Types.Mixed, default: null },
+        trace:          { type: Schema.Types.Mixed, default: null },
         createdAt:      { type: Date, default: Date.now },
     },
     { _id: false },

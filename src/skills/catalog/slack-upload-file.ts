@@ -56,7 +56,7 @@ Uploads a file to Slack and optionally shares it to a channel or DM.
     "action": "upload_file",
     "uploadSource": "content",
     "filename": "summary.txt",
-    "fileContent": "{{ nodes.llm-1.output.content }}",
+    "fileContent": "{{ nodes.llm-1.content }}",
     "shareTarget": "channel",
     "channels": "<resolved-from-list_slack_channels>"
   },

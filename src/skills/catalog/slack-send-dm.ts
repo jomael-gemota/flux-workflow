@@ -50,7 +50,7 @@ Opens a DM conversation with one or more users and sends a message.
     "credentialId": "<resolved-from-list_credentials>",
     "action": "send_dm",
     "userIds": "<resolved-from-list_slack_users>",
-    "text": "Hey! Your report is ready: {{ nodes.llm-1.output.content }}"
+    "text": "Hey! Your report is ready: {{ nodes.llm-1.content }}"
   },
   "next": []
 }
