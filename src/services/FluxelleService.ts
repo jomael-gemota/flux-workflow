@@ -29,7 +29,6 @@ import type {
     ChatCompletionMessageParam,
     ChatCompletionTool,
 } from 'openai/resources/chat/completions';
-import AnthropicVertex from '@anthropic-ai/sdk/vertex';
 import type Anthropic from '@anthropic-ai/sdk';
 import { GoogleAuth } from 'google-auth-library';
 import { SkillRegistry } from '../skills/SkillRegistry';
@@ -186,7 +185,9 @@ export interface FluxelleDataDeps {
 
 export class FluxelleService {
     private openaiClient: OpenAI | null;
-    private vertexClient: AnthropicVertex | null;
+    private vertexAuth: GoogleAuth | null;
+    private vertexProject: string | null;
+    private vertexLocation: string;
     private deps: FluxelleDataDeps;
 
     constructor(
@@ -197,37 +198,33 @@ export class FluxelleService {
         const openaiKey = apiKey ?? process.env.OPENAI_API_KEY;
         this.openaiClient = openaiKey ? new OpenAI({ apiKey: openaiKey }) : null;
 
-        const vertexProject = process.env.VERTEX_PROJECT;
+        const vertexProject = process.env.VERTEX_PROJECT ?? null;
+        this.vertexProject  = vertexProject;
+        this.vertexLocation = process.env.VERTEX_LOCATION ?? 'us-east5';
+
         if (vertexProject) {
-            // Build a GoogleAuth instance so credentials work on Railway (inline JSON)
-            // and locally/Docker (GOOGLE_APPLICATION_CREDENTIALS file path).
-            // Priority: GCP_SERVICE_ACCOUNT_JSON (PaaS) → ADC / GOOGLE_APPLICATION_CREDENTIALS (file).
+            // Priority: GCP_SERVICE_ACCOUNT_JSON (Railway / PaaS) → ADC / GOOGLE_APPLICATION_CREDENTIALS (file).
             const gcpJson = process.env.GCP_SERVICE_ACCOUNT_JSON;
-            const googleAuth = new GoogleAuth({
+            this.vertexAuth = new GoogleAuth({
                 scopes: ['https://www.googleapis.com/auth/cloud-platform'],
                 ...(gcpJson ? { credentials: JSON.parse(gcpJson) } : {}),
             });
-            this.vertexClient = new AnthropicVertex({
-                projectId:  vertexProject,
-                region:     process.env.VERTEX_LOCATION ?? 'us-east5',
-                googleAuth,
-            });
         } else {
-            this.vertexClient = null;
+            this.vertexAuth = null;
         }
 
         this.deps = deps;
     }
 
     isConfigured(): boolean {
-        return this.openaiClient !== null || this.vertexClient !== null;
+        return this.openaiClient !== null || this.vertexAuth !== null;
     }
 
     /** Returns the short model IDs that are actually configured and available. */
     availableModels(): string[] {
         const models: string[] = [];
         if (this.openaiClient) models.push('gpt-5.5');
-        if (this.vertexClient) models.push(CLAUDE_SHORT_ID);
+        if (this.vertexAuth)   models.push(CLAUDE_SHORT_ID);
         return models;
     }
 
@@ -239,7 +236,7 @@ export class FluxelleService {
         }
 
         if (isClaudeModel(req.model)) {
-            if (!this.vertexClient) {
+            if (!this.vertexAuth) {
                 throw new Error(
                     'Claude Sonnet 4.6 is not configured. Set VERTEX_PROJECT and VERTEX_LOCATION in your environment.'
                 );
@@ -289,11 +286,13 @@ export class FluxelleService {
             }
 
             for (const call of toolCalls) {
+                // OpenAI SDK v6 union: only function tool calls carry `.function`
+                if (call.type !== 'function') continue;
                 const normalized: NormalizedToolCall = {
                     id:   call.id,
-                    name: call.function?.name ?? '',
+                    name: call.function.name ?? '',
                     args: (() => {
-                        try { return JSON.parse(call.function?.arguments ?? '{}'); } catch { return {}; }
+                        try { return JSON.parse(call.function.arguments ?? '{}'); } catch { return {}; }
                     })(),
                 };
 
@@ -329,7 +328,6 @@ export class FluxelleService {
     }
 
     private async chatWithAnthropic(req: FluxelleChatRequest): Promise<FluxelleChatResponse> {
-        const client = this.vertexClient!;
         const { system, messages } = this.buildAnthropicMessages(req);
         const tools      = this.buildAnthropicTools();
         const skillsUsed: string[] = [];
@@ -338,24 +336,19 @@ export class FluxelleService {
         let question: FluxelleQuestion | undefined;
 
         for (let hop = 0; hop < MAX_TOOL_HOPS; hop++) {
-            const response = await client.messages.create({
-                model:      CLAUDE_VERTEX_MODEL,
-                system,
-                max_tokens: 8096,
-                messages,
-                tools,
-            });
+            const response = await this.callVertexAPI({ system, messages, tools, max_tokens: 8096 });
 
             // Push the full assistant content block array into the thread.
-            messages.push({ role: 'assistant', content: response.content });
+            messages.push({ role: 'assistant', content: response.content as Anthropic.ContentBlockParam[] });
 
-            const toolUseBlocks = response.content.filter(
-                (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use'
+            const content = response.content as Anthropic.ContentBlock[];
+            const toolUseBlocks = content.filter(
+                (b: Anthropic.ContentBlock): b is Anthropic.ToolUseBlock => b.type === 'tool_use'
             );
 
             if (toolUseBlocks.length === 0) {
-                const textBlock = response.content.find(
-                    (b): b is Anthropic.TextBlock => b.type === 'text'
+                const textBlock = content.find(
+                    (b: Anthropic.ContentBlock): b is Anthropic.TextBlock => b.type === 'text'
                 );
                 return {
                     content: textBlock?.text ?? '',
@@ -394,8 +387,8 @@ export class FluxelleService {
                 if (result.terminal && !terminalResult) {
                     const fallback =
                         typeof result.payload.message === 'string' ? result.payload.message : '';
-                    const textBlock = response.content.find(
-                        (b): b is Anthropic.TextBlock => b.type === 'text'
+                    const textBlock = content.find(
+                        (b: Anthropic.ContentBlock): b is Anthropic.TextBlock => b.type === 'text'
                     );
                     terminalResult = {
                         content: textBlock?.text ?? fallback,
@@ -414,6 +407,46 @@ export class FluxelleService {
             content: "I'm having trouble settling on a final plan. Could you give me a bit more detail about what you want to build?",
             proposal, question, skillsUsed, trace,
         };
+    }
+
+    /**
+     * Calls the Vertex AI rawPredict endpoint for Claude.
+     * Uses google-auth-library for auth — works with GOOGLE_APPLICATION_CREDENTIALS (file)
+     * and GCP_SERVICE_ACCOUNT_JSON (inline JSON string, for Railway / PaaS).
+     */
+    private async callVertexAPI(body: {
+        system: string;
+        messages: Anthropic.MessageParam[];
+        tools: Anthropic.Tool[];
+        max_tokens: number;
+    }): Promise<{ content: unknown[]; stop_reason: string }> {
+        const authClient = await this.vertexAuth!.getClient();
+        const tokenResponse = await authClient.getAccessToken();
+        const token = tokenResponse.token;
+        if (!token) throw new Error('Failed to obtain GCP access token for Vertex AI.');
+
+        // The model segment of the URL is just the short name, e.g. "claude-sonnet-4-6"
+        const modelSegment = CLAUDE_VERTEX_MODEL.split('/').pop()!;
+        const url = `https://${this.vertexLocation}-aiplatform.googleapis.com/v1/projects/${this.vertexProject}/locations/${this.vertexLocation}/publishers/anthropic/models/${modelSegment}:rawPredict`;
+
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+                Authorization:  `Bearer ${token}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                anthropic_version: 'vertex-2023-10-16',
+                ...body,
+            }),
+        });
+
+        if (!res.ok) {
+            const text = await res.text();
+            throw new Error(`Vertex AI error ${res.status}: ${text}`);
+        }
+
+        return res.json() as Promise<{ content: unknown[]; stop_reason: string }>;
     }
 
     // ── Tool execution ────────────────────────────────────────────────────────
@@ -1141,11 +1174,14 @@ export class FluxelleService {
     }
 
     private buildAnthropicTools(): Anthropic.Tool[] {
-        return this.buildTools().map((t) => ({
-            name:         t.function.name,
-            description:  t.function.description ?? '',
-            input_schema: (t.function.parameters ?? { type: 'object', properties: {} }) as Anthropic.Tool['input_schema'],
-        }));
+        // OpenAI SDK v6: ChatCompletionTool is a union (function | custom). Only function tools have `.function`.
+        return this.buildTools()
+            .filter((t): t is Extract<ChatCompletionTool, { type: 'function' }> => t.type === 'function')
+            .map((t) => ({
+                name:         t.function.name,
+                description:  t.function.description ?? '',
+                input_schema: (t.function.parameters ?? { type: 'object', properties: {} }) as Anthropic.Tool['input_schema'],
+            }));
     }
 
     private buildTools(): ChatCompletionTool[] {
