@@ -167,7 +167,10 @@ export function FluxellePanel() {
   const [input, setInput]       = useState('');
   /** conversationId of the currently active (auto-saved) conversation. */
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
-  const [selectedModel, setSelectedModel] = useState<FluxelleModelId>('gpt-5.5');
+  const [selectedModel, setSelectedModel] = useState<FluxelleModelId>(() => {
+    const stored = localStorage.getItem('fluxelle:model');
+    return (stored === 'gpt-5.5' || stored === 'claude-sonnet-4-6') ? stored : 'gpt-5.5';
+  });
   const scrollRef    = useRef<HTMLDivElement>(null);
   const textareaRef  = useRef<HTMLTextAreaElement>(null);
   /** Guard to only auto-load the last conversation once on mount. */
@@ -184,7 +187,12 @@ export function FluxellePanel() {
     el.scrollTop = el.scrollHeight;
   }, [messages, chat.isPending]);
 
-  // Default selectedModel to first available when status loads
+  // Persist model choice to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('fluxelle:model', selectedModel);
+  }, [selectedModel]);
+
+  // If the stored model isn't available on this server, fall back to the first that is
   useEffect(() => {
     const available = status.data?.availableModels;
     if (!available?.length) return;
