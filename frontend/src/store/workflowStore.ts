@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { Node, Edge } from '@xyflow/react';
 import type { WorkflowDefinition } from '../types/workflow';
 import type { WorkflowProposal } from '../types/fluxelle';
+import { layoutNewNodes } from '../utils/nodeUtils';
 
 export interface CanvasNodeData extends Record<string, unknown> {
   label: string;
@@ -331,20 +332,15 @@ export const useWorkflowStore = create<WorkflowStore>((set) => ({
         };
       });
 
-      // Compute a starting position for newly added nodes — laid out to the
-      // right of the existing canvas content so they don't overlap.
       const workflowNodes = updatedNodes.filter((n) => n.type !== 'stickyNote');
-      const maxX = workflowNodes.length === 0
-        ? 0
-        : Math.max(...workflowNodes.map((n) => n.position.x));
-      let nextX = workflowNodes.length === 0 ? 80 : maxX + 280;
-
       const adds = (proposal.adds ?? []).filter((a) => !deleteSet.has(a.id));
 
+      // ── Phase 1: ID remapping ───────────────────────────────────────────────
       // Fluxelle's ids may collide with existing ones; prefix-rename in that case.
       const existingIds = new Set(updatedNodes.map((n) => n.id));
       const idRemap = new Map<string, string>();
-      const newCanvasNodes: CanvasNode[] = adds.map((a, idx) => {
+      const finalAdds: Array<{ add: typeof adds[number]; finalId: string }> = [];
+      for (const a of adds) {
         let id = a.id;
         if (existingIds.has(id)) {
           let suffix = 2;
@@ -353,41 +349,57 @@ export const useWorkflowStore = create<WorkflowStore>((set) => ({
           idRemap.set(a.id, id);
         }
         existingIds.add(id);
+        finalAdds.push({ add: a, finalId: id });
+      }
+      const resolveId = (id: string) => idRemap.get(id) ?? id;
 
-        const position = a.position ?? { x: nextX, y: 80 + idx * 140 };
-        if (!a.position) nextX += 280;
+      // ── Phase 2: collect ALL edges in the merged graph using final IDs ──────
+      // We need the full edge set to compute graph-aware layout positions
+      // (so a Switch's case branches fan out from the Switch, etc.).
+      const survivingRawEdges = state.edges.filter(
+        (e) => !deleteSet.has(e.source) && !deleteSet.has(e.target),
+      );
+      const proposedRawEdges = (proposal.edges ?? []).map((e) => ({
+        from: resolveId(e.from),
+        to:   resolveId(e.to),
+      }));
+      const layoutEdges = [
+        ...survivingRawEdges.map((e) => ({ from: e.source, to: e.target })),
+        ...proposedRawEdges,
+      ];
 
+      // ── Phase 3: graph-aware "growing roots" layout for new nodes ───────────
+      const layoutPositions = layoutNewNodes(
+        finalAdds.map((f) => f.finalId),
+        layoutEdges,
+        workflowNodes,
+      );
+
+      // ── Phase 4: build the new CanvasNodes with computed positions ──────────
+      const newCanvasNodes: CanvasNode[] = finalAdds.map(({ add, finalId }) => {
+        const position =
+          add.position ?? layoutPositions.get(finalId) ?? { x: 80, y: 80 };
         return {
-          id,
+          id: finalId,
           type: 'workflowNode',
           position,
           data: {
-            label:    a.name,
-            nodeType: a.type,
-            config:   a.config ?? {},
-            isEntry:  a.type === 'trigger',
+            label:    add.name,
+            nodeType: add.type,
+            config:   add.config ?? {},
+            isEntry:  add.type === 'trigger',
           },
         } as CanvasNode;
       });
 
       const mergedNodes = [...updatedNodes, ...newCanvasNodes];
 
-      // Helper: resolve an id through the remap so proposed edges that refer
-      // to a renamed new node still hit the right target.
-      const resolveId = (id: string) => idRemap.get(id) ?? id;
-
-      // Drop edges touching deleted nodes; rewrite ids through the remap.
-      const survivingEdges = state.edges
-        .filter(
-          (e) =>
-            !deleteSet.has(e.source) &&
-            !deleteSet.has(e.target),
-        )
-        .map((e) => ({
-          ...e,
-          source: resolveId(e.source),
-          target: resolveId(e.target),
-        }));
+      // Drop edges touching deleted nodes (existing edges' ids are already final).
+      const survivingEdges = survivingRawEdges.map((e) => ({
+        ...e,
+        source: resolveId(e.source),
+        target: resolveId(e.target),
+      }));
 
       const validIds = new Set(mergedNodes.map((n) => n.id));
       const proposedEdges: CanvasEdge[] = (proposal.edges ?? [])
