@@ -14,13 +14,20 @@ const ACTION_LABELS: Record<string, string> = {
   list_channels: 'List Channels',
 };
 
+/** Safely coerce a config value that may be a string, string array, or anything else. */
+function coerceStr(v: unknown): string {
+  if (!v) return '';
+  if (Array.isArray(v)) return v.map(String).join(',');
+  return String(v);
+}
+
 export function SlackNodeWidget({ id, data, selected }: NodeProps<SlackNode>) {
   const cfg = data.config as {
     action?: string;
-    channel?: string;
-    channels?: string;
-    userId?: string;
-    userIds?: string;
+    channel?: unknown;
+    channels?: unknown;
+    userId?: unknown;
+    userIds?: unknown;
     readSource?: string;
     channelFilter?: string;
     threadTs?: string;
@@ -28,8 +35,8 @@ export function SlackNodeWidget({ id, data, selected }: NodeProps<SlackNode>) {
 
   const actionLabel = cfg.action ? (ACTION_LABELS[cfg.action] ?? cfg.action) : null;
 
-  const channelTarget = cfg.channels || cfg.channel;
-  const userTarget    = cfg.userIds  || cfg.userId;
+  const channelTarget = coerceStr(cfg.channels || cfg.channel);
+  const userTarget    = coerceStr(cfg.userIds  || cfg.userId);
 
   const subtitle = (() => {
     if (!cfg.action) return null;

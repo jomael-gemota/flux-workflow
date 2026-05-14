@@ -255,7 +255,9 @@ type ExprSegment =
   | { kind: 'expr'; nodeType: string; nodeName: string; field: string };
 
 function parseExprSegments(value: string, nodes: CanvasNode[]): ExprSegment[] {
-  const parts = value.split(/(\{\{nodes\.[^}]+\}\})/g);
+  // Guard: AI proposals may supply non-string config values; coerce defensively.
+  const safeValue = typeof value === 'string' ? value : String(value ?? '');
+  const parts = safeValue.split(/(\{\{nodes\.[^}]+\}\})/g);
   return parts.flatMap((part): ExprSegment[] => {
     const m = part.match(/^\{\{nodes\.([^.}]+)\.([^}]+)\}\}$/);
     if (m) {
@@ -394,8 +396,10 @@ function ExprToken({ nodeType, nodeName, field }: { nodeType: string; nodeName: 
 }
 
 function DisplayValue({ value, nodes, placeholder }: { value: string; nodes: CanvasNode[]; placeholder?: string }) {
-  if (!value) return <span className="text-slate-400 dark:text-slate-500 text-xs italic">{placeholder ?? ''}</span>;
-  const segs = parseExprSegments(value, nodes);
+  // Guard: coerce non-string values (e.g. numbers from AI proposals) before parsing.
+  const strValue = typeof value === 'string' ? value : (value != null ? String(value) : '');
+  if (!strValue) return <span className="text-slate-400 dark:text-slate-500 text-xs italic">{placeholder ?? ''}</span>;
+  const segs = parseExprSegments(strValue, nodes);
   return (
     <>
       {segs.map((seg, i) =>
