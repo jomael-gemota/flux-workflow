@@ -234,7 +234,7 @@ async function bootstrap() {
         creditService,
     );
     const conversationRepo = new FluxelleConversationRepository();
-    await fastify.register(fluxelleRoutes, { prefix: '/api', fluxelle: fluxelleService, skills: skillRegistry, conversations: conversationRepo });
+    await fastify.register(fluxelleRoutes, { prefix: '/api', fluxelle: fluxelleService, skills: skillRegistry, conversations: conversationRepo, creditService });
     await fastify.register(creditRoutes, { prefix: '/api', creditService });
     // Auth & admin (no prefix-level auth guard — each route manages its own)
     await fastify.register(authRoutes,  { prefix: '/api', userAuth });

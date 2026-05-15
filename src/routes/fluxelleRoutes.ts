@@ -3,10 +3,11 @@ import { z } from 'zod';
 import { apiKeyAuth } from '../middleware/auth';
 import { toJsonSchema } from '../validation/toJsonSchema';
 import { FluxelleService } from '../services/FluxelleService';
-import type { FluxelleChatRequest } from '../services/FluxelleService';
+import type { FluxelleChatRequest, FluxelleChatResponse } from '../services/FluxelleService';
 import { SkillRegistry } from '../skills/SkillRegistry';
 import { BadRequestError, NotFoundError } from '../errors/ApiError';
 import { FluxelleConversationRepository } from '../repositories/FluxelleConversationRepository';
+import type { CreditService, CreditSnapshot } from '../services/CreditService';
 
 /** Extracts the authenticated user's MongoDB id from a JWT-authenticated request. */
 function getRequestUserId(request: FastifyRequest): string | undefined {
@@ -98,9 +99,10 @@ export async function fluxelleRoutes(
         fluxelle:      FluxelleService;
         skills:        SkillRegistry;
         conversations: FluxelleConversationRepository;
+        creditService: CreditService;
     },
 ): Promise<void> {
-    const { fluxelle, skills, conversations } = options;
+    const { fluxelle, skills, conversations, creditService } = options;
 
     /** Health / configuration probe — used by the UI to show a setup prompt. */
     fastify.get(
@@ -131,6 +133,17 @@ export async function fluxelleRoutes(
                 throw BadRequestError(
                     'Fluxelle is not configured on the server. Set OPENAI_API_KEY and/or VERTEX_PROJECT in your environment.',
                 );
+            }
+
+            // Pre-flight credit check — short-circuit with a polite reply when
+            // the user is out of credits, instead of calling the LLM provider.
+            // Returns a normal 200 so the frontend renders it as a Fluxelle
+            // bubble (not a red error).
+            if (userId) {
+                const snapshot = await creditService.getSnapshot(userId);
+                if (snapshot.remaining <= 0) {
+                    return reply.code(200).send(buildLimitReachedResponse(snapshot, body.model));
+                }
             }
 
             try {
@@ -264,4 +277,41 @@ export async function fluxelleRoutes(
             return skill;
         },
     );
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Builds a Fluxelle-shaped response that politely tells the user they've
+ * exhausted their daily credit allowance, including a human-readable
+ * "resets in Xh Ym" hint based on the snapshot's `resetAt`.
+ *
+ * Returned with HTTP 200 so the frontend renders it as a normal assistant
+ * bubble (not the red `❌` error bubble) — no LLM call is made.
+ */
+function buildLimitReachedResponse(
+    snap: CreditSnapshot,
+    requestedModel: string | undefined,
+): FluxelleChatResponse {
+    const msLeft     = Math.max(0, new Date(snap.resetAt).getTime() - Date.now());
+    const totalMins  = Math.floor(msLeft / 60_000);
+    const hours      = Math.floor(totalMins / 60);
+    const mins       = totalMins % 60;
+    const resetLabel = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+
+    return {
+        content:
+            `You've used all ${snap.dailyLimit.toLocaleString()} of your Fluxelle credits ` +
+            `for today. Your allowance resets in ${resetLabel} — I'll be ready to help ` +
+            `again then. In the meantime, anything you've already built is safe on the canvas.`,
+        skillsUsed: [],
+        trace:      [],
+        usage: {
+            promptTokens:     0,
+            completionTokens: 0,
+            totalTokens:      0,
+            creditsConsumed:  0,
+            model:            requestedModel ?? 'system',
+        },
+    };
 }

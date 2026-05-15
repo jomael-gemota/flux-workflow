@@ -940,7 +940,7 @@ function MessageBubble({
             onDecline={onDecline}
           />
         )}
-        {message.usage && <UsagePill usage={message.usage} />}
+        {message.usage && message.usage.totalTokens > 0 && <UsagePill usage={message.usage} />}
       </div>
     </div>
   );
