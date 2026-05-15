@@ -515,10 +515,12 @@ export class FluxelleService {
         const res = await fetch(url, {
             method: 'POST',
             headers: {
-                Authorization:    `Bearer ${token}`,
-                'Content-Type':   'application/json',
-                // Enables Anthropic prompt caching on the Vertex passthrough API.
-                'anthropic-beta': 'prompt-caching-2024-07-31',
+                Authorization:  `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                // Note: the `anthropic-beta` header is NOT forwarded by Vertex AI's
+                // rawPredict endpoint. Prompt caching on Vertex works via the
+                // `cache_control` blocks in the system array (see buildAnthropicMessages)
+                // without requiring an explicit beta opt-in header.
             },
             body: JSON.stringify({
                 anthropic_version: 'vertex-2023-10-16',
