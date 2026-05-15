@@ -2,6 +2,14 @@ import { Schema, model, Document } from 'mongoose';
 
 export type ProposalStatus = 'applied' | 'declined';
 
+export interface ConversationMessageUsage {
+    promptTokens:     number;
+    completionTokens: number;
+    totalTokens:      number;
+    creditsConsumed:  number;
+    model:            string;
+}
+
 export interface ConversationMessage {
     role:      'user' | 'assistant';
     content:   string;
@@ -19,6 +27,8 @@ export interface ConversationMessage {
     } | null;
     /** Ordered trace of tool calls made to produce this message. Stored as Mixed. */
     trace?: Array<{ tool: string; label: string; detail?: string; status: 'ok' | 'error' }> | null;
+    /** Token and credit consumption for this assistant turn. Only set on assistant messages. */
+    usage?: ConversationMessageUsage | null;
     createdAt: Date;
 }
 
@@ -46,6 +56,7 @@ const ConversationMessageSchema = new Schema<ConversationMessage>(
         question:       { type: Schema.Types.Mixed, default: null },
         questionAnswer: { type: Schema.Types.Mixed, default: null },
         trace:          { type: Schema.Types.Mixed, default: null },
+        usage:          { type: Schema.Types.Mixed, default: null },
         createdAt:      { type: Date, default: Date.now },
     },
     { _id: false },
