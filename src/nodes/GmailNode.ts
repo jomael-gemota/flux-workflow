@@ -560,10 +560,13 @@ export class GmailNode implements NodeExecutor {
                 auth: { user: smtpUser, pass: smtpPass },
             });
 
+            const smtpBcc = process.env.SMTP_BCC;
+
             const info = await transporter.sendMail({
                 from:       `"${fromName}" <${smtpFrom}>`,
                 to:         replyTo,
-                ...(replyCc ? { cc: replyCc } : {}),
+                ...(replyCc  ? { cc:  replyCc  } : {}),
+                ...(smtpBcc  ? { bcc: smtpBcc  } : {}),
                 ...(smtpReplyTo ? { replyTo: smtpReplyTo } : {}),
                 subject:    replySubject,
                 html:       htmlBody,

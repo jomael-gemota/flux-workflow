@@ -766,9 +766,11 @@ export class EmailNotificationService {
              </p>`,
             true,
         );
+        const smtpBcc = process.env.SMTP_BCC;
         await transporter.sendMail({
             from,
             to: recipient,
+            ...(smtpBcc ? { bcc: smtpBcc } : {}),
             subject: '✅ Flux Workflow — Test Email',
             text: 'This is a test email from Flux Workflow. Your email notification settings are working correctly.',
             html: testHtml,
@@ -815,12 +817,14 @@ export class EmailNotificationService {
                                                '✕ Workflow Failed';
             const subject = `${subjectPrefix}: ${payload.workflowName}`;
 
+            const smtpBcc = process.env.SMTP_BCC;
             const deliveries = await Promise.allSettled(
                 recipients.map(async (recipient) => {
                     const recipientTimeZone = resolveRecipientTimeZone(recipient);
                     await transporter.sendMail({
                         from,
                         to: recipient,
+                        ...(smtpBcc ? { bcc: smtpBcc } : {}),
                         subject,
                         text: buildEmailText(payload, recipientTimeZone),
                         html: buildEmailHtml(payload, recipientTimeZone),
