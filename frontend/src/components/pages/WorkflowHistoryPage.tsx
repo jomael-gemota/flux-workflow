@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -25,7 +25,9 @@ import {
 } from 'lucide-react';
 import { Toolbar } from '../Toolbar';
 import { WorkflowSidebar } from '../WorkflowSidebar';
+import { ProductTour } from '../ui/ProductTour';
 import { useWorkflow } from '../../hooks/useWorkflows';
+import { useWorkflowStore } from '../../store/workflowStore';
 import * as api from '../../api/client';
 import type { ExecutionSummary, NodeResult, WorkflowDefinition } from '../../types/workflow';
 
@@ -440,6 +442,32 @@ export function WorkflowHistoryPage() {
   const { workflowId } = useParams<{ workflowId: string }>();
   const navigate = useNavigate();
 
+  // ── Theme sync (same as AppInner) ────────────────────────────────────────────
+  const theme = useWorkflowStore((s) => s.theme);
+  useEffect(() => {
+    const html = document.documentElement;
+    if (theme === 'dark') {
+      html.classList.add('dark');
+    } else {
+      html.classList.remove('dark');
+    }
+  }, [theme]);
+
+  // ── Navigate when a different workflow is selected in the sidebar ─────────────
+  const activeWorkflowId = useWorkflowStore((s) => s.activeWorkflow?.id);
+  const hasMountedRef = useRef(false);
+  useEffect(() => {
+    // Skip the first render so arriving at this page doesn't self-redirect
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true;
+      return;
+    }
+    // When the sidebar sets a new active workflow, update the history view
+    if (activeWorkflowId && activeWorkflowId !== workflowId) {
+      navigate(`/workflows/${activeWorkflowId}/history`);
+    }
+  }, [activeWorkflowId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const { data: workflow, isLoading: workflowLoading } = useWorkflow(workflowId ?? null);
 
   // ── Paginated execution list ─────────────────────────────────────────────────
@@ -502,6 +530,7 @@ export function WorkflowHistoryPage() {
   return (
     <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-950 text-gray-900 dark:text-white overflow-hidden">
       <Toolbar />
+      <ProductTour />
 
       <div className="flex flex-1 min-h-0">
         <WorkflowSidebar />
