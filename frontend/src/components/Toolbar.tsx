@@ -1,7 +1,8 @@
-import { LogOut, KeyRound, Sun, Moon, Shield, Clock, ChevronDown, HelpCircle, Eye } from 'lucide-react';
+import { LogOut, KeyRound, Sun, Moon, Shield, Clock, ChevronDown, HelpCircle, Eye, History } from 'lucide-react';
 import { useWorkflowStore } from '../store/workflowStore';
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router-dom';
 import { CredentialsModal } from './ui/CredentialsModal';
 import { useAuthStore } from '../store/authStore';
 import { useTourStore } from '../store/tourStore';
@@ -22,6 +23,7 @@ export function Toolbar() {
 
   const { user, logout } = useAuthStore();
   const { start: startTour } = useTourStore();
+  const navigate = useNavigate();
   const isOwner = user?.role === 'owner';
 
   // Pending user count badge — only fetched for owners, every 60 s
@@ -121,6 +123,24 @@ export function Toolbar() {
         >
           <KeyRound className="w-3.5 h-3.5" />
           Credentials
+        </button>
+
+        <button
+          onClick={() => {
+            if (activeWorkflow && !isNew) {
+              navigate(`/workflows/${activeWorkflow.id}/history`);
+            }
+          }}
+          disabled={!activeWorkflow || isNew}
+          title={activeWorkflow && !isNew ? `View execution history for ${activeWorkflow.name}` : 'Select a saved workflow to view history'}
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+            activeWorkflow && !isNew
+              ? 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-black/5 dark:hover:bg-white/10'
+              : 'text-slate-300 dark:text-slate-600 cursor-not-allowed'
+          }`}
+        >
+          <History className="w-3.5 h-3.5" />
+          History
         </button>
 
         <div className="w-px h-5 glass-divider" />

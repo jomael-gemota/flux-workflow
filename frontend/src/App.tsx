@@ -6,6 +6,7 @@ import { NodeConfigPanel } from './components/panels/NodeConfigPanel';
 import { ExecutionLogPanel } from './components/panels/ExecutionLogPanel';
 import { FluxellePanel } from './components/panels/FluxellePanel';
 import { ExecutionReplayPage } from './components/pages/ExecutionReplayPage';
+import { WorkflowHistoryPage } from './components/pages/WorkflowHistoryPage';
 import { useExecutionOverlay } from './hooks/useExecutionOverlay';
 import { useWorkflowStore } from './store/workflowStore';
 import { useWorkflow } from './hooks/useWorkflows';
@@ -51,6 +52,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/executions/:executionId/replay" element={<ExecutionReplayPage />} />
+      <Route path="/workflows/:workflowId/history" element={<WorkflowHistoryPage />} />
       <Route path="/workflows/:workflowId" element={<WorkflowByIdRoute />} />
       <Route path="*" element={<AppInner />} />
     </Routes>
