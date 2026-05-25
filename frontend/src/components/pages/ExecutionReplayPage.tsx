@@ -389,12 +389,11 @@ export function ExecutionReplayPage() {
             fitViewOptions={{ padding: 0.25 }}
             colorMode={isDark ? 'dark' : 'light'}
           >
-            {/* Gridlines background — Lines variant for a visible grid */}
             <Background
-              variant={BackgroundVariant.Lines}
-              gap={32}
-              lineWidth={1}
-              color={isDark ? '#1e293b' : '#cbd5e1'}
+              variant={BackgroundVariant.Dots}
+              gap={20}
+              size={1.8}
+              color={isDark ? '#475569' : '#94a3b8'}
               style={{ opacity: 1 }}
             />
             <Controls showInteractive={false} />
