@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ReactFlow,
   Background,
   Controls,
+  Panel,
   BackgroundVariant,
   type NodeChange,
 } from '@xyflow/react';
@@ -16,6 +17,9 @@ import {
   AlertTriangle,
   Clock,
   Loader2,
+  Hash,
+  Workflow,
+  GitBranch,
 } from 'lucide-react';
 import { useExecution } from '../../hooks/useExecutions';
 import { useWorkflow } from '../../hooks/useWorkflows';
@@ -88,6 +92,45 @@ function StatusChip({ status }: { status: ExecStatus }) {
   );
 }
 
+// ── Reference IDs overlay (shown inside the canvas) ───────────────────────────
+
+interface RefIdsOverlayProps {
+  workflowId: string;
+  executionId: string;
+  version: number;
+}
+
+function RefIdsOverlay({ workflowId, executionId, version }: RefIdsOverlayProps) {
+  return (
+    <div className="bg-white/90 dark:bg-[#1e1e2e]/90 backdrop-blur-sm border border-slate-200 dark:border-slate-700/70 rounded-xl shadow-md px-4 py-3 text-[11px] space-y-2 min-w-[220px]">
+      <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">
+        Reference IDs
+      </p>
+      <div className="flex items-start gap-2">
+        <Workflow className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+        <div className="min-w-0">
+          <p className="text-[9px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Workflow ID</p>
+          <p className="font-mono text-slate-600 dark:text-slate-300 break-all leading-relaxed">{workflowId}</p>
+        </div>
+      </div>
+      <div className="flex items-start gap-2">
+        <Hash className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+        <div className="min-w-0">
+          <p className="text-[9px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Execution ID</p>
+          <p className="font-mono text-slate-600 dark:text-slate-300 break-all leading-relaxed">{executionId}</p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <GitBranch className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+        <div>
+          <p className="text-[9px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Version</p>
+          <p className="font-mono text-slate-600 dark:text-slate-300">v{version}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export function ExecutionReplayPage() {
@@ -108,8 +151,10 @@ export function ExecutionReplayPage() {
   const clearExecutionStatuses = useWorkflowStore((s) => s.clearExecutionStatuses);
   const setIsInteractive = useWorkflowStore((s) => s.setIsInteractive);
 
+  // Start with no selection; will be auto-set to first node once data loads
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [isReplaying, setIsReplaying] = useState(false);
+  const autoSelectedRef = useRef(false);
 
   const isActive = execution?.status === 'pending' || execution?.status === 'running';
 
@@ -145,6 +190,26 @@ export function ExecutionReplayPage() {
     return deserialize(workflow);
   }, [workflow]);
 
+  // Auto-select the first workflow node once nodes are available (runs once)
+  useEffect(() => {
+    if (autoSelectedRef.current || rawNodes.length === 0) return;
+
+    // Prefer the entry node; fall back to the first non-sticky node
+    const entryId = workflow?.entryNodeId;
+    const firstNode = rawNodes.find(
+      (n) => n.type !== 'stickyNote' && (n.id === entryId || true)
+    );
+    // Find the actual entry node first, then any workflow node
+    const entryNode = rawNodes.find((n) => n.type !== 'stickyNote' && n.id === entryId);
+    const firstWorkflowNode = rawNodes.find((n) => n.type !== 'stickyNote');
+    const toSelect = entryNode ?? firstWorkflowNode ?? firstNode;
+
+    if (toSelect) {
+      setSelectedNodeId(toSelect.id);
+      autoSelectedRef.current = true;
+    }
+  }, [rawNodes, workflow?.entryNodeId]);
+
   // Apply edge statuses derived from node statuses
   const edges = useMemo<CanvasEdge[]>(() => {
     return rawEdges.map((edge) => ({
@@ -162,7 +227,7 @@ export function ExecutionReplayPage() {
     }));
   }, [rawEdges, nodeStatuses, isActive]);
 
-  // Make nodes non-selectable-for-editing but still clickable for config view
+  // Non-draggable nodes
   const nodes = useMemo<CanvasNode[]>(() => {
     return rawNodes.map((n) => ({ ...n, draggable: false }));
   }, [rawNodes]);
@@ -179,16 +244,15 @@ export function ExecutionReplayPage() {
   const selectedNode = nodes.find((n) => n.id === selectedNodeId) ?? null;
   const selectedResult = selectedNodeId ? resultByNodeId[selectedNodeId] : undefined;
 
+  // Clicking a node switches the panel view; panel is always visible
   const handleNodeClick = useCallback((_: React.MouseEvent, node: CanvasNode) => {
     if (node.type === 'stickyNote') return;
     setSelectedNodeId(node.id);
   }, []);
 
   const handleNodesChange = useCallback((changes: NodeChange[]) => {
-    // Accept only selection changes so React Flow internal selection tracking works;
-    // block position/dimension changes because canvas is read-only.
-    const allowed = changes.filter((c) => c.type === 'select' || c.type === 'dimensions');
-    if (allowed.length === 0) return;
+    // Only allow dimension/selection tracking — no position/remove changes (read-only)
+    void changes;
   }, []);
 
   async function handleReplay() {
@@ -196,6 +260,7 @@ export function ExecutionReplayPage() {
     setIsReplaying(true);
     try {
       const newExec = await api.replayExecution(executionId);
+      autoSelectedRef.current = false; // allow re-auto-select on the new execution
       navigate(`/executions/${newExec.executionId}/replay`);
     } catch (err) {
       console.error('Replay failed:', err);
@@ -256,6 +321,9 @@ export function ExecutionReplayPage() {
             {workflow?.name ?? 'Workflow'}
           </p>
           <StatusChip status={execution.status as ExecStatus} />
+          <span className="hidden sm:inline text-[11px] text-slate-400 dark:text-slate-500 font-mono">
+            v{execution.workflowVersion ?? workflow?.version ?? 1}
+          </span>
         </div>
 
         {/* Metadata */}
@@ -264,10 +332,8 @@ export function ExecutionReplayPage() {
             <Clock className="w-3.5 h-3.5" />
             {formatTimestamp(execution.startedAt)}
           </span>
-          {execution.completedAt && execution.status !== 'pending' && execution.status !== 'running' && (
-            <span>
-              {formatDurationMs(execution.startedAt, execution.completedAt)}
-            </span>
+          {execution.completedAt && !isActive && (
+            <span>{formatDurationMs(execution.startedAt, execution.completedAt)}</span>
           )}
           {execution.triggeredBy && (
             <span className="capitalize">{execution.triggeredBy}</span>
@@ -292,7 +358,21 @@ export function ExecutionReplayPage() {
       {/* ── Body ──────────────────────────────────────────────────────────────── */}
       <div className="flex-1 flex min-h-0">
 
-        {/* Canvas */}
+        {/* Left execution snapshot panel — always visible, not closable, 640px wide */}
+        <div className="w-[640px] shrink-0 border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-[#1e1e2e] flex flex-col overflow-hidden">
+          {selectedNode ? (
+            <ReplayNodeConfigPanel
+              node={selectedNode}
+              result={selectedResult}
+            />
+          ) : (
+            <div className="flex-1 flex items-center justify-center">
+              <p className="text-xs text-slate-400">Select a node on the canvas to view its details</p>
+            </div>
+          )}
+        </div>
+
+        {/* Canvas — fills remaining space */}
         <div className="flex-1 min-w-0">
           <ReactFlow
             nodes={nodes}
@@ -309,27 +389,26 @@ export function ExecutionReplayPage() {
             fitViewOptions={{ padding: 0.25 }}
             colorMode={isDark ? 'dark' : 'light'}
           >
+            {/* Gridlines background — Lines variant for a visible grid */}
             <Background
-              variant={BackgroundVariant.Dots}
-              gap={20}
-              size={1.2}
-              color={isDark ? '#334155' : '#94a3b8'}
-              style={{ opacity: 0.5 }}
+              variant={BackgroundVariant.Lines}
+              gap={32}
+              lineWidth={1}
+              color={isDark ? '#1e293b' : '#cbd5e1'}
+              style={{ opacity: 1 }}
             />
             <Controls showInteractive={false} />
+
+            {/* Reference IDs overlay — bottom-left of canvas */}
+            <Panel position="bottom-left">
+              <RefIdsOverlay
+                workflowId={execution.workflowId}
+                executionId={execution.executionId}
+                version={execution.workflowVersion ?? workflow?.version ?? 1}
+              />
+            </Panel>
           </ReactFlow>
         </div>
-
-        {/* Right config panel */}
-        {selectedNode && (
-          <div className="w-80 shrink-0 border-l border-slate-200 dark:border-slate-700 bg-white dark:bg-[#1e1e2e]">
-            <ReplayNodeConfigPanel
-              node={selectedNode}
-              result={selectedResult}
-              onClose={() => setSelectedNodeId(null)}
-            />
-          </div>
-        )}
       </div>
     </div>
   );

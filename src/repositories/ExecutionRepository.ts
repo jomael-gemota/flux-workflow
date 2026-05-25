@@ -264,6 +264,7 @@ export class ExecutionRepository {
         return {
             executionId: doc.executionId,
             workflowId: doc.workflowId,
+            workflowVersion: doc.workflowVersion,
             status: doc.status as ExecutionSummary['status'],
             results: doc.results,
             startedAt: doc.startedAt,

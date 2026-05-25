@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, ChevronDown, ChevronRight, CheckCircle2, XCircle, SkipForward, Clock } from 'lucide-react';
+import { ChevronDown, ChevronRight, CheckCircle2, XCircle, SkipForward, Clock } from 'lucide-react';
 import { NodeIcon } from '../nodes/NodeIcons';
 import type { NodeResult } from '../../types/workflow';
 import type { CanvasNode } from '../../store/workflowStore';
@@ -209,10 +209,9 @@ function OutputSection({ result }: { result: NodeResult }) {
 interface ReplayNodeConfigPanelProps {
   node: CanvasNode;
   result?: NodeResult;
-  onClose: () => void;
 }
 
-export function ReplayNodeConfigPanel({ node, result, onClose }: ReplayNodeConfigPanelProps) {
+export function ReplayNodeConfigPanel({ node, result }: ReplayNodeConfigPanelProps) {
   const nodeType = node.data.nodeType;
   const nodeLabel = node.data.label;
 
@@ -241,12 +240,6 @@ export function ReplayNodeConfigPanel({ node, result, onClose }: ReplayNodeConfi
             {nodeType} node
           </p>
         </div>
-        <button
-          onClick={onClose}
-          className="ml-auto p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 shrink-0"
-        >
-          <X className="w-4 h-4" />
-        </button>
       </div>
 
       {/* Status banner */}

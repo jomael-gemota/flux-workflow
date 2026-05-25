@@ -69,6 +69,7 @@ export interface NodeResult {
 export interface ExecutionSummary {
   executionId: string;
   workflowId: string;
+  workflowVersion?: number;
   status: 'pending' | 'running' | 'success' | 'failure' | 'partial';
   startedAt: string;
   completedAt: string;

@@ -19,6 +19,7 @@ export interface WebhookPayload {
 export interface ExecutionSummary {
     executionId: string;
     workflowId: string;
+    workflowVersion?: number;
     status: 'pending' | 'running' | 'success' | 'failure' | 'partial';
     startedAt: Date;
     completedAt: Date;
