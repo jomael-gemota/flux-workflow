@@ -60,6 +60,8 @@ export interface NodeResult {
   nodeId: string;
   status: 'success' | 'failure' | 'skipped';
   output: unknown;
+  /** Node config with all {{}} expressions resolved at execution time */
+  resolvedInput?: unknown;
   error?: string;
   durationMs: number;
 }

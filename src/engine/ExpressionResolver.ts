@@ -118,4 +118,25 @@ export class ExpressionResolver {
             }
         });
     }
+
+    /**
+     * Recursively walk any config value and resolve all embedded `{{...}}`
+     * expressions in string leaves. Non-string scalars and undefined/null
+     * pass through unchanged. Errors in individual expressions are swallowed
+     * so a single bad reference never aborts the snapshot.
+     */
+    resolveDeep(obj: unknown, context: ExecutionContext): unknown {
+        if (typeof obj === 'string') {
+            try { return this.resolveTemplate(obj, context); } catch { return obj; }
+        }
+        if (Array.isArray(obj)) return obj.map(v => this.resolveDeep(v, context));
+        if (obj !== null && typeof obj === 'object') {
+            return Object.fromEntries(
+                Object.entries(obj as Record<string, unknown>).map(
+                    ([k, v]) => [k, this.resolveDeep(v, context)]
+                )
+            );
+        }
+        return obj;
+    }
 }

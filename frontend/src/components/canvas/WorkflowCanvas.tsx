@@ -84,11 +84,11 @@ function WorkflowNodeRenderer(props: NodeProps) {
   }
 }
 
-const nodeTypes: NodeTypes = {
+export const nodeTypes: NodeTypes = {
   workflowNode: WorkflowNodeRenderer,
   stickyNote: StickyNoteNode as unknown as React.ComponentType<NodeProps>,
 };
-const edgeTypes: EdgeTypes = { execution: ExecutionEdge };
+export const edgeTypes: EdgeTypes = { execution: ExecutionEdge };
 
 const DEFAULT_CONFIGS: Partial<Record<NodeType, Record<string, unknown>>> = {
   trigger: { triggerType: 'manual' },
@@ -111,7 +111,7 @@ const DEFAULT_CONFIGS: Partial<Record<NodeType, Record<string, unknown>>> = {
   formatter: { medium: 'slack', template: '' },
 };
 
-function resolveEdgeStatus(
+export function resolveEdgeStatus(
   srcStatus: string | undefined,
   tgtStatus: string | undefined,
   isExecuting: boolean

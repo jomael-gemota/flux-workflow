@@ -560,11 +560,11 @@ function buildEmailHtml(p: ExecutionNotificationPayload, recipientTimeZone: stri
       <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:8px;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;border-collapse:separate;border-spacing:0;">
         <tr>
           <td style="padding:10px 12px;background:#f9fafb;font-size:12px;font-weight:600;color:#374151;width:34%;border-bottom:1px solid #e5e7eb;">${iconLabel(fieldIcon('workflowId'), 'Workflow ID')}</td>
-          <td style="padding:10px 12px;font-size:12px;color:#6b7280;word-break:break-word;border-bottom:1px solid #e5e7eb;">${escHtml(p.workflowId)}</td>
+          <td style="padding:10px 12px;font-size:12px;word-break:break-word;border-bottom:1px solid #e5e7eb;"><a href="${publicAssetUrl(`/workflows/${p.workflowId}`)}" style="color:#6366f1;text-decoration:underline;font-weight:500;">${escHtml(p.workflowId)}</a></td>
         </tr>
         <tr>
           <td style="padding:10px 12px;background:#f9fafb;font-size:12px;font-weight:600;color:#374151;">${iconLabel(fieldIcon('executionId'), 'Execution ID')}</td>
-          <td style="padding:10px 12px;font-size:12px;color:#6b7280;word-break:break-word;">${escHtml(p.executionId)}</td>
+          <td style="padding:10px 12px;font-size:12px;word-break:break-word;"><a href="${publicAssetUrl(`/executions/${p.executionId}/replay`)}" style="color:#6366f1;text-decoration:underline;font-weight:500;">${escHtml(p.executionId)}</a></td>
         </tr>
       </table>
 

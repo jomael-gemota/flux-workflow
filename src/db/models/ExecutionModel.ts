@@ -6,6 +6,8 @@ export interface ExecutionLogEntry {
     nodeId: string;
     status: 'success' | 'failure' | 'skipped';
     output: unknown;
+    /** Node config with all {{}} expressions resolved at execution time */
+    resolvedInput?: unknown;
     error?: string;
     durationMs: number;
     executedAt: Date;
@@ -30,6 +32,7 @@ const ExecutionLogSchema = new Schema<ExecutionLogEntry>(
         nodeId: { type: String, required: true },
         status: { type: String, enum: ['success', 'failure', 'skipped'], required: true },
         output: { type: Schema.Types.Mixed },
+        resolvedInput: { type: Schema.Types.Mixed },
         error: { type: String },
         durationMs: { type: Number, required: true },
         executedAt: { type: Date, default: Date.now },

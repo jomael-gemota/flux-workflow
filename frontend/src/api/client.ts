@@ -212,6 +212,12 @@ export function deleteExecutions(params: {
   });
 }
 
+export function replayExecution(executionId: string) {
+  return request<ExecutionSummary>(`/executions/${executionId}/replay`, {
+    method: 'POST',
+  });
+}
+
 // ── Credentials ──────────────────────────────────────────────
 
 export function listCredentials() {

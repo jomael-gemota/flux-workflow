@@ -4,8 +4,11 @@ import { NodeExecutorRegistry } from './NodeExecutorRegistry';
 import { WorkflowExecutionResult } from '../types/workflow.types';
 import { ConditionNodeOutput } from '../nodes/ConditionNode';
 import { SwitchNodeOutput } from '../nodes/SwitchNode';
+import { ExpressionResolver } from './ExpressionResolver';
 
 export class WorkflowRunner {
+    private resolver = new ExpressionResolver();
+
     constructor(private registry: NodeExecutorRegistry) {}
 
     async run(
@@ -183,6 +186,16 @@ export class WorkflowRunner {
 
         const start = Date.now();
 
+        // Snapshot the node config with all {{}} expressions resolved at this
+        // point in the execution context. Errors in individual expressions are
+        // swallowed by resolveDeep so they never abort the run.
+        let resolvedInput: unknown;
+        try {
+            resolvedInput = this.resolver.resolveDeep(node.config, context);
+        } catch {
+            resolvedInput = node.config;
+        }
+
         // Gracefully handle missing executor instead of throwing
         let executor: { execute(node: WorkflowNode, context: ExecutionContext): Promise<unknown> };
         try {
@@ -192,6 +205,7 @@ export class WorkflowRunner {
                 nodeId,
                 status: 'failure',
                 output: null,
+                resolvedInput,
                 error: `No executor registered for node type "${node.type}".`,
                 durationMs: Date.now() - start,
             });
@@ -208,6 +222,7 @@ export class WorkflowRunner {
                 nodeId,
                 status: 'failure',
                 output: null,
+                resolvedInput,
                 error: message,
                 durationMs: Date.now() - start,
             });
@@ -219,6 +234,7 @@ export class WorkflowRunner {
             nodeId,
             status: 'success',
             output,
+            resolvedInput,
             durationMs: Date.now() - start,
         });
 
