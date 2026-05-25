@@ -227,10 +227,14 @@ export function ExecutionReplayPage() {
     }));
   }, [rawEdges, nodeStatuses, isActive]);
 
-  // Non-draggable nodes
+  // Non-draggable nodes; `selected` drives the blue-ring highlight in BaseNode
   const nodes = useMemo<CanvasNode[]>(() => {
-    return rawNodes.map((n) => ({ ...n, draggable: false }));
-  }, [rawNodes]);
+    return rawNodes.map((n) => ({
+      ...n,
+      draggable: false,
+      selected: n.id === selectedNodeId,
+    }));
+  }, [rawNodes, selectedNodeId]);
 
   // Build result map for quick lookup
   const resultByNodeId = useMemo<Record<string, NodeResult>>(() => {
