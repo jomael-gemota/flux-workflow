@@ -438,10 +438,15 @@ export function SurveillanceDashboard({ onClose }: Props) {
 
           <button
             onClick={() => refetch()}
-            title="Refresh"
-            className={`p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors ${isFetching ? 'animate-spin pointer-events-none' : ''}`}
+            disabled={isFetching}
+            title={isFetching ? 'Refreshing…' : 'Refresh'}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
           >
-            <RefreshCw className="w-4 h-4" />
+            {isFetching
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              : <RefreshCw className="w-3.5 h-3.5" />
+            }
+            {isFetching ? 'Refreshing…' : 'Refresh'}
           </button>
 
           <button

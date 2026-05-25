@@ -65,7 +65,6 @@ export function CanvasActionDock() {
     activeWorkflow,
     nodes,
     isDirty,
-    setLogOpen,
     setLastExecutionId,
     beginExecution,
     rightPanelTab,
@@ -146,7 +145,6 @@ export function CanvasActionDock() {
 
       const summary = await trigger.mutateAsync({ workflowId: activeWorkflow.id });
       setLastExecutionId(summary.executionId);
-      setLogOpen(true);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
       showAlert('Trigger failed', msg);

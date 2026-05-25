@@ -3,7 +3,6 @@ import { Routes, Route, useParams } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { WorkflowCanvas } from './components/canvas/WorkflowCanvas';
 import { NodeConfigPanel } from './components/panels/NodeConfigPanel';
-import { ExecutionLogPanel } from './components/panels/ExecutionLogPanel';
 import { FluxellePanel } from './components/panels/FluxellePanel';
 import { ExecutionReplayPage } from './components/pages/ExecutionReplayPage';
 import { WorkflowHistoryPage } from './components/pages/WorkflowHistoryPage';
@@ -29,7 +28,6 @@ function AppInner() {
       canvas={<WorkflowCanvas />}
       configPanel={<NodeConfigPanel />}
       fluxellePanel={<FluxellePanel />}
-      executionLog={<ExecutionLogPanel />}
     />
   );
 }

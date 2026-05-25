@@ -39,7 +39,6 @@ export function NodeToolbarMenu({
     nodes,
     setSelectedNodeId,
     setConfigOpen,
-    setLogOpen,
     setLastExecutionId,
     setPendingDeleteNodeId,
     duplicateNode,
@@ -74,9 +73,8 @@ export function NodeToolbarMenu({
     e.stopPropagation();
     if (!activeWorkflow?.id || activeWorkflow.id === '__new__') return;
 
-    // Show running status on the node and open the log panel
+    // Show running status on the node
     setExecutionStatuses({ ...executionStatuses, [nodeId]: 'running' });
-    setLogOpen(true);
 
     try {
       const summary = await runNode.mutateAsync({ workflowId: activeWorkflow.id, nodeId });

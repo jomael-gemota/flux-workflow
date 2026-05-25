@@ -571,11 +571,14 @@ export function WorkflowHistoryPage() {
               <button
                 onClick={() => refetch()}
                 disabled={isRefetching}
-                title="Refresh"
-                className="ml-auto shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 transition-colors"
+                title={isRefetching ? 'Refreshing…' : 'Refresh'}
+                className="ml-auto shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
               >
-                <RefreshCw className={`w-3.5 h-3.5 ${isRefetching ? 'animate-spin' : ''}`} />
-                Refresh
+                {isRefetching
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : <RefreshCw className="w-3.5 h-3.5" />
+                }
+                {isRefetching ? 'Refreshing…' : 'Refresh'}
               </button>
             </div>
 
