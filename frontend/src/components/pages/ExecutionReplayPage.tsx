@@ -24,6 +24,7 @@ import {
 import { useExecution } from '../../hooks/useExecutions';
 import { useWorkflow } from '../../hooks/useWorkflows';
 import { useExecutionStream } from '../../hooks/useExecutionStream';
+import { useResizablePanel } from '../../hooks/useResizablePanel';
 import { useWorkflowStore, type NodeExecutionStatus, type CanvasNode, type CanvasEdge } from '../../store/workflowStore';
 import { deserialize } from '../canvas/canvasUtils';
 import { resolveEdgeStatus, nodeTypes, edgeTypes } from '../canvas/WorkflowCanvas';
@@ -155,6 +156,17 @@ export function ExecutionReplayPage() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [isReplaying, setIsReplaying] = useState(false);
   const autoSelectedRef = useRef(false);
+
+  // Resizable left panel — persisted in localStorage so it survives refreshes
+  // and navigating between different executions
+  const [panelWidth, startPanelDrag] = useResizablePanel(
+    'wap_replay_panel_width',
+    640,   // default width
+    320,   // minimum
+    960,   // maximum
+    'x',
+    false, // dragging right (away from origin) grows the panel
+  );
 
   const isActive = execution?.status === 'pending' || execution?.status === 'running';
 
@@ -362,8 +374,11 @@ export function ExecutionReplayPage() {
       {/* ── Body ──────────────────────────────────────────────────────────────── */}
       <div className="flex-1 flex min-h-0">
 
-        {/* Left execution snapshot panel — always visible, not closable, 640px wide */}
-        <div className="w-[640px] shrink-0 border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-[#1e1e2e] flex flex-col overflow-hidden">
+        {/* Left execution snapshot panel — resizable, width persisted to localStorage */}
+        <div
+          className="shrink-0 bg-white dark:bg-[#1e1e2e] flex flex-col overflow-hidden"
+          style={{ width: panelWidth }}
+        >
           {selectedNode ? (
             <ReplayNodeConfigPanel
               node={selectedNode}
@@ -374,6 +389,16 @@ export function ExecutionReplayPage() {
               <p className="text-xs text-slate-400">Select a node on the canvas to view its details</p>
             </div>
           )}
+        </div>
+
+        {/* Drag handle */}
+        <div
+          className="w-1 shrink-0 cursor-col-resize group relative"
+          onMouseDown={startPanelDrag}
+          title="Drag to resize panel"
+        >
+          <div className="absolute inset-0 bg-slate-200 dark:bg-slate-700 group-hover:bg-blue-500 transition-colors duration-150" />
+          <div className="absolute inset-y-0 -inset-x-1" />
         </div>
 
         {/* Canvas — fills remaining space */}
