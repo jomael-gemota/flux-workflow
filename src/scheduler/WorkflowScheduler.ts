@@ -12,6 +12,7 @@ export interface ScheduledTaskInfo {
     workflowId: string;
     nodeId: string;
     cronExpression: string;
+    timezone?: string;
 }
 
 export class WorkflowScheduler {
@@ -19,6 +20,8 @@ export class WorkflowScheduler {
     private tasks: Map<string, ScheduledTask> = new Map();
     // key = "workflowId::nodeId" → cronExpression
     private taskExpressions: Map<string, string> = new Map();
+    // key = "workflowId::nodeId" → IANA timezone
+    private taskTimezones: Map<string, string> = new Map();
 
     constructor(
         private workflowRepo: WorkflowRepository,
@@ -47,6 +50,8 @@ export class WorkflowScheduler {
             if (key.startsWith(`${workflowId}::`)) {
                 task.stop();
                 this.tasks.delete(key);
+                this.taskExpressions.delete(key);
+                this.taskTimezones.delete(key);
             }
         }
 
@@ -72,16 +77,19 @@ export class WorkflowScheduler {
         for (const node of cronTriggers) {
             const expr = node.config?.cronExpression as string | undefined;
             if (expr) {
-                this.registerTask(workflowId, node.id, expr);
+                const timezone = node.config?.cronTimezone as string | undefined;
+                this.registerTask(workflowId, node.id, expr, timezone);
             }
         }
     }
 
-    private registerTask(workflowId: string, nodeId: string, cronExpression: string): void {
+    private registerTask(workflowId: string, nodeId: string, cronExpression: string, timezone?: string): void {
         if (!cron.validate(cronExpression)) {
             console.warn(`[Scheduler] Invalid cron expression for ${workflowId}::${nodeId}: "${cronExpression}"`);
             return;
         }
+
+        const tz = this.normalizeTimezone(timezone, `${workflowId}::${nodeId}`);
 
         const key = `${workflowId}::${nodeId}`;
         const existing = this.tasks.get(key);
@@ -90,22 +98,44 @@ export class WorkflowScheduler {
         }
 
         this.taskExpressions.set(key, cronExpression);
-        const task = cron.schedule(cronExpression, async () => {
-            try {
-                const triggerNodeId = nodeId === '__schedule__' ? undefined : nodeId;
-                await this.workflowService.trigger(
-                    workflowId,
-                    { scheduledAt: new Date().toISOString() },
-                    'schedule',
-                    triggerNodeId,
-                );
-                // console.log(`[Scheduler] Triggered ${workflowId}::${nodeId}`);
-            } catch (err) {
-                console.error(`[Scheduler] Failed to trigger ${workflowId}::${nodeId}:`, err);
-            }
-        });
+        if (tz) {
+            this.taskTimezones.set(key, tz);
+        } else {
+            this.taskTimezones.delete(key);
+        }
+        const task = cron.schedule(
+            cronExpression,
+            async () => {
+                try {
+                    const triggerNodeId = nodeId === '__schedule__' ? undefined : nodeId;
+                    await this.workflowService.trigger(
+                        workflowId,
+                        { scheduledAt: new Date().toISOString() },
+                        'schedule',
+                        triggerNodeId,
+                    );
+                    // console.log(`[Scheduler] Triggered ${workflowId}::${nodeId}`);
+                } catch (err) {
+                    console.error(`[Scheduler] Failed to trigger ${workflowId}::${nodeId}:`, err);
+                }
+            },
+            tz ? { timezone: tz } : undefined,
+        );
 
         this.tasks.set(key, task);
+    }
+
+    /** Validate an IANA timezone; warn and fall back to server time if invalid. */
+    private normalizeTimezone(timezone: string | undefined, key: string): string | undefined {
+        const tz = timezone?.trim();
+        if (!tz) return undefined;
+        try {
+            Intl.DateTimeFormat('en-US', { timeZone: tz }).format(new Date());
+            return tz;
+        } catch {
+            console.warn(`[Scheduler] Invalid timezone for ${key}: "${tz}" — using server time`);
+            return undefined;
+        }
     }
 
     register(workflowId: string, cronExpression: string): void {
@@ -118,6 +148,7 @@ export class WorkflowScheduler {
                 task.stop();
                 this.tasks.delete(key);
                 this.taskExpressions.delete(key);
+                this.taskTimezones.delete(key);
             }
         }
     }
@@ -128,6 +159,7 @@ export class WorkflowScheduler {
         }
         this.tasks.clear();
         this.taskExpressions.clear();
+        this.taskTimezones.clear();
         // console.log('[Scheduler] All scheduled tasks stopped');
     }
 
@@ -141,6 +173,7 @@ export class WorkflowScheduler {
                 workflowId: key.slice(0, separatorIdx),
                 nodeId: key.slice(separatorIdx + 2),
                 cronExpression,
+                timezone: this.taskTimezones.get(key),
             });
         }
         return result;

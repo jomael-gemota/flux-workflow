@@ -12036,6 +12036,209 @@ function describeCron(expr: string): string {
   return preset?.label ?? '';
 }
 
+// ── Cron field builder (Minute / Hour / Day-of-month / Month / Day-of-week) ──
+
+type CronOption = { value: string; label: string };
+
+const hour12 = (h: number) => {
+  const ampm = h < 12 ? 'AM' : 'PM';
+  const hr = h % 12 === 0 ? 12 : h % 12;
+  return `${hr} ${ampm}`;
+};
+
+const CRON_MINUTE_OPTIONS: CronOption[] = [
+  { value: '*', label: 'Every minute' },
+  { value: '*/2', label: 'Every 2 minutes' },
+  { value: '*/5', label: 'Every 5 minutes' },
+  { value: '*/10', label: 'Every 10 minutes' },
+  { value: '*/15', label: 'Every 15 minutes' },
+  { value: '*/20', label: 'Every 20 minutes' },
+  { value: '*/30', label: 'Every 30 minutes' },
+  ...Array.from({ length: 60 }, (_, i) => ({ value: String(i), label: `At minute ${i}` })),
+];
+
+const CRON_HOUR_OPTIONS: CronOption[] = [
+  { value: '*', label: 'Every hour' },
+  { value: '*/2', label: 'Every 2 hours' },
+  { value: '*/3', label: 'Every 3 hours' },
+  { value: '*/4', label: 'Every 4 hours' },
+  { value: '*/6', label: 'Every 6 hours' },
+  { value: '*/12', label: 'Every 12 hours' },
+  ...Array.from({ length: 24 }, (_, i) => ({ value: String(i), label: `${String(i).padStart(2, '0')}:00 (${hour12(i)})` })),
+];
+
+const CRON_DOM_OPTIONS: CronOption[] = [
+  { value: '*', label: 'Every day' },
+  ...Array.from({ length: 31 }, (_, i) => ({ value: String(i + 1), label: `Day ${i + 1}` })),
+  { value: 'L', label: 'Last day of month' },
+];
+
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const CRON_MONTH_OPTIONS: CronOption[] = [
+  { value: '*', label: 'Every month' },
+  ...MONTH_NAMES.map((name, i) => ({ value: String(i + 1), label: name })),
+];
+
+const DOW_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const CRON_DOW_OPTIONS: CronOption[] = [
+  { value: '*', label: 'Every day of the week' },
+  { value: '1-5', label: 'Weekdays (Mon–Fri)' },
+  { value: '0,6', label: 'Weekends (Sat & Sun)' },
+  ...DOW_NAMES.map((name, i) => ({ value: String(i), label: name })),
+];
+
+/** Split a cron expression into its 5 fields, defaulting blanks to '*'. */
+function parseCronParts(expr?: string): [string, string, string, string, string] {
+  const parts = (expr ?? '').trim().split(/\s+/).filter(Boolean);
+  const at = (i: number) => (parts[i] && parts[i].length ? parts[i] : '*');
+  return [at(0), at(1), at(2), at(3), at(4)];
+}
+
+/** Join 5 cron fields back into an expression. */
+function buildCronExpr(parts: string[]): string {
+  return parts.map((p) => (p && p.length ? p : '*')).join(' ');
+}
+
+/** Ensure the current value is selectable even if it's a custom expression. */
+function withCurrentOption(options: CronOption[], value: string): CronOption[] {
+  if (value && !options.some((o) => o.value === value)) {
+    return [{ value, label: `Custom: ${value}` }, ...options];
+  }
+  return options;
+}
+
+// ── Timezone helpers ─────────────────────────────────────────────────────────
+
+// Curated, Windows-style time zone list. `label` shows the standard UTC offset
+// plus a friendly region name; `value` stays a valid IANA id (required by the
+// backend's timezone validation). Ordered by offset, west → east.
+const WINDOWS_TIMEZONES: ReadonlyArray<{ label: string; value: string }> = [
+  { label: '(UTC-12:00) International Date Line West', value: 'Etc/GMT+12' },
+  { label: '(UTC-11:00) Coordinated Universal Time-11', value: 'Etc/GMT+11' },
+  { label: '(UTC-10:00) Aleutian Islands', value: 'America/Adak' },
+  { label: '(UTC-10:00) Hawaii', value: 'Pacific/Honolulu' },
+  { label: '(UTC-09:30) Marquesas Islands', value: 'Pacific/Marquesas' },
+  { label: '(UTC-09:00) Alaska', value: 'America/Anchorage' },
+  { label: '(UTC-09:00) Coordinated Universal Time-09', value: 'Etc/GMT+9' },
+  { label: '(UTC-08:00) Baja California', value: 'America/Tijuana' },
+  { label: '(UTC-08:00) Coordinated Universal Time-08', value: 'Etc/GMT+8' },
+  { label: '(UTC-08:00) Pacific Time (US & Canada)', value: 'America/Los_Angeles' },
+  { label: '(UTC-07:00) Arizona', value: 'America/Phoenix' },
+  { label: '(UTC-07:00) Chihuahua, La Paz, Mazatlan', value: 'America/Chihuahua' },
+  { label: '(UTC-07:00) Mountain Time (US & Canada)', value: 'America/Denver' },
+  { label: '(UTC-06:00) Central America', value: 'America/Guatemala' },
+  { label: '(UTC-06:00) Central Time (US & Canada)', value: 'America/Chicago' },
+  { label: '(UTC-06:00) Easter Island', value: 'Pacific/Easter' },
+  { label: '(UTC-06:00) Guadalajara, Mexico City, Monterrey', value: 'America/Mexico_City' },
+  { label: '(UTC-06:00) Saskatchewan', value: 'America/Regina' },
+  { label: '(UTC-05:00) Bogota, Lima, Quito, Rio Branco', value: 'America/Bogota' },
+  { label: '(UTC-05:00) Chetumal', value: 'America/Cancun' },
+  { label: '(UTC-05:00) Eastern Time (US & Canada)', value: 'America/New_York' },
+  { label: '(UTC-05:00) Haiti', value: 'America/Port-au-Prince' },
+  { label: '(UTC-05:00) Havana', value: 'America/Havana' },
+  { label: '(UTC-05:00) Indiana (East)', value: 'America/Indiana/Indianapolis' },
+  { label: '(UTC-05:00) Turks and Caicos', value: 'America/Grand_Turk' },
+  { label: '(UTC-04:00) Asuncion', value: 'America/Asuncion' },
+  { label: '(UTC-04:00) Atlantic Time (Canada)', value: 'America/Halifax' },
+  { label: '(UTC-04:00) Caracas', value: 'America/Caracas' },
+  { label: '(UTC-04:00) Cuiaba', value: 'America/Cuiaba' },
+  { label: '(UTC-04:00) Georgetown, La Paz, Manaus, San Juan', value: 'America/La_Paz' },
+  { label: '(UTC-04:00) Santiago', value: 'America/Santiago' },
+  { label: '(UTC-03:30) Newfoundland', value: 'America/St_Johns' },
+  { label: '(UTC-03:00) Araguaina', value: 'America/Araguaina' },
+  { label: '(UTC-03:00) Brasilia', value: 'America/Sao_Paulo' },
+  { label: '(UTC-03:00) Cayenne, Fortaleza', value: 'America/Cayenne' },
+  { label: '(UTC-03:00) City of Buenos Aires', value: 'America/Argentina/Buenos_Aires' },
+  { label: '(UTC-03:00) Greenland', value: 'America/Godthab' },
+  { label: '(UTC-03:00) Montevideo', value: 'America/Montevideo' },
+  { label: '(UTC-03:00) Saint Pierre and Miquelon', value: 'America/Miquelon' },
+  { label: '(UTC-03:00) Salvador', value: 'America/Bahia' },
+  { label: '(UTC-02:00) Coordinated Universal Time-02', value: 'Etc/GMT+2' },
+  { label: '(UTC-01:00) Azores', value: 'Atlantic/Azores' },
+  { label: '(UTC-01:00) Cabo Verde Is.', value: 'Atlantic/Cape_Verde' },
+  { label: '(UTC+00:00) Coordinated Universal Time', value: 'UTC' },
+  { label: '(UTC+00:00) Dublin, Edinburgh, Lisbon, London', value: 'Europe/London' },
+  { label: '(UTC+00:00) Monrovia, Reykjavik', value: 'Atlantic/Reykjavik' },
+  { label: '(UTC+01:00) Amsterdam, Berlin, Bern, Rome, Stockholm, Vienna', value: 'Europe/Berlin' },
+  { label: '(UTC+01:00) Belgrade, Bratislava, Budapest, Ljubljana, Prague', value: 'Europe/Prague' },
+  { label: '(UTC+01:00) Brussels, Copenhagen, Madrid, Paris', value: 'Europe/Paris' },
+  { label: '(UTC+01:00) Casablanca', value: 'Africa/Casablanca' },
+  { label: '(UTC+01:00) Sarajevo, Skopje, Warsaw, Zagreb', value: 'Europe/Warsaw' },
+  { label: '(UTC+01:00) West Central Africa', value: 'Africa/Lagos' },
+  { label: '(UTC+02:00) Athens, Bucharest', value: 'Europe/Bucharest' },
+  { label: '(UTC+02:00) Cairo', value: 'Africa/Cairo' },
+  { label: '(UTC+02:00) Harare, Pretoria', value: 'Africa/Johannesburg' },
+  { label: '(UTC+02:00) Helsinki, Kyiv, Riga, Sofia, Tallinn, Vilnius', value: 'Europe/Kiev' },
+  { label: '(UTC+02:00) Jerusalem', value: 'Asia/Jerusalem' },
+  { label: '(UTC+03:00) Baghdad', value: 'Asia/Baghdad' },
+  { label: '(UTC+03:00) Istanbul', value: 'Europe/Istanbul' },
+  { label: '(UTC+03:00) Kuwait, Riyadh', value: 'Asia/Riyadh' },
+  { label: '(UTC+03:00) Moscow, St. Petersburg', value: 'Europe/Moscow' },
+  { label: '(UTC+03:00) Nairobi', value: 'Africa/Nairobi' },
+  { label: '(UTC+03:30) Tehran', value: 'Asia/Tehran' },
+  { label: '(UTC+04:00) Abu Dhabi, Muscat', value: 'Asia/Dubai' },
+  { label: '(UTC+04:00) Baku', value: 'Asia/Baku' },
+  { label: '(UTC+04:00) Yerevan', value: 'Asia/Yerevan' },
+  { label: '(UTC+04:30) Kabul', value: 'Asia/Kabul' },
+  { label: '(UTC+05:00) Ekaterinburg', value: 'Asia/Yekaterinburg' },
+  { label: '(UTC+05:00) Islamabad, Karachi', value: 'Asia/Karachi' },
+  { label: '(UTC+05:30) Chennai, Kolkata, Mumbai, New Delhi', value: 'Asia/Kolkata' },
+  { label: '(UTC+05:30) Sri Jayawardenepura', value: 'Asia/Colombo' },
+  { label: '(UTC+05:45) Kathmandu', value: 'Asia/Kathmandu' },
+  { label: '(UTC+06:00) Astana', value: 'Asia/Almaty' },
+  { label: '(UTC+06:00) Dhaka', value: 'Asia/Dhaka' },
+  { label: '(UTC+06:30) Yangon (Rangoon)', value: 'Asia/Yangon' },
+  { label: '(UTC+07:00) Bangkok, Hanoi, Jakarta', value: 'Asia/Bangkok' },
+  { label: '(UTC+07:00) Novosibirsk', value: 'Asia/Novosibirsk' },
+  { label: '(UTC+08:00) Beijing, Chongqing, Hong Kong, Urumqi', value: 'Asia/Shanghai' },
+  { label: '(UTC+08:00) Kuala Lumpur, Singapore', value: 'Asia/Singapore' },
+  { label: '(UTC+08:00) Perth', value: 'Australia/Perth' },
+  { label: '(UTC+08:00) Taipei', value: 'Asia/Taipei' },
+  { label: '(UTC+08:45) Eucla', value: 'Australia/Eucla' },
+  { label: '(UTC+09:00) Osaka, Sapporo, Tokyo', value: 'Asia/Tokyo' },
+  { label: '(UTC+09:00) Seoul', value: 'Asia/Seoul' },
+  { label: '(UTC+09:30) Adelaide', value: 'Australia/Adelaide' },
+  { label: '(UTC+09:30) Darwin', value: 'Australia/Darwin' },
+  { label: '(UTC+10:00) Brisbane', value: 'Australia/Brisbane' },
+  { label: '(UTC+10:00) Canberra, Melbourne, Sydney', value: 'Australia/Sydney' },
+  { label: '(UTC+10:00) Guam, Port Moresby', value: 'Pacific/Port_Moresby' },
+  { label: '(UTC+10:30) Lord Howe Island', value: 'Australia/Lord_Howe' },
+  { label: '(UTC+11:00) Solomon Is., New Caledonia', value: 'Pacific/Guadalcanal' },
+  { label: '(UTC+12:00) Auckland, Wellington', value: 'Pacific/Auckland' },
+  { label: '(UTC+12:00) Coordinated Universal Time+12', value: 'Etc/GMT-12' },
+  { label: '(UTC+12:00) Fiji', value: 'Pacific/Fiji' },
+  { label: '(UTC+12:45) Chatham Islands', value: 'Pacific/Chatham' },
+  { label: "(UTC+13:00) Nuku'alofa", value: 'Pacific/Tongatapu' },
+  { label: '(UTC+13:00) Samoa', value: 'Pacific/Apia' },
+  { label: '(UTC+14:00) Kiritimati Island', value: 'Pacific/Kiritimati' },
+];
+
+function localTimezone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  } catch {
+    return 'UTC';
+  }
+}
+
+const TIMEZONE_OPTIONS: CronOption[] = [
+  { value: '', label: 'Server default' },
+  ...WINDOWS_TIMEZONES.map((z) => ({ value: z.value, label: z.label })),
+];
+
+/** Current local time formatted in the given IANA timezone (for a live hint). */
+function nowInTimezone(tz: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: tz || undefined,
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(new Date());
+  } catch {
+    return '';
+  }
+}
+
 function TriggerConfig({
   cfg,
   onChange,
@@ -12118,7 +12321,16 @@ function TriggerConfig({
       <Select
         label="Trigger Type"
         value={triggerType}
-        onChange={(e) => onChange({ triggerType: e.target.value })}
+        onChange={(e) => {
+          const value = e.target.value;
+          // Default the schedule to the user's local timezone the first time
+          // they pick Schedule / Cron, so triggers run on their wall clock.
+          if (value === 'cron' && !cfg.cronTimezone) {
+            onChange({ triggerType: value, cronTimezone: localTimezone() });
+          } else {
+            onChange({ triggerType: value });
+          }
+        }}
         options={TRIGGER_TYPE_OPTIONS}
       />
 
@@ -12153,20 +12365,58 @@ function TriggerConfig({
       )}
 
       {/* ── Cron / Schedule ── */}
-      {triggerType === 'cron' && (
-        <div className="space-y-3">
-          <Select label="Preset" value="" onChange={(e) => { if (e.target.value) onChange({ cronExpression: e.target.value }); }} options={CRON_PRESETS} />
-          <div className="space-y-1">
-            <label className={labelCls}>Cron Expression</label>
-            <input type="text" value={(cfg.cronExpression as string) || ''} onChange={(e) => onChange({ cronExpression: e.target.value })} placeholder="* * * * *" className={`${inputCls} font-mono`} />
-            {Boolean(cfg.cronExpression) && <p className={hintCls}>{describeCron(cfg.cronExpression as string) || 'Custom expression'}</p>}
+      {triggerType === 'cron' && (() => {
+        const cronExpr = (cfg.cronExpression as string) || '* * * * *';
+        const cronParts = parseCronParts(cronExpr);
+        const setCronPart = (idx: number, value: string) => {
+          const next = [...cronParts];
+          next[idx] = value;
+          onChange({ cronExpression: buildCronExpr(next) });
+        };
+        const cronTimezone = (cfg.cronTimezone as string) || '';
+        return (
+          <div className="space-y-3">
+            <div>
+              <Select
+                label="Time Zone"
+                value={cronTimezone}
+                onChange={(e) => onChange({ cronTimezone: e.target.value })}
+                options={withCurrentOption(TIMEZONE_OPTIONS, cronTimezone)}
+              />
+              <p className={hintCls}>
+                {cronTimezone
+                  ? `Runs on ${cronTimezone.replace(/_/g, ' ')} time — now ${nowInTimezone(cronTimezone)}.`
+                  : `Uses the server's timezone. Now ${nowInTimezone(localTimezone())} (${localTimezone().replace(/_/g, ' ')}).`}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <Select label="Hour"   value={cronParts[1]} onChange={(e) => setCronPart(1, e.target.value)} options={withCurrentOption(CRON_HOUR_OPTIONS, cronParts[1])} />
+              <Select label="Minute" value={cronParts[0]} onChange={(e) => setCronPart(0, e.target.value)} options={withCurrentOption(CRON_MINUTE_OPTIONS, cronParts[0])} />
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              <Select label="Month"            value={cronParts[3]} onChange={(e) => setCronPart(3, e.target.value)} options={withCurrentOption(CRON_MONTH_OPTIONS, cronParts[3])} />
+              <Select label="Day of the month" value={cronParts[2]} onChange={(e) => setCronPart(2, e.target.value)} options={withCurrentOption(CRON_DOM_OPTIONS, cronParts[2])} />
+              <Select label="Day of the week"  value={cronParts[4]} onChange={(e) => setCronPart(4, e.target.value)} options={withCurrentOption(CRON_DOW_OPTIONS, cronParts[4])} />
+            </div>
+
+            <div className="space-y-1">
+              <label className={labelCls}>Cron Expression</label>
+              <input
+                type="text"
+                value={cronExpr}
+                readOnly
+                tabIndex={-1}
+                aria-readonly="true"
+                placeholder="* * * * *"
+                className={`${inputCls} font-mono cursor-not-allowed opacity-70 select-all`}
+              />
+              <p className={hintCls}>{describeCron(cronExpr) || 'Custom expression'} — set automatically from the fields above.</p>
+            </div>
           </div>
-          <div className="space-y-1">
-            <label className={labelCls}>Timezone (optional)</label>
-            <input type="text" value={(cfg.cronTimezone as string) || ''} onChange={(e) => onChange({ cronTimezone: e.target.value })} placeholder="e.g. America/New_York" className={inputCls} />
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── App Event ── */}
       {triggerType === 'app_event' && (

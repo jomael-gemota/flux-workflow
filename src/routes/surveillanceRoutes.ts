@@ -89,9 +89,9 @@ function analyzeVulnerabilities(
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function getNextCronRun(expr: string): string | null {
+function getNextCronRun(expr: string, timezone?: string): string | null {
     try {
-        const interval = CronExpressionParser.parse(expr);
+        const interval = CronExpressionParser.parse(expr, timezone ? { tz: timezone } : undefined);
         return interval.next().toISOString();
     } catch {
         return null;
@@ -146,7 +146,7 @@ export async function surveillanceRoutes(
                 scheduleMap.get(task.workflowId)!.push({
                     nodeId: task.nodeId,
                     cronExpression: task.cronExpression,
-                    nextRun: getNextCronRun(task.cronExpression),
+                    nextRun: getNextCronRun(task.cronExpression, task.timezone),
                 });
             }
 
