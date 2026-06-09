@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { X, Plus, Trash2, Loader2, CheckCircle2, AlertCircle, ExternalLink, Settings, Info } from 'lucide-react';
+import { X, Plus, Trash2, Loader2, CheckCircle2, AlertCircle, ExternalLink, Settings, Info, RefreshCw } from 'lucide-react';
 import { SlackIcon, TeamsIcon, BasecampIcon } from '../nodes/NodeIcons';
 import { useCredentialList, useDeleteCredential } from '../../hooks/useCredentials';
 import { startGoogleOAuth, checkGoogleConfig, startSlackOAuth, checkSlackConfig, startTeamsOAuth, checkTeamsConfig, startBasecampOAuth, checkBasecampConfig } from '../../api/client';
@@ -103,6 +103,13 @@ export function CredentialsModal({ open, onClose }: CredentialsModalProps) {
   const slackCreds    = credentials.filter((c) => c.provider === 'slack');
   const teamsCreds    = credentials.filter((c) => c.provider === 'teams');
   const basecampCreds = credentials.filter((c) => c.provider === 'basecamp');
+
+  const reconnectFor = (provider: CredentialSummary['provider']) => {
+    if (provider === 'google')   return () => startGoogleOAuth(userId);
+    if (provider === 'slack')    return () => startSlackOAuth(userId);
+    if (provider === 'teams')    return () => startTeamsOAuth(userId);
+    return () => startBasecampOAuth(userId);
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -216,7 +223,7 @@ GOOGLE_REDIRECT_URI=http://localhost:3000/oauth/google/callback`}
               <p className="text-[11px] text-slate-400 dark:text-slate-500 pl-1">No Google accounts connected yet.</p>
             )}
             {googleCreds.map((cred) => (
-              <CredentialRow key={cred.id} cred={cred} onDelete={() => setPendingDeleteId(cred.id)} />
+              <CredentialRow key={cred.id} cred={cred} onDelete={() => setPendingDeleteId(cred.id)} onReconnect={reconnectFor('google')} />
             ))}
           </div>
 
@@ -275,7 +282,7 @@ SLACK_REDIRECT_URI=http://localhost:3000/oauth/slack/callback`}
               <p className="text-[11px] text-slate-400 dark:text-slate-500 pl-1">No Slack workspaces connected yet.</p>
             )}
             {slackCreds.map((cred) => (
-              <CredentialRow key={cred.id} cred={cred} onDelete={() => setPendingDeleteId(cred.id)} />
+              <CredentialRow key={cred.id} cred={cred} onDelete={() => setPendingDeleteId(cred.id)} onReconnect={reconnectFor('slack')} />
             ))}
           </div>
 
@@ -335,7 +342,7 @@ TEAMS_REDIRECT_URI=http://localhost:3000/api/oauth/teams/callback`}
               <p className="text-[11px] text-slate-400 dark:text-slate-500 pl-1">No Microsoft accounts connected yet.</p>
             )}
             {teamsCreds.map((cred) => (
-              <CredentialRow key={cred.id} cred={cred} onDelete={() => setPendingDeleteId(cred.id)} />
+              <CredentialRow key={cred.id} cred={cred} onDelete={() => setPendingDeleteId(cred.id)} onReconnect={reconnectFor('teams')} />
             ))}
           </div>
 
@@ -393,7 +400,7 @@ BASECAMP_CLIENT_SECRET=your-secret`}
               <p className="text-[11px] text-slate-400 dark:text-slate-500 pl-1">No Basecamp accounts connected yet.</p>
             )}
             {basecampCreds.map((cred) => (
-              <CredentialRow key={cred.id} cred={cred} onDelete={() => setPendingDeleteId(cred.id)} />
+              <CredentialRow key={cred.id} cred={cred} onDelete={() => setPendingDeleteId(cred.id)} onReconnect={reconnectFor('basecamp')} />
             ))}
           </div>
         </div>
@@ -418,18 +425,23 @@ BASECAMP_CLIENT_SECRET=your-secret`}
   );
 }
 
-function CredentialRow({ cred, onDelete }: { cred: CredentialSummary; onDelete: () => void }) {
+function CredentialRow({ cred, onDelete, onReconnect }: { cred: CredentialSummary; onDelete: () => void; onReconnect?: () => void }) {
   const isSlack    = cred.provider === 'slack';
   const isTeams    = cred.provider === 'teams';
   const isGoogle   = cred.provider === 'google';
   const isBasecamp = cred.provider === 'basecamp';
+  const needsReauth = cred.status === 'reauth_required';
   const serviceLabels = isGoogle
     ? cred.scopes.map((s) => GOOGLE_SERVICE_LABELS[s]).filter(Boolean)
     : [];
   const displayName = isGoogle ? cred.email : cred.label;
 
   return (
-    <div className="bg-slate-50 dark:bg-slate-700/40 border border-slate-200 dark:border-slate-600/40 rounded-lg px-3.5 py-3">
+    <div className={`bg-slate-50 dark:bg-slate-700/40 border rounded-lg px-3.5 py-3 ${
+      needsReauth
+        ? 'border-amber-300 dark:border-amber-500/50'
+        : 'border-slate-200 dark:border-slate-600/40'
+    }`}>
       <div className="flex items-start gap-3">
         {isSlack
           ? <span className="shrink-0 mt-0.5"><SlackIcon size={20} /></span>
@@ -440,7 +452,15 @@ function CredentialRow({ cred, onDelete }: { cred: CredentialSummary; onDelete: 
           : <GoogleIcon className="w-5 h-5 shrink-0 mt-0.5" />
         }
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{displayName}</p>
+          <div className="flex items-center gap-2 min-w-0">
+            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{displayName}</p>
+            {needsReauth && (
+              <span className="flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded-full shrink-0">
+                <AlertCircle className="w-3 h-3" />
+                Reconnect required
+              </span>
+            )}
+          </div>
           <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
             {isGoogle && cred.label !== cred.email ? `Label: ${cred.label} · ` : ''}
             Connected {new Date(cred.createdAt).toLocaleDateString()}
@@ -454,7 +474,24 @@ function CredentialRow({ cred, onDelete }: { cred: CredentialSummary; onDelete: 
               ))}
             </div>
           )}
+          {needsReauth && (
+            <div className="mt-2 flex items-start gap-2">
+              <p className="text-[11px] text-amber-600 dark:text-amber-400/90 leading-relaxed flex-1">
+                Access was revoked by the provider. Workflows using this account are paused —
+                reconnect with the same account to resume them.
+              </p>
+            </div>
+          )}
         </div>
+        {needsReauth && onReconnect && (
+          <button
+            onClick={onReconnect}
+            className="flex items-center gap-1 px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-white text-[11px] font-medium rounded-lg transition-colors shrink-0"
+          >
+            <RefreshCw className="w-3 h-3" />
+            Reconnect
+          </button>
+        )}
         <button
           onClick={onDelete}
           className="text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 transition-colors shrink-0 p-0.5"

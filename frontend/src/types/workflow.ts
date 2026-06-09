@@ -94,6 +94,8 @@ export interface CredentialSummary {
   email: string;
   scopes: string[];
   createdAt: string;
+  /** Credential health — `reauth_required` means the user must reconnect the account. */
+  status?: 'active' | 'reauth_required';
   /**
    * For Basecamp credentials only: lightweight description of the synced
    * web-session payload, when present. The cookie values themselves stay

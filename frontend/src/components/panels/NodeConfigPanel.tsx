@@ -6375,24 +6375,49 @@ function CredentialSelect({
   onChange: (id: string) => void;
 }) {
   const { data: credentials = [], isLoading } = useCredentialList();
+  const googleCreds = credentials.filter((c) => c.provider === 'google');
+  const selected = googleCreds.find((c) => c.id === value);
+  // The saved credentialId no longer matches any connected account — most
+  // likely the credential was deleted. Surface it instead of a blank field.
+  const isStale = !!value && !selected;
+  const needsReauth = selected?.status === 'reauth_required';
+
   return (
     <div className="space-y-1">
       <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Google Account</label>
       {isLoading ? (
         <p className="text-[10px] text-slate-400 dark:text-slate-500">Loading accounts…</p>
-      ) : credentials.length === 0 ? (
+      ) : googleCreds.length === 0 && !isStale ? (
         <p className="text-[10px] text-amber-400">
           No Google accounts connected. Click <strong>Credentials</strong> in the toolbar to connect one.
         </p>
       ) : (
-        <Select
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          options={[
-            { value: '', label: '— select account —' },
-            ...credentials.map((c) => ({ value: c.id, label: c.email })),
-          ]}
-        />
+        <>
+          <Select
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            options={[
+              { value: '', label: '— select account —' },
+              ...(isStale ? [{ value, label: '⚠ disconnected account — re-select' }] : []),
+              ...googleCreds.map((c) => ({
+                value: c.id,
+                label: c.status === 'reauth_required' ? `⚠ ${c.email} (reconnect required)` : c.email,
+              })),
+            ]}
+          />
+          {isStale && (
+            <p className="text-[10px] text-amber-400">
+              The account previously selected here was removed. Pick a connected account
+              (reconnect it via <strong>Credentials</strong> first if needed).
+            </p>
+          )}
+          {needsReauth && (
+            <p className="text-[10px] text-amber-400">
+              This account lost access and workflows using it are paused. Reconnect it via{' '}
+              <strong>Credentials</strong> — no need to re-select it here afterwards.
+            </p>
+          )}
+        </>
       )}
     </div>
   );
