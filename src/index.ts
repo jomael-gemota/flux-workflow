@@ -82,6 +82,7 @@ import { createWorkflowWorker } from './queue/WorkflowWorker';
 import { WorkflowScheduler } from './scheduler/WorkflowScheduler';
 import { PollingService } from './services/PollingService';
 import { PushSubscriptionService } from './services/PushSubscriptionService';
+import { CredentialHealthService } from './services/CredentialHealthService';
 import { TriggerTestService } from './services/TriggerTestService';
 import { pushNotificationRoutes } from './routes/pushNotificationRoutes';
 
@@ -137,7 +138,7 @@ async function bootstrap() {
     }
 
     // 4. Start cron scheduler + polling service
-    const scheduler = new WorkflowScheduler(workflowRepo, workflowService);
+    const scheduler = new WorkflowScheduler(workflowRepo, workflowService, credentialRepo);
     await scheduler.start();
 
     const pollingService = new PollingService(
@@ -154,6 +155,22 @@ async function bootstrap() {
     setInterval(
         () => pushSubscriptionService.renewExpiring().catch((err) =>
             console.error('[PushSubscriptionService] renewal cron error:', err)
+        ),
+        60 * 60 * 1000, // every hour
+    );
+
+    // Hourly cron: force-refresh every Google credential so dead refresh tokens
+    // are detected (and the owner alerted) long before a scheduled run fails.
+    const credentialHealthService = new CredentialHealthService(credentialRepo, workflowRepo, googleAuth);
+    setTimeout(
+        () => credentialHealthService.checkAll().catch((err) =>
+            console.error('[CredentialHealth] initial check error:', err)
+        ),
+        30 * 1000, // first pass shortly after boot
+    );
+    setInterval(
+        () => credentialHealthService.checkAll().catch((err) =>
+            console.error('[CredentialHealth] hourly check error:', err)
         ),
         60 * 60 * 1000, // every hour
     );
