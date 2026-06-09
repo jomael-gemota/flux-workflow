@@ -7371,8 +7371,10 @@ function GmailConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
           <div className="space-y-2 rounded-md border border-slate-200 dark:border-slate-700 px-3 py-2.5">
             <label className="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" id="reply-flux-autolookup"
-                checked={Boolean(cfg.credentialId)}
-                onChange={(e) => onChange({ credentialId: e.target.checked ? cfg.credentialId : '' })}
+                checked={Boolean(cfg.fluxReplyAutoLookup ?? cfg.credentialId)}
+                onChange={(e) => onChange(e.target.checked
+                  ? { fluxReplyAutoLookup: true }
+                  : { fluxReplyAutoLookup: false, credentialId: '' })}
                 className="w-3.5 h-3.5 rounded accent-blue-500" />
               <span className="text-xs font-medium text-slate-700 dark:text-slate-200">
                 Auto-fill from a Gmail message (connect Google)
@@ -7385,7 +7387,7 @@ function GmailConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
             </p>
           </div>
 
-          {Boolean(cfg.credentialId) ? (
+          {Boolean(cfg.fluxReplyAutoLookup ?? cfg.credentialId) ? (
             <>
               <CredentialSelect value={String(cfg.credentialId ?? '')} onChange={(id) => onChange({ credentialId: id })} />
               <ExpressionInput label="Gmail message ID to reply to"
