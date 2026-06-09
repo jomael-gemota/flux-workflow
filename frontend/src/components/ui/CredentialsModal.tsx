@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { X, Plus, Trash2, Loader2, CheckCircle2, AlertCircle, ExternalLink, Settings } from 'lucide-react';
+import { X, Plus, Trash2, Loader2, CheckCircle2, AlertCircle, ExternalLink, Settings, Info } from 'lucide-react';
 import { SlackIcon, TeamsIcon, BasecampIcon } from '../nodes/NodeIcons';
 import { useCredentialList, useDeleteCredential } from '../../hooks/useCredentials';
 import { startGoogleOAuth, checkGoogleConfig, startSlackOAuth, checkSlackConfig, startTeamsOAuth, checkTeamsConfig, startBasecampOAuth, checkBasecampConfig } from '../../api/client';
@@ -201,6 +201,17 @@ GOOGLE_REDIRECT_URI=http://localhost:3000/oauth/google/callback`}
               </div>
             )}
 
+            {isGoogleConfigured && (
+              <div className="flex items-start gap-2.5 p-3 bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/30 rounded-lg">
+                <Info className="w-4 h-4 text-blue-500 dark:text-blue-400 shrink-0 mt-0.5" />
+                <p className="text-[11px] text-blue-700 dark:text-blue-300/90 leading-relaxed">
+                  If a Google account expires or stops working, click <span className="font-semibold">Connect Account</span> and
+                  sign in with the same account to refresh it — <span className="font-semibold">do not remove it first</span>.
+                  Reconnecting keeps all workflow nodes linked; removing the account disconnects it from every workflow that uses it.
+                </p>
+              </div>
+            )}
+
             {!isLoading && googleCreds.length === 0 && isGoogleConfigured && (
               <p className="text-[11px] text-slate-400 dark:text-slate-500 pl-1">No Google accounts connected yet.</p>
             )}
@@ -392,7 +403,7 @@ BASECAMP_CLIENT_SECRET=your-secret`}
       <ConfirmModal
         open={pendingDeleteId !== null}
         title="Disconnect account?"
-        message={`Remove "${pendingCred?.label ?? pendingCred?.email ?? ''}" from connected accounts? Any workflow nodes using this credential will stop working.`}
+        message={`Remove "${pendingCred?.label ?? pendingCred?.email ?? ''}" from connected accounts? Any workflow nodes using this credential will stop working and must be reconfigured manually. If the account just expired, cancel and use "Connect Account" with the same account instead — that refreshes it without breaking workflows.`}
         confirmLabel="Disconnect"
         danger
         isLoading={deleteCredential.isPending}
