@@ -33,6 +33,8 @@ export interface BasecampWebSession {
     syncedAt: number;
 }
 
+export type CredentialStatus = 'active' | 'reauth_required';
+
 export interface CredentialDocument extends Document {
     provider: 'google' | 'slack' | 'teams' | 'basecamp';
     label: string;
@@ -43,6 +45,15 @@ export interface CredentialDocument extends Document {
     scopes: string[];
     /** MongoDB User ObjectId string — null for legacy / API-key-created credentials */
     userId?: string;
+    /**
+     * Credential health. `reauth_required` means the refresh token was revoked
+     * (e.g. password change, manual revocation) and the user must reconnect the
+     * account. Reset to `active` whenever tokens are successfully updated.
+     * Legacy documents without this field are treated as `active`.
+     */
+    status?: CredentialStatus;
+    /** Unix ms — last time the refresh token was successfully exercised. */
+    lastVerifiedAt?: number;
     /**
      * Optional Basecamp web-session payload. Present only on `provider: 'basecamp'`
      * credentials whose owner has run the "Sync Basecamp Session" flow. Absent
@@ -80,6 +91,8 @@ const CredentialSchema = new Schema<CredentialDocument>(
         expiryDate:   { type: Number, required: true },
         scopes: [{ type: String }],
         userId: { type: String, index: true },  // sparse index; null for legacy credentials
+        status: { type: String, enum: ['active', 'reauth_required'], default: 'active' },
+        lastVerifiedAt: { type: Number, default: 0 },
         basecampWebSession: { type: BasecampWebSessionSchema, default: null },
     },
     { timestamps: true }

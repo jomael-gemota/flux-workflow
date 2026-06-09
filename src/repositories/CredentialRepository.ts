@@ -1,4 +1,4 @@
-import { CredentialModel, CredentialDocument, BasecampWebSession } from '../db/models/CredentialModel';
+import { CredentialModel, CredentialDocument, CredentialStatus, BasecampWebSession } from '../db/models/CredentialModel';
 
 export interface CredentialSummary {
     id: string;
@@ -7,6 +7,8 @@ export interface CredentialSummary {
     email: string;
     scopes: string[];
     createdAt: Date;
+    /** Credential health — `reauth_required` means the user must reconnect the account. */
+    status: CredentialStatus;
     /**
      * For Basecamp credentials only: lightweight description of the
      * web-session payload (if any). Listed credentials never include the
@@ -59,6 +61,11 @@ export class CredentialRepository {
         return CredentialModel.findById(id);
     }
 
+    /** All credential documents (tokens included) for a provider — used by the health checker. */
+    async findDocsByProvider(provider: CredentialDocument['provider']): Promise<CredentialDocument[]> {
+        return CredentialModel.find({ provider });
+    }
+
     async updateTokens(id: string, tokens: CredentialTokens): Promise<void> {
         await CredentialModel.findByIdAndUpdate(id, {
             $set: {
@@ -66,8 +73,15 @@ export class CredentialRepository {
                 refreshToken: tokens.refreshToken,
                 expiryDate:   tokens.expiryDate,
                 ...(tokens.scopes ? { scopes: tokens.scopes } : {}),
+                // A successful token update (refresh or OAuth reconnect) heals the credential.
+                status:         'active',
+                lastVerifiedAt: Date.now(),
             },
         });
+    }
+
+    async updateStatus(id: string, status: CredentialStatus): Promise<void> {
+        await CredentialModel.findByIdAndUpdate(id, { $set: { status } });
     }
 
     async deleteById(id: string, userId?: string): Promise<boolean> {
@@ -117,6 +131,7 @@ export class CredentialRepository {
             email:     doc.email,
             scopes:    doc.scopes,
             createdAt: (doc as unknown as { createdAt: Date }).createdAt,
+            status:    doc.status ?? 'active',
         };
         if (doc.provider === 'basecamp' && doc.basecampWebSession) {
             summary.basecampWebSession = {
