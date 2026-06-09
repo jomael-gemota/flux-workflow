@@ -1,6 +1,7 @@
 import cron, { ScheduledTask } from 'node-cron';
 import { WorkflowRepository } from '../repositories/WorkflowRepository';
 import { WorkflowService } from '../services/WorkflowService';
+import { CredentialRepository } from '../repositories/CredentialRepository';
 
 interface TriggerNodeInfo {
     workflowId: string;
@@ -25,7 +26,8 @@ export class WorkflowScheduler {
 
     constructor(
         private workflowRepo: WorkflowRepository,
-        private workflowService: WorkflowService
+        private workflowService: WorkflowService,
+        private credentialRepo?: CredentialRepository,
     ) {}
 
     async start(): Promise<void> {
@@ -107,6 +109,18 @@ export class WorkflowScheduler {
             cronExpression,
             async () => {
                 try {
+                    // Pre-flight: skip (defer) the run instead of executing it
+                    // against a credential that is known to need reconnection.
+                    // The owner has already been alerted by CredentialHealthService;
+                    // the run would only fail mid-workflow otherwise.
+                    const deadEmail = await this.findReauthRequiredCredential(workflowId);
+                    if (deadEmail) {
+                        console.warn(
+                            `[Scheduler] Skipping ${workflowId}::${nodeId} — credential "${deadEmail}" requires reconnection`,
+                        );
+                        return;
+                    }
+
                     const triggerNodeId = nodeId === '__schedule__' ? undefined : nodeId;
                     await this.workflowService.trigger(
                         workflowId,
@@ -123,6 +137,34 @@ export class WorkflowScheduler {
         );
 
         this.tasks.set(key, task);
+    }
+
+    /**
+     * Returns the email of the first credential referenced by the workflow
+     * whose status is `reauth_required`, or null when all are healthy.
+     * Errors are swallowed (returns null) so a transient DB issue never
+     * blocks a scheduled run.
+     */
+    private async findReauthRequiredCredential(workflowId: string): Promise<string | null> {
+        if (!this.credentialRepo) return null;
+        try {
+            const workflow = await this.workflowRepo.findById(workflowId);
+            if (!workflow) return null;
+
+            const credentialIds = new Set<string>();
+            for (const node of workflow.nodes ?? []) {
+                const credId = (node.config as Record<string, unknown> | undefined)?.credentialId;
+                if (typeof credId === 'string' && credId) credentialIds.add(credId);
+            }
+
+            for (const credId of credentialIds) {
+                const cred = await this.credentialRepo.findById(credId);
+                if (cred?.status === 'reauth_required') return cred.email;
+            }
+            return null;
+        } catch {
+            return null;
+        }
     }
 
     /** Validate an IANA timezone; warn and fall back to server time if invalid. */
