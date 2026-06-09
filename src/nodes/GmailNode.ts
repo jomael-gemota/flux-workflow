@@ -32,6 +32,9 @@ interface GmailConfig {
     waitMinutes?: number;
     // reply / reply_flux — ID of the message being replied to
     replyToMessageId?: string;
+    // reply_flux (Google-free path) — original RFC Message-ID used to thread the
+    // reply via In-Reply-To / References headers when no Gmail lookup is performed
+    inReplyToMessageId?: string;
     // reply / reply_flux — when true, address all original recipients (Reply All)
     replyAll?: boolean;
     // list — user-friendly filter fields (translated to a Gmail query on the fly)
@@ -82,8 +85,16 @@ export class GmailNode implements NodeExecutor {
         const config = node.config as unknown as GmailConfig;
         const { credentialId, action } = config;
 
+        if (!action) throw new Error('Gmail node: action is required');
+
+        // Flux actions are delivered through the platform SMTP service account and
+        // do not require a connected Google account. They are handled before any
+        // credential resolution so a stale/missing credentialId never blocks them.
+        if (action === 'send_flux')  return this.executeFluxSend(config, context);
+        if (action === 'reply_flux') return this.executeFluxReply(config, context);
+
+        // Every remaining action uses the Gmail API and requires a Google credential.
         if (!credentialId) throw new Error('Gmail node: credentialId is required');
-        if (!action)       throw new Error('Gmail node: action is required');
 
         const auth  = await this.googleAuth.getAuthenticatedClient(credentialId);
         const gmail = google.gmail({ version: 'v1', auth });
@@ -91,18 +102,8 @@ export class GmailNode implements NodeExecutor {
         // ── Shared helpers ─────────────────────────────────────────────────────
 
         /** Resolve a to/cc/bcc field that may be a plain string or a string[]. */
-        const resolveAddresses = (raw: string | string[] | undefined): string | undefined => {
-            if (!raw) return undefined;
-            if (Array.isArray(raw)) {
-                const joined = raw
-                    .map((a) => this.resolver.resolveTemplate(a, context))
-                    .filter(Boolean)
-                    .join(', ');
-                return joined || undefined;
-            }
-            const resolved = this.resolver.resolveTemplate(raw, context);
-            return resolved || undefined;
-        };
+        const resolveAddresses = (raw: string | string[] | undefined): string | undefined =>
+            this.resolveAddresses(raw, context);
 
         /** Recursively extract a body part by MIME type from the message payload. */
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -461,132 +462,6 @@ export class GmailNode implements NodeExecutor {
             };
         }
 
-        // ── reply_flux ─────────────────────────────────────────────────────────
-        // Reply to an existing Gmail message using the Flux SMTP service account.
-        // Uses the Gmail API only to look up the original message metadata (recipient
-        // address, subject, threading headers); the reply itself is delivered via
-        // the platform SMTP credentials configured in .env.
-
-        if (action === 'reply_flux') {
-            const smtpHost = process.env.SMTP_HOST;
-            const smtpUser = process.env.SMTP_USER;
-            const smtpPass = process.env.SMTP_PASS;
-            const smtpFrom = process.env.SMTP_FROM_ADDRESS;
-            const smtpReplyTo = process.env.SMTP_REPLY_TO?.trim() || undefined;
-            const fromName = process.env.SMTP_FROM_NAME ?? 'Flux Workflow';
-
-            if (!smtpHost || !smtpUser || !smtpPass || !smtpFrom) {
-                throw new Error(
-                    'Gmail reply_flux: SMTP is not configured. Set SMTP_HOST, SMTP_USER, SMTP_PASS, and SMTP_FROM_ADDRESS in your .env file.'
-                );
-            }
-
-            const replyToId = this.resolver.resolveTemplate(config.replyToMessageId ?? '', context);
-            if (!replyToId) throw new Error('Gmail reply_flux: replyToMessageId is required');
-
-            const orig = await gmail.users.messages.get({
-                userId: 'me',
-                id: replyToId,
-                format: 'metadata',
-                metadataHeaders: ['From', 'To', 'Cc', 'Subject', 'Message-ID', 'References'],
-            });
-            const oh = (n: string) =>
-                (orig.data.payload?.headers ?? []).find((x) => x.name === n)?.value ?? '';
-
-            const origFrom      = oh('From');
-            const origTo        = oh('To');
-            const origCc        = oh('Cc');
-            const origSubject   = oh('Subject');
-            const origMessageId = oh('Message-ID');
-            const origRefs      = oh('References');
-            const threadId      = orig.data.threadId ?? undefined;
-
-            const replySubject = origSubject.startsWith('Re:') ? origSubject : `Re: ${origSubject}`;
-            const references   = [origRefs, origMessageId].filter(Boolean).join(' ');
-
-            // ── recipient resolution ───────────────────────────────────────────
-            let replyTo: string;
-            let replyCc: string | undefined;
-
-            if (config.replyAll) {
-                // Only exclude the Flux SMTP sender address (since that is the
-                // actual sender of this reply). The connected Gmail account is
-                // kept if it appears in the thread.
-                const fluxEmail = smtpFrom.toLowerCase();
-
-                const splitAddrs = (raw: string): string[] =>
-                    raw ? raw.split(',').map((a) => a.trim()).filter(Boolean) : [];
-
-                const bareEmail = (addr: string): string => {
-                    const m = addr.match(/<([^>]+)>/);
-                    return (m ? m[1] : addr).trim().toLowerCase();
-                };
-
-                const excludeFlux = (addrs: string[]): string[] =>
-                    addrs.filter((a) => bareEmail(a) !== fluxEmail);
-
-                const toPool  = [origFrom, ...excludeFlux(splitAddrs(origTo))];
-                const seen    = new Set<string>();
-                const toFinal = toPool.filter((a) => {
-                    const addr = bareEmail(a);
-                    if (seen.has(addr)) return false;
-                    seen.add(addr);
-                    return true;
-                });
-
-                replyTo = toFinal.join(', ');
-                const ccFinal = excludeFlux(splitAddrs(origCc));
-                replyCc = ccFinal.length ? ccFinal.join(', ') : undefined;
-            } else {
-                replyTo = origFrom;
-                replyCc = undefined;
-            }
-            // ──────────────────────────────────────────────────────────────────
-
-            const rawBody     = this.resolver.resolveTemplate(config.body ?? '', context);
-            const useTemplate = config.useFluxTemplate !== false;
-
-            const htmlBody = useTemplate
-                ? buildFluxMessageHtml(replySubject, rawBody, config.isHtml ?? false)
-                : config.isHtml
-                    ? rawBody
-                    : `<pre style="font-family:inherit;white-space:pre-wrap;">${rawBody.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>`;
-
-            const port   = Number(process.env.SMTP_PORT ?? 587);
-            const secure = process.env.SMTP_SECURE === 'true';
-
-            const transporter = nodemailer.createTransport({
-                host: smtpHost, port, secure,
-                auth: { user: smtpUser, pass: smtpPass },
-            });
-
-            const smtpBcc = process.env.SMTP_BCC;
-
-            const info = await transporter.sendMail({
-                from:       `"${fromName}" <${smtpFrom}>`,
-                to:         replyTo,
-                ...(replyCc  ? { cc:  replyCc  } : {}),
-                ...(smtpBcc  ? { bcc: smtpBcc  } : {}),
-                ...(smtpReplyTo ? { replyTo: smtpReplyTo } : {}),
-                subject:    replySubject,
-                html:       htmlBody,
-                text:       rawBody,
-                inReplyTo:  origMessageId || undefined,
-                references: references || undefined,
-            });
-
-            return {
-                messageId:    info.messageId,
-                accepted:     info.accepted,
-                rejected:     info.rejected,
-                repliedTo:    replyToId,
-                threadId,
-                subject:      replySubject,
-                usedTemplate: useTemplate,
-                replyAll:     config.replyAll ?? false,
-            };
-        }
-
         // ── list ───────────────────────────────────────────────────────────────
 
         if (action === 'list') {
@@ -917,71 +792,227 @@ export class GmailNode implements NodeExecutor {
             return { deleted: true, draftId };
         }
 
-        // ── send_flux ──────────────────────────────────────────────────────────
-        // Send an email via the Flux SMTP service account (configured in .env)
-        // instead of the user's connected Gmail account.  Optionally wraps
-        // the body in the Flux branded HTML email template.
+        throw new Error(`Gmail node: unknown action "${action}"`);
+    }
 
-        if (action === 'send_flux') {
-            const smtpHost    = process.env.SMTP_HOST;
-            const smtpUser    = process.env.SMTP_USER;
-            const smtpPass    = process.env.SMTP_PASS;
-            const smtpFrom    = process.env.SMTP_FROM_ADDRESS;
-            const smtpReplyTo = process.env.SMTP_REPLY_TO?.trim() || undefined;
-            const fromName    = process.env.SMTP_FROM_NAME ?? 'Flux Workflow';
+    // ── Shared helpers ──────────────────────────────────────────────────────────
 
-            if (!smtpHost || !smtpUser || !smtpPass || !smtpFrom) {
+    /** Resolve a to/cc/bcc field that may be a plain string or a string[]. */
+    private resolveAddresses(
+        raw: string | string[] | undefined,
+        context: ExecutionContext,
+    ): string | undefined {
+        if (!raw) return undefined;
+        if (Array.isArray(raw)) {
+            const joined = raw
+                .map((a) => this.resolver.resolveTemplate(a, context))
+                .filter(Boolean)
+                .join(', ');
+            return joined || undefined;
+        }
+        const resolved = this.resolver.resolveTemplate(raw, context);
+        return resolved || undefined;
+    }
+
+    /**
+     * Read the platform SMTP service-account settings from the environment.
+     * Throws a descriptive error (scoped to the calling action) when the
+     * mandatory fields are missing.
+     */
+    private getSmtpSettings(action: 'send_flux' | 'reply_flux') {
+        const host    = process.env.SMTP_HOST;
+        const user    = process.env.SMTP_USER;
+        const pass    = process.env.SMTP_PASS;
+        const from    = process.env.SMTP_FROM_ADDRESS;
+        const replyTo = process.env.SMTP_REPLY_TO?.trim() || undefined;
+        const bcc     = process.env.SMTP_BCC || undefined;
+        const fromName = process.env.SMTP_FROM_NAME ?? 'Flux Workflow';
+        const port    = Number(process.env.SMTP_PORT ?? 587);
+        const secure  = process.env.SMTP_SECURE === 'true';
+
+        if (!host || !user || !pass || !from) {
+            throw new Error(
+                `Gmail ${action}: SMTP is not configured. Set SMTP_HOST, SMTP_USER, SMTP_PASS, and SMTP_FROM_ADDRESS in your .env file.`
+            );
+        }
+        return { host, user, pass, from, replyTo, bcc, fromName, port, secure };
+    }
+
+    /** Wrap a body in the Flux branded template (or raw HTML / escaped text). */
+    private buildFluxBody(subject: string, rawBody: string, isHtml: boolean, useTemplate: boolean): string {
+        if (useTemplate) return buildFluxMessageHtml(subject, rawBody, isHtml);
+        if (isHtml) return rawBody;
+        return `<pre style="font-family:inherit;white-space:pre-wrap;">${rawBody.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>`;
+    }
+
+    // ── send_flux ────────────────────────────────────────────────────────────────
+    // Send an email via the Flux SMTP service account (configured in .env) instead
+    // of the user's connected Gmail account. No Google credential is required.
+    private async executeFluxSend(config: GmailConfig, context: ExecutionContext): Promise<unknown> {
+        const smtp = this.getSmtpSettings('send_flux');
+
+        const toAddr      = this.resolveAddresses(config.to, context);
+        const ccAddr      = this.resolveAddresses(config.cc, context);
+        const bccAddr     = this.resolveAddresses(config.bcc, context);
+        const subject     = this.resolver.resolveTemplate(config.subject ?? '', context);
+        const rawBody     = this.resolver.resolveTemplate(config.body    ?? '', context);
+        const useTemplate = config.useFluxTemplate !== false; // default ON
+
+        if (!toAddr)  throw new Error('Gmail send_flux: "to" is required');
+        if (!subject) throw new Error('Gmail send_flux: "subject" is required');
+
+        const htmlBody = this.buildFluxBody(subject, rawBody, config.isHtml ?? false, useTemplate);
+
+        const transporter = nodemailer.createTransport({
+            host: smtp.host, port: smtp.port, secure: smtp.secure,
+            auth: { user: smtp.user, pass: smtp.pass },
+        });
+
+        const info = await transporter.sendMail({
+            from:    `"${smtp.fromName}" <${smtp.from}>`,
+            to:      toAddr,
+            ...(ccAddr     ? { cc:  ccAddr  } : {}),
+            ...(bccAddr    ? { bcc: bccAddr } : {}),
+            ...(smtp.replyTo ? { replyTo: smtp.replyTo } : {}),
+            subject,
+            html:    htmlBody,
+            text:    rawBody,
+        });
+
+        return {
+            messageId:    info.messageId,
+            accepted:     info.accepted,
+            rejected:     info.rejected,
+            from:         smtp.from,
+            to:           toAddr,
+            subject,
+            usedTemplate: useTemplate,
+        };
+    }
+
+    // ── reply_flux ─────────────────────────────────────────────────────────────
+    // Reply to a message via the Flux SMTP service account. Google-free by default:
+    // the reply recipient, subject and threading Message-ID are taken from the node
+    // config. When a Google account is connected AND a Gmail message ID is provided,
+    // the original message is looked up via the Gmail API to auto-fill those values
+    // and support Reply-All (the previous behavior, now optional).
+    private async executeFluxReply(config: GmailConfig, context: ExecutionContext): Promise<unknown> {
+        const smtp = this.getSmtpSettings('reply_flux');
+
+        const credentialId = config.credentialId;
+        const replyToId    = this.resolver.resolveTemplate(config.replyToMessageId ?? '', context).trim();
+        const useGmailLookup = Boolean(credentialId && replyToId);
+
+        let replyTo: string | undefined;
+        let replyCc: string | undefined;
+        let replySubject: string;
+        let inReplyTo: string | undefined;
+        let references: string | undefined;
+        let threadId: string | undefined;
+
+        if (useGmailLookup) {
+            // ── Auto-lookup path (requires a connected Google account) ──────────
+            const auth  = await this.googleAuth.getAuthenticatedClient(credentialId);
+            const gmail = google.gmail({ version: 'v1', auth });
+
+            const orig = await gmail.users.messages.get({
+                userId: 'me',
+                id: replyToId,
+                format: 'metadata',
+                metadataHeaders: ['From', 'To', 'Cc', 'Subject', 'Message-ID', 'References'],
+            });
+            const oh = (n: string) =>
+                (orig.data.payload?.headers ?? []).find((x) => x.name === n)?.value ?? '';
+
+            const origFrom      = oh('From');
+            const origTo        = oh('To');
+            const origCc        = oh('Cc');
+            const origSubject   = oh('Subject');
+            const origMessageId = oh('Message-ID');
+            const origRefs      = oh('References');
+            threadId            = orig.data.threadId ?? undefined;
+
+            replySubject = origSubject.startsWith('Re:') ? origSubject : `Re: ${origSubject}`;
+            inReplyTo    = origMessageId || undefined;
+            references   = [origRefs, origMessageId].filter(Boolean).join(' ') || undefined;
+
+            if (config.replyAll) {
+                // Only exclude the Flux SMTP sender address (it is the one sending
+                // this reply). The connected Gmail account is kept if present.
+                const fluxEmail  = smtp.from.toLowerCase();
+                const splitAddrs = (raw: string): string[] =>
+                    raw ? raw.split(',').map((a) => a.trim()).filter(Boolean) : [];
+                const bareEmail  = (addr: string): string => {
+                    const m = addr.match(/<([^>]+)>/);
+                    return (m ? m[1] : addr).trim().toLowerCase();
+                };
+                const excludeFlux = (addrs: string[]): string[] =>
+                    addrs.filter((a) => bareEmail(a) !== fluxEmail);
+
+                const seen    = new Set<string>();
+                const toFinal = [origFrom, ...excludeFlux(splitAddrs(origTo))].filter((a) => {
+                    const addr = bareEmail(a);
+                    if (!addr || seen.has(addr)) return false;
+                    seen.add(addr);
+                    return true;
+                });
+                replyTo = toFinal.join(', ');
+                const ccFinal = excludeFlux(splitAddrs(origCc));
+                replyCc = ccFinal.length ? ccFinal.join(', ') : undefined;
+            } else {
+                replyTo = origFrom;
+            }
+        } else {
+            // ── Google-free path (reply built from config fields) ───────────────
+            replyTo = this.resolveAddresses(config.to, context);
+            replyCc = this.resolveAddresses(config.cc, context);
+            const subject = this.resolver.resolveTemplate(config.subject ?? '', context).trim();
+
+            if (!replyTo) {
                 throw new Error(
-                    'Gmail send_flux: SMTP is not configured. Set SMTP_HOST, SMTP_USER, SMTP_PASS, and SMTP_FROM_ADDRESS in your .env file.'
+                    'Gmail reply_flux: "To" (reply recipient) is required. Provide it directly, or connect a Google account and supply a Gmail message ID to auto-fill it.'
                 );
             }
+            if (!subject) throw new Error('Gmail reply_flux: "Subject" is required.');
 
-            const toAddr      = resolveAddresses(config.to);
-            const ccAddr      = resolveAddresses(config.cc);
-            const bccAddr     = resolveAddresses(config.bcc);
-            const subject     = this.resolver.resolveTemplate(config.subject ?? '', context);
-            const rawBody     = this.resolver.resolveTemplate(config.body    ?? '', context);
-            const useTemplate = config.useFluxTemplate !== false; // default ON
-
-            if (!toAddr)  throw new Error('Gmail send_flux: "to" is required');
-            if (!subject) throw new Error('Gmail send_flux: "subject" is required');
-
-            const htmlBody = useTemplate
-                ? buildFluxMessageHtml(subject, rawBody, config.isHtml ?? false)
-                : config.isHtml
-                    ? rawBody
-                    : `<pre style="font-family:inherit;white-space:pre-wrap;">${rawBody.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>`;
-
-            const port   = Number(process.env.SMTP_PORT ?? 587);
-            const secure = process.env.SMTP_SECURE === 'true';
-
-            const transporter = nodemailer.createTransport({
-                host: smtpHost, port, secure,
-                auth: { user: smtpUser, pass: smtpPass },
-            });
-
-            const info = await transporter.sendMail({
-                from:    `"${fromName}" <${smtpFrom}>`,
-                to:      toAddr,
-                ...(ccAddr  ? { cc:  ccAddr  } : {}),
-                ...(bccAddr ? { bcc: bccAddr } : {}),
-                ...(smtpReplyTo ? { replyTo: smtpReplyTo } : {}),
-                subject,
-                html:    htmlBody,
-                text:    rawBody,
-            });
-
-            return {
-                messageId:    info.messageId,
-                accepted:     info.accepted,
-                rejected:     info.rejected,
-                from:         smtpFrom,
-                to:           toAddr,
-                subject,
-                usedTemplate: useTemplate,
-            };
+            replySubject = /^re:/i.test(subject) ? subject : `Re: ${subject}`;
+            const origMessageId = this.resolver.resolveTemplate(config.inReplyToMessageId ?? '', context).trim();
+            inReplyTo  = origMessageId || undefined;
+            references = origMessageId || undefined;
         }
 
-        throw new Error(`Gmail node: unknown action "${action}"`);
+        const rawBody     = this.resolver.resolveTemplate(config.body ?? '', context);
+        const useTemplate = config.useFluxTemplate !== false;
+        const htmlBody    = this.buildFluxBody(replySubject, rawBody, config.isHtml ?? false, useTemplate);
+
+        const transporter = nodemailer.createTransport({
+            host: smtp.host, port: smtp.port, secure: smtp.secure,
+            auth: { user: smtp.user, pass: smtp.pass },
+        });
+
+        const info = await transporter.sendMail({
+            from:       `"${smtp.fromName}" <${smtp.from}>`,
+            to:         replyTo,
+            ...(replyCc     ? { cc:  replyCc } : {}),
+            ...(smtp.bcc    ? { bcc: smtp.bcc } : {}),
+            ...(smtp.replyTo ? { replyTo: smtp.replyTo } : {}),
+            subject:    replySubject,
+            html:       htmlBody,
+            text:       rawBody,
+            ...(inReplyTo  ? { inReplyTo } : {}),
+            ...(references ? { references } : {}),
+        });
+
+        return {
+            messageId:     info.messageId,
+            accepted:      info.accepted,
+            rejected:      info.rejected,
+            repliedTo:     replyToId || undefined,
+            threadId,
+            subject:       replySubject,
+            usedTemplate:  useTemplate,
+            usedGmailLookup: useGmailLookup,
+            replyAll:      config.replyAll ?? false,
+        };
     }
 }
