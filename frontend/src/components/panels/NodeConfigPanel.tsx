@@ -7179,14 +7179,20 @@ function GmailConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
 
   return (
     <div className="space-y-3">
-      {action !== 'send_flux' && (
+      {action !== 'send_flux' && action !== 'reply_flux' && (
         <CredentialSelect value={String(cfg.credentialId ?? '')} onChange={(id) => onChange({ credentialId: id })} />
       )}
 
       <Select
         label="Action"
         value={action}
-        onChange={(e) => onChange({ action: e.target.value })}
+        onChange={(e) => {
+          const next = e.target.value;
+          // Flux SMTP sends never use a Google account — drop any stale
+          // credential so it can't fail credential lookup on the backend.
+          if (next === 'send_flux') onChange({ action: next, credentialId: '' });
+          else onChange({ action: next });
+        }}
         options={[
           { group: 'Flux Actions', options: [
             { value: 'send_flux',  label: '⚡ Send via Flux (SMTP)' },
@@ -7360,33 +7366,98 @@ function GmailConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
       {/* ── Reply via Flux (SMTP) ───────────────────────────── */}
       {action === 'reply_flux' && (
         <>
-          <ExpressionInput label="Message ID to reply to"
-            value={String(cfg.replyToMessageId ?? '')}
-            onChange={(v) => onChange({ replyToMessageId: v })}
-            placeholder="ID of the message you're replying to"
-            nodes={otherNodes} testResults={testResults} />
-          <div className="space-y-1.5">
-            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Reply mode</label>
-            <div className="flex gap-4">
-              {([
-                { value: false, label: 'Reply to sender' },
-                { value: true,  label: 'Reply all' },
-              ] as const).map(({ value, label }) => (
-                <label key={String(value)} className="flex items-center gap-1.5 cursor-pointer">
-                  <input type="radio" name="reply-flux-mode"
-                    checked={Boolean(cfg.replyAll) === value}
-                    onChange={() => onChange({ replyAll: value })}
-                    className="w-3 h-3 accent-blue-500" />
-                  <span className="text-xs text-slate-600 dark:text-slate-300">{label}</span>
-                </label>
-              ))}
-            </div>
-            {Boolean(cfg.replyAll) && (
-              <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-relaxed">
-                Replies to all original recipients (From + To + Cc). The Flux SMTP sender address is excluded since it is the one sending this reply; the connected Gmail account is kept if it appears in the thread.
-              </p>
-            )}
+          {/* Optional Gmail auto-lookup — connecting a Google account lets Flux
+              read the original message to auto-fill recipient/subject/threading. */}
+          <div className="space-y-2 rounded-md border border-slate-200 dark:border-slate-700 px-3 py-2.5">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="reply-flux-autolookup"
+                checked={Boolean(cfg.credentialId)}
+                onChange={(e) => onChange({ credentialId: e.target.checked ? cfg.credentialId : '' })}
+                className="w-3.5 h-3.5 rounded accent-blue-500" />
+              <span className="text-xs font-medium text-slate-700 dark:text-slate-200">
+                Auto-fill from a Gmail message (connect Google)
+              </span>
+            </label>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-relaxed pl-5">
+              Optional. Reply via Flux works without Google — just fill the recipient and subject below.
+              Enable this to look up the original Gmail message and auto-fill the recipient, subject and
+              threading (also enables Reply All).
+            </p>
           </div>
+
+          {Boolean(cfg.credentialId) ? (
+            <>
+              <CredentialSelect value={String(cfg.credentialId ?? '')} onChange={(id) => onChange({ credentialId: id })} />
+              <ExpressionInput label="Gmail message ID to reply to"
+                value={String(cfg.replyToMessageId ?? '')}
+                onChange={(v) => onChange({ replyToMessageId: v })}
+                placeholder="ID of the Gmail message you're replying to"
+                nodes={otherNodes} testResults={testResults} />
+              <div className="space-y-1.5">
+                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Reply mode</label>
+                <div className="flex gap-4">
+                  {([
+                    { value: false, label: 'Reply to sender' },
+                    { value: true,  label: 'Reply all' },
+                  ] as const).map(({ value, label }) => (
+                    <label key={String(value)} className="flex items-center gap-1.5 cursor-pointer">
+                      <input type="radio" name="reply-flux-mode"
+                        checked={Boolean(cfg.replyAll) === value}
+                        onChange={() => onChange({ replyAll: value })}
+                        className="w-3 h-3 accent-blue-500" />
+                      <span className="text-xs text-slate-600 dark:text-slate-300">{label}</span>
+                    </label>
+                  ))}
+                </div>
+                {Boolean(cfg.replyAll) && (
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-relaxed">
+                    Replies to all original recipients (From + To + Cc). The Flux SMTP sender address is excluded since it is the one sending this reply; the connected Gmail account is kept if it appears in the thread.
+                  </p>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <EmailTagInput
+                label="Reply to (To)"
+                value={(() => {
+                  const v = cfg.to;
+                  if (Array.isArray(v)) return v as string[];
+                  if (typeof v === 'string' && v.trim()) return v.split(',').map((s) => s.trim()).filter(Boolean);
+                  return [];
+                })()}
+                onChange={(v) => onChange({ to: v })}
+                placeholder="recipient@example.com"
+                nodes={otherNodes} testResults={testResults} />
+              <EmailTagInput
+                label="Cc (optional)"
+                value={(() => {
+                  const v = cfg.cc;
+                  if (Array.isArray(v)) return v as string[];
+                  if (typeof v === 'string' && v.trim()) return v.split(',').map((s) => s.trim()).filter(Boolean);
+                  return [];
+                })()}
+                onChange={(v) => onChange({ cc: v.length ? v : undefined })}
+                placeholder="cc@example.com"
+                nodes={otherNodes} testResults={testResults} />
+              <ExpressionInput
+                label="Subject"
+                value={String(cfg.subject ?? '')}
+                onChange={(v) => onChange({ subject: v })}
+                placeholder="Original subject (Re: is added automatically)"
+                nodes={otherNodes} testResults={testResults} />
+              <ExpressionInput
+                label="Original Message-ID (optional)"
+                value={String(cfg.inReplyToMessageId ?? '')}
+                onChange={(v) => onChange({ inReplyToMessageId: v })}
+                placeholder="<abc123@mail.gmail.com> — for proper threading"
+                nodes={otherNodes} testResults={testResults} />
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-relaxed">
+                The Message-ID is the RFC email header (not the Gmail ID). Provide it to thread the reply
+                into the original conversation; leave blank to send a standalone reply.
+              </p>
+            </>
+          )}
           <div className="space-y-1">
             <div className="flex items-center justify-between gap-1">
               <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Reply body</label>
