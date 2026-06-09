@@ -169,11 +169,19 @@ export const useWorkflowStore = create<WorkflowStore>((set) => ({
   },
 
   activeWorkflow: null,
-  setActiveWorkflow: (wf) => set((state) => ({
-    activeWorkflow: wf,
-    // Derive the lock state for the newly active workflow
-    isInteractive: wf ? (state.interactiveLocks[wf.id] ?? true) : true,
-  })),
+  setActiveWorkflow: (wf) => set((state) => {
+    // Remember the last opened workflow so a full page refresh restores it
+    // instead of falling back to the first workflow in the list. Unsaved new
+    // workflows ('__new__') are intentionally not persisted.
+    try {
+      if (wf && wf.id !== '__new__') localStorage.setItem('wap_last_workflow_id', wf.id);
+    } catch { /* ignore */ }
+    return {
+      activeWorkflow: wf,
+      // Derive the lock state for the newly active workflow
+      isInteractive: wf ? (state.interactiveLocks[wf.id] ?? true) : true,
+    };
+  }),
 
   nodes: [],
   edges: [],

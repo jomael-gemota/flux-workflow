@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import {
   Plus, Trash2, Loader2, GitBranch, ChevronRight,
   FolderOpen, Folder, Share2, FolderPlus, MoreHorizontal, Pencil, Check, X,
@@ -368,6 +369,9 @@ export function WorkflowSidebar() {
 
   const { save: saveCurrentWorkflow } = useSaveWorkflow();
   const userId = useAuthStore((s) => s.user?.id ?? '');
+  // When the URL targets a specific workflow, WorkflowByIdRoute hydrates it —
+  // the sidebar must not race it by auto-loading a different workflow.
+  const { workflowId: routeWorkflowId } = useParams<{ workflowId?: string }>();
 
   // ── Project data from the API (user-scoped by the backend) ─────────────────
   const { data: projects = [] } = useProjectList();
@@ -451,13 +455,18 @@ export function WorkflowSidebar() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [activeWorkflow?.id]);
 
-  // Auto-load the first workflow on initial page load
+  // Restore the last-opened workflow on initial page load (so a refresh keeps
+  // the user on the workflow they were viewing instead of defaulting to the
+  // first one). Skip when the URL already targets a workflow — that route
+  // handles its own hydration.
   useEffect(() => {
-    if (workflows?.length && !activeWorkflow) {
-      loadWorkflow(workflows[0]);
-    }
+    if (!workflows?.length || activeWorkflow || routeWorkflowId) return;
+    let lastId: string | null = null;
+    try { lastId = localStorage.getItem('wap_last_workflow_id'); } catch { /* ignore */ }
+    const target = (lastId && workflows.find((w) => w.id === lastId)) || workflows[0];
+    loadWorkflow(target);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workflows]);
+  }, [workflows, routeWorkflowId]);
 
   const list = workflows ?? [];
 
