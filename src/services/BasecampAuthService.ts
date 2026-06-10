@@ -1,4 +1,5 @@
 import { CredentialRepository } from '../repositories/CredentialRepository';
+import { CredentialNotificationService } from './CredentialNotificationService';
 import { getBaseUrl } from '../utils/baseUrl';
 import type { BasecampWebSession } from '../db/models/CredentialModel';
 
@@ -9,9 +10,11 @@ const getDefaultRedirectUri = () =>
 
 export class BasecampAuthService {
     private credentialRepo: CredentialRepository;
+    private credentialNotifier?: CredentialNotificationService;
 
-    constructor(credentialRepo: CredentialRepository) {
+    constructor(credentialRepo: CredentialRepository, credentialNotifier?: CredentialNotificationService) {
         this.credentialRepo = credentialRepo;
+        this.credentialNotifier = credentialNotifier;
     }
 
     isConfigured(): boolean {
@@ -141,6 +144,16 @@ export class BasecampAuthService {
                     ...(platformUserId ? { userId: platformUserId } : {}),
                 });
             }
+
+            this.credentialNotifier
+                ?.notify({
+                    event:        match ? 'reconnected' : 'connected',
+                    provider:     'basecamp',
+                    label,
+                    accountEmail: userEmail || upsertKey,
+                    ownerUserId:  platformUserId,
+                })
+                .catch((e) => console.error('[BasecampAuth] credential notification failed:', e));
         }
 
         return { name: userName, email: userEmail };

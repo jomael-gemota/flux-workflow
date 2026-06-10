@@ -4,6 +4,7 @@ import { SlackAuthService } from '../services/SlackAuthService';
 import { TeamsAuthService } from '../services/TeamsAuthService';
 import { BasecampAuthService } from '../services/BasecampAuthService';
 import { CredentialRepository } from '../repositories/CredentialRepository';
+import { CredentialNotificationService } from '../services/CredentialNotificationService';
 import { getBaseUrl } from '../utils/baseUrl';
 
 // ── State helpers — carry userId safely through the OAuth redirect round-trip ──
@@ -24,9 +25,9 @@ function decodeOAuthState(state: string | undefined): string | undefined {
 
 export async function oauthRoutes(
     fastify: FastifyInstance,
-    options: { googleAuth: GoogleAuthService; slackAuth: SlackAuthService; teamsAuth: TeamsAuthService; basecampAuth: BasecampAuthService; credentialRepo: CredentialRepository }
+    options: { googleAuth: GoogleAuthService; slackAuth: SlackAuthService; teamsAuth: TeamsAuthService; basecampAuth: BasecampAuthService; credentialRepo: CredentialRepository; credentialNotifier: CredentialNotificationService }
 ): Promise<void> {
-    const { googleAuth, slackAuth, teamsAuth, basecampAuth, credentialRepo } = options;
+    const { googleAuth, slackAuth, teamsAuth, basecampAuth, credentialRepo, credentialNotifier } = options;
 
     /** Check whether Google OAuth is configured */
     fastify.get('/oauth/google/status', async (_request, reply) => {
@@ -83,6 +84,16 @@ export async function oauthRoutes(
                         ...(platformUserId ? { userId: platformUserId } : {}),
                     });
                 }
+
+                credentialNotifier
+                    .notify({
+                        event:        match ? 'reconnected' : 'connected',
+                        provider:     'google',
+                        label:        email,
+                        accountEmail: email,
+                        ownerUserId:  platformUserId,
+                    })
+                    .catch((e) => fastify.log.error(e, 'Google credential notification failed'));
 
                 return reply.redirect(`${frontendBase}?oauth_success=google`);
             } catch (err) {

@@ -1,4 +1,5 @@
 import { CredentialRepository } from '../repositories/CredentialRepository';
+import { CredentialNotificationService } from './CredentialNotificationService';
 import { getBaseUrl } from '../utils/baseUrl';
 
 // Bot token scopes — used by the Slack app itself
@@ -31,9 +32,11 @@ const getDefaultRedirectUri = () =>
 
 export class SlackAuthService {
     private credentialRepo: CredentialRepository;
+    private credentialNotifier?: CredentialNotificationService;
 
-    constructor(credentialRepo: CredentialRepository) {
+    constructor(credentialRepo: CredentialRepository, credentialNotifier?: CredentialNotificationService) {
         this.credentialRepo = credentialRepo;
+        this.credentialNotifier = credentialNotifier;
     }
 
     isConfigured(): boolean {
@@ -142,6 +145,16 @@ export class SlackAuthService {
                 ...(platformUserId ? { userId: platformUserId } : {}),
             });
         }
+
+        this.credentialNotifier
+            ?.notify({
+                event:        match ? 'reconnected' : 'connected',
+                provider:     'slack',
+                label,
+                accountEmail: upsertKey,
+                ownerUserId:  platformUserId,
+            })
+            .catch((e) => console.error('[SlackAuth] credential notification failed:', e));
 
         return { teamName, userName: userId };
     }

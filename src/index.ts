@@ -57,6 +57,7 @@ import { creditRoutes } from './routes/creditRoutes';
 import { FluxelleConversationRepository } from './repositories/FluxelleConversationRepository';
 import { UserAuthService } from './services/UserAuthService';
 import { EmailNotificationService } from './services/EmailNotificationService';
+import { CredentialNotificationService } from './services/CredentialNotificationService';
 import { NotificationSettingsRepository } from './repositories/NotificationSettingsRepository';
 import { notificationRoutes } from './routes/notificationRoutes';
 
@@ -113,10 +114,11 @@ async function bootstrap() {
     const workflowRepo    = new WorkflowRepository();
     const executionRepo   = new ExecutionRepository();
     const credentialRepo  = new CredentialRepository();
+    const credentialNotifier = new CredentialNotificationService();
     const googleAuth      = new GoogleAuthService(credentialRepo);
-    const slackAuth       = new SlackAuthService(credentialRepo);
-    const teamsAuth       = new TeamsAuthService(credentialRepo);
-    const basecampAuth    = new BasecampAuthService(credentialRepo);
+    const slackAuth       = new SlackAuthService(credentialRepo, credentialNotifier);
+    const teamsAuth       = new TeamsAuthService(credentialRepo, credentialNotifier);
+    const basecampAuth    = new BasecampAuthService(credentialRepo, credentialNotifier);
     registry.register('gmail',    new GmailNode(googleAuth));
     registry.register('gdrive',   new GDriveNode(googleAuth));
     registry.register('gdocs',    new GDocsNode(googleAuth));
@@ -228,8 +230,8 @@ async function bootstrap() {
     await fastify.register(executionRoutes,  { prefix: '/api', executionRepo, workflowService });
     await fastify.register(webhookRoutes,    { workflowService, workflowRepo });   // no prefix — called by external systems
     await fastify.register(apiKeyRoutes,     { prefix: '/api' });
-    await fastify.register(oauthRoutes,          { prefix: '/api', googleAuth, slackAuth, teamsAuth, basecampAuth, credentialRepo });
-    await fastify.register(credentialRoutes,     { prefix: '/api', credentialRepo });
+    await fastify.register(oauthRoutes,          { prefix: '/api', googleAuth, slackAuth, teamsAuth, basecampAuth, credentialRepo, credentialNotifier });
+    await fastify.register(credentialRoutes,     { prefix: '/api', credentialRepo, credentialNotifier });
     await fastify.register(gmailDataRoutes,      { prefix: '/api', googleAuth });
     await fastify.register(gdriveDataRoutes,     { prefix: '/api', googleAuth });
     await fastify.register(gsheetsDataRoutes,    { prefix: '/api', googleAuth });

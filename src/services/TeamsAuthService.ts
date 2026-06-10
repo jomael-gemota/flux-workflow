@@ -1,4 +1,5 @@
 import { CredentialRepository } from '../repositories/CredentialRepository';
+import { CredentialNotificationService } from './CredentialNotificationService';
 import { getBaseUrl } from '../utils/baseUrl';
 
 const TEAMS_SCOPES = [
@@ -22,9 +23,11 @@ const getTenant = () =>
 
 export class TeamsAuthService {
     private credentialRepo: CredentialRepository;
+    private credentialNotifier?: CredentialNotificationService;
 
-    constructor(credentialRepo: CredentialRepository) {
+    constructor(credentialRepo: CredentialRepository, credentialNotifier?: CredentialNotificationService) {
         this.credentialRepo = credentialRepo;
+        this.credentialNotifier = credentialNotifier;
     }
 
     isConfigured(): boolean {
@@ -146,6 +149,16 @@ export class TeamsAuthService {
                 ...(platformUserId ? { userId: platformUserId } : {}),
             });
         }
+
+        this.credentialNotifier
+            ?.notify({
+                event:        match ? 'reconnected' : 'connected',
+                provider:     'teams',
+                label,
+                accountEmail: email || userId,
+                ownerUserId:  platformUserId,
+            })
+            .catch((e) => console.error('[TeamsAuth] credential notification failed:', e));
 
         return { displayName, email };
     }
