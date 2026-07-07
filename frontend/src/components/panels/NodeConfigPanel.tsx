@@ -3038,6 +3038,7 @@ function ExtractResultDisplay({ result }: { result: NodeTestResult }) {
 function TriggerResultDisplay({ result }: { result: NodeTestResult }) {
   const out = (result.output ?? {}) as Record<string, unknown>;
   const { triggerType, triggeredAt, ...rest } = out;
+  const [headersOpen, setHeadersOpen] = useState(false);
 
   const triggerLabels: Record<string, string> = {
     manual:    'Triggered manually',
@@ -3047,20 +3048,125 @@ function TriggerResultDisplay({ result }: { result: NodeTestResult }) {
     email:     'Email trigger fired',
   };
 
+  const isWebhook = String(triggerType ?? '') === 'webhook';
+
+  // For webhooks, split into primary fields and secondary (headers)
+  const { method, body, query, headers, receivedAt, ...otherRest } = rest as {
+    method?: unknown; body?: unknown; query?: unknown; headers?: unknown; receivedAt?: unknown;
+    [k: string]: unknown;
+  };
+
   return (
     <div className="p-3 space-y-2.5">
       <div className="flex flex-wrap items-center gap-2">
         <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 text-[11px] font-semibold">
           {triggerLabels[String(triggerType ?? '')] ?? String(triggerType ?? 'Unknown trigger')}
         </span>
-        {!!triggeredAt && (
+        {isWebhook && method && (
+          <span className="inline-flex items-center px-2 py-0.5 rounded bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300 text-[10px] font-mono font-semibold">
+            {String(method)}
+          </span>
+        )}
+        {!!(triggeredAt ?? receivedAt) && (
           <span className="text-[10px] text-slate-600 dark:text-slate-300">
-            {fmtDate(String(triggeredAt))}
+            {fmtDate(String(triggeredAt ?? receivedAt))}
           </span>
         )}
       </div>
 
-      {Object.keys(rest).length > 0 && (
+      {/* Webhook-specific structured output */}
+      {isWebhook && (
+        <div className="space-y-2">
+          {/* Body */}
+          <div className="space-y-1">
+            <SectionLabel>Body</SectionLabel>
+            {body == null || (typeof body === 'object' && Object.keys(body as object).length === 0) ? (
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 italic pl-1">No body</p>
+            ) : (
+              <div className="rounded border border-slate-200 dark:border-slate-700 overflow-hidden">
+                {typeof body === 'object' && !Array.isArray(body)
+                  ? Object.entries(body as Record<string, unknown>).map(([k, v], i) => (
+                    <div key={k} className={`flex items-start gap-2 px-3 py-1.5 text-[11px] border-b border-slate-100 dark:border-slate-700/50 last:border-b-0 ${
+                      i % 2 === 0 ? 'bg-white dark:bg-slate-900/40' : 'bg-slate-50 dark:bg-slate-800/40'
+                    }`}>
+                      <span className="font-mono text-purple-600 dark:text-purple-400 font-semibold shrink-0 min-w-[90px] pt-0.5">{k}</span>
+                      <SmartValue v={v} />
+                    </div>
+                  ))
+                  : (
+                    <div className="px-3 py-1.5 bg-white dark:bg-slate-900/40">
+                      <SmartValue v={body} />
+                    </div>
+                  )
+                }
+              </div>
+            )}
+          </div>
+
+          {/* Query params */}
+          {query != null && typeof query === 'object' && Object.keys(query as object).length > 0 && (
+            <div className="space-y-1">
+              <SectionLabel>Query params</SectionLabel>
+              <div className="rounded border border-slate-200 dark:border-slate-700 overflow-hidden">
+                {Object.entries(query as Record<string, unknown>).map(([k, v], i) => (
+                  <div key={k} className={`flex items-start gap-2 px-3 py-1.5 text-[11px] border-b border-slate-100 dark:border-slate-700/50 last:border-b-0 ${
+                    i % 2 === 0 ? 'bg-white dark:bg-slate-900/40' : 'bg-slate-50 dark:bg-slate-800/40'
+                  }`}>
+                    <span className="font-mono text-teal-600 dark:text-teal-400 font-semibold shrink-0 min-w-[90px] pt-0.5">{k}</span>
+                    <SmartValue v={v} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Headers — collapsible */}
+          {headers != null && typeof headers === 'object' && Object.keys(headers as object).length > 0 && (
+            <div className="space-y-1">
+              <button
+                type="button"
+                onClick={() => setHeadersOpen(p => !p)}
+                className="flex items-center gap-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
+              >
+                {headersOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                Headers ({Object.keys(headers as object).length})
+              </button>
+              {headersOpen && (
+                <div className="rounded border border-slate-200 dark:border-slate-700 overflow-hidden">
+                  {Object.entries(headers as Record<string, unknown>).map(([k, v], i) => (
+                    <div key={k} className={`flex items-start gap-2 px-3 py-1.5 text-[11px] border-b border-slate-100 dark:border-slate-700/50 last:border-b-0 ${
+                      i % 2 === 0 ? 'bg-white dark:bg-slate-900/40' : 'bg-slate-50 dark:bg-slate-800/40'
+                    }`}>
+                      <span className="font-mono text-slate-500 dark:text-slate-400 shrink-0 min-w-[130px] pt-0.5">{k}</span>
+                      <SmartValue v={v} />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Any extra fields */}
+          {Object.keys(otherRest).length > 0 && (
+            <div className="space-y-1">
+              <SectionLabel>Other fields</SectionLabel>
+              <div className="rounded border border-slate-200 dark:border-slate-700 overflow-hidden">
+                {Object.entries(otherRest).map(([k, v], i) => (
+                  <div key={k} className={`flex items-start gap-2 px-3 py-1.5 text-[11px] border-b border-slate-100 dark:border-slate-700/50 last:border-b-0 ${
+                    i % 2 === 0 ? 'bg-white dark:bg-slate-900/40' : 'bg-slate-50 dark:bg-slate-800/40'
+                  }`}>
+                    <span className="text-slate-600 dark:text-slate-300 font-medium shrink-0 min-w-[80px] pt-0.5">{k}</span>
+                    <SmartValue v={v} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Non-webhook: generic payload display */}
+      {!isWebhook && Object.keys(rest).length > 0 && (
         <div className="space-y-1">
           <SectionLabel>Trigger payload</SectionLabel>
           <div className="rounded border border-slate-200 dark:border-slate-700 overflow-hidden">
@@ -3261,12 +3367,14 @@ function NodeTestPanel({
   nodeId,
   workflowId,
   nodeType,
+  nodeConfig,
   savedResult,
   onBeforeRun,
 }: {
   nodeId: string;
   workflowId: string;
   nodeType: string;
+  nodeConfig?: Record<string, unknown>;
   savedResult: NodeTestResult | null;
   /** Commits the panel draft to the workflow store and saves before running the test. */
   onBeforeRun: () => Promise<void>;
@@ -3275,14 +3383,51 @@ function NodeTestPanel({
   const [localResult, setLocalResult] = useState<NodeTestResult | null>(null);
   const testNode = useTestNode();
 
+  // Webhook sample payload state
+  const isWebhookTrigger = nodeType === 'trigger' && (nodeConfig?.triggerType as string) === 'webhook';
+  const defaultSample = '{\n  "name": "Example User",\n  "email": "user@example.com"\n}';
+  const [samplePayload, setSamplePayload] = useState(defaultSample);
+  const [sampleParseError, setSampleParseError] = useState<string | null>(null);
+
   const displayResult = localResult ?? savedResult;
+
+  function validateSample(value: string): Record<string, unknown> | null {
+    try {
+      const parsed = JSON.parse(value);
+      if (typeof parsed !== 'object' || Array.isArray(parsed) || parsed === null) {
+        setSampleParseError('Body must be a JSON object { … }');
+        return null;
+      }
+      setSampleParseError(null);
+      return parsed as Record<string, unknown>;
+    } catch {
+      setSampleParseError('Invalid JSON');
+      return null;
+    }
+  }
 
   async function handleRun() {
     // Commit the panel's draft config (including staged file IDs, etc.) to the
     // workflow store and persist to the backend BEFORE running the test, so the
     // backend always sees the latest values from the config panel.
     await onBeforeRun();
-    const result = await testNode.mutateAsync({ workflowId, nodeId });
+
+    let context: Record<string, unknown> | undefined;
+    if (isWebhookTrigger) {
+      const parsedBody = validateSample(samplePayload);
+      if (!parsedBody) return; // validation failed — don't run
+      context = {
+        input: {
+          method: (nodeConfig?.webhookMethod as string) || 'POST',
+          headers: { 'content-type': 'application/json' },
+          query: {},
+          body: parsedBody,
+          receivedAt: new Date().toISOString(),
+        },
+      };
+    }
+
+    const result = await testNode.mutateAsync({ workflowId, nodeId, context });
     setLocalResult(result);
   }
 
@@ -3309,11 +3454,46 @@ function NodeTestPanel({
 
       {open && (
         <div className="p-2.5 space-y-2.5 bg-slate-50 dark:bg-slate-900/60">
+          {/* Webhook sample payload editor */}
+          {isWebhookTrigger && (
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-1.5">
+                <Braces className="w-3 h-3 text-purple-400 shrink-0" />
+                <span className="text-[10px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
+                  Sample request body
+                </span>
+              </div>
+              <p className="text-[10px] text-slate-500 dark:text-slate-500 leading-relaxed">
+                Provide a sample JSON body to simulate an incoming webhook. This becomes available as <code className="font-mono bg-slate-200 dark:bg-slate-700 px-1 rounded">{'{{nodes.<id>.body.*}}'}</code> in downstream nodes.
+              </p>
+              <textarea
+                value={samplePayload}
+                onChange={(e) => {
+                  setSamplePayload(e.target.value);
+                  validateSample(e.target.value);
+                }}
+                rows={6}
+                spellCheck={false}
+                className={`w-full rounded-md border text-[11px] font-mono bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 px-2.5 py-2 resize-y focus:outline-none focus:ring-1 ${
+                  sampleParseError
+                    ? 'border-red-400 dark:border-red-500 focus:ring-red-500'
+                    : 'border-slate-300 dark:border-slate-600 focus:ring-blue-500'
+                }`}
+              />
+              {sampleParseError && (
+                <p className="text-[10px] text-red-500 dark:text-red-400 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3 shrink-0" />
+                  {sampleParseError}
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Run button */}
           <button
             type="button"
             onClick={handleRun}
-            disabled={testNode.isPending}
+            disabled={testNode.isPending || (isWebhookTrigger && !!sampleParseError)}
             className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-gray-900 dark:text-white rounded text-xs font-medium transition-colors"
           >
             {testNode.isPending
@@ -3836,6 +4016,7 @@ export function NodeConfigPanel() {
           nodeId={selectedNodeId!}
           workflowId={activeWorkflow!.id}
           nodeType={nodeType}
+          nodeConfig={cfg}
           savedResult={savedTestResult}
           onBeforeRun={commitAndSave}
         />

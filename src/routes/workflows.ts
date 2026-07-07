@@ -229,10 +229,18 @@ export async function workflowRoutes(
                 triggerSample = await triggerTestService.fetchLatestSample(cfg as any).catch(() => ({}));
             }
 
+            // Allow the caller to supply a sample input for trigger nodes (e.g. a
+            // mock webhook payload). Only applies when no live sample was fetched.
+            const callerInput = context?.input as Record<string, unknown> | undefined;
+            const resolvedInput: Record<string, unknown> =
+                Object.keys(triggerSample).length > 0
+                    ? triggerSample
+                    : (callerInput && typeof callerInput === 'object' ? callerInput : triggerSample);
+
             const execContext: ExecutionContext = {
                 workflowId: workflow.id,
                 executionId: crypto.randomUUID(),
-                variables: { ...injectedVars, ...(context ?? {}), input: triggerSample },
+                variables: { ...injectedVars, ...(context ?? {}), input: resolvedInput },
                 startedAt: new Date(),
             };
 
