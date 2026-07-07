@@ -3062,7 +3062,7 @@ function TriggerResultDisplay({ result }: { result: NodeTestResult }) {
         <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 text-[11px] font-semibold">
           {triggerLabels[String(triggerType ?? '')] ?? String(triggerType ?? 'Unknown trigger')}
         </span>
-        {isWebhook && method && (
+        {isWebhook && !!method && (
           <span className="inline-flex items-center px-2 py-0.5 rounded bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300 text-[10px] font-mono font-semibold">
             {String(method)}
           </span>
