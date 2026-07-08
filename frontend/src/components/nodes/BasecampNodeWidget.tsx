@@ -6,6 +6,7 @@ type BasecampNode = Node<CanvasNodeData, 'workflowNode'>;
 
 const ACTION_LABELS: Record<string, string> = {
   create_todo:     'Create To-Do',
+  get_todo:        'Get To-Do',
   complete_todo:   'Complete To-Do',
   uncomplete_todo: 'Re-Open To-Do',
   post_message:    'Post Message',

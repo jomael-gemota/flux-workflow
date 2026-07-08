@@ -174,6 +174,14 @@ const NODE_OUTPUT_FIELDS: Record<string, OutputField[]> = {
     { key: 'count',       label: 'Item count (list_todos, get_project_people)' },
     { key: 'people',      label: 'People array [{id, name, email, title, company, …}] (get_project_people)' },
     { key: 'outOfOffice', label: 'Out-of-office window { startDate, endDate }, present when set (get_person)' },
+    { key: 'title',       label: 'To-do title (get_todo)' },
+    { key: 'content',     label: 'To-do content (get_todo)' },
+    { key: 'description', label: 'To-do description HTML (get_todo)' },
+    { key: 'dueOn',       label: 'Due date (get_todo)' },
+    { key: 'assignees',   label: 'Assignees [{id, name, email}] (get_todo)' },
+    { key: 'creator',     label: 'Creator { id, name, email } (get_todo)' },
+    { key: 'completion',  label: 'Completion { createdAt, by } when completed (get_todo)' },
+    { key: 'appUrl',      label: 'Basecamp app URL for the to-do (get_todo)' },
     { key: 'name',                label: 'Invited person\'s name (invite_users)' },
     { key: 'email',               label: 'Invited person\'s email address (invite_users)' },
     { key: 'company',             label: 'Invited person\'s company name (invite_users)' },
@@ -11593,7 +11601,7 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
   );
   const todoStatus = action === 'uncomplete_todo' ? 'completed' as const : 'active' as const;
   const { data: todos = [],     isLoading: loadingTodos,     isError: errorTodos }     = useBasecampTodos(
-    (action === 'complete_todo' || action === 'uncomplete_todo') ? credentialId : '', safeTodolistId, todoStatus
+    (action === 'complete_todo' || action === 'uncomplete_todo' || action === 'get_todo') ? credentialId : '', safeTodolistId, todoStatus
   );
   const { data: people = [],    isLoading: loadingPeople }    = useBasecampPeople(credentialId, isExprVal(projectId) ? undefined : (projectId || undefined));
   const { data: companies = [], isLoading: loadingCompanies } = useBasecampCompanies(
@@ -11619,18 +11627,27 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
         value={action}
         onChange={(e) => onChange({ action: e.target.value, projectId: '', todolistId: '', groupId: '', todoId: '', personId: '' })}
         options={[
-          { value: 'create_todo',     label: 'Create To-Do' },
-          { value: 'complete_todo',   label: 'Complete a To-Do' },
-          { value: 'uncomplete_todo', label: 'Re-Open a To-Do' },
-          { value: 'post_message',    label: 'Post Message' },
-          { value: 'post_comment',    label: 'Post Comment' },
-          { value: 'send_campfire',   label: 'Send Campfire Message' },
-          { value: 'list_todos',      label: 'List To-Dos' },
-          { value: 'get_project_people', label: 'Get People on a Project' },
-          { value: 'get_person',         label: 'Get Person' },
-          { value: 'invite_users',       label: 'Invite User to Organization' },
-          { value: 'remove_user',        label: 'Remove User from Organization' },
-          { value: 'list_organizations', label: 'List Organizations' },
+          { group: 'To-Dos', options: [
+            { value: 'create_todo',     label: 'Create To-Do' },
+            { value: 'get_todo',        label: 'Get a To-Do' },
+            { value: 'complete_todo',   label: 'Complete a To-Do' },
+            { value: 'uncomplete_todo', label: 'Re-Open a To-Do' },
+            { value: 'list_todos',      label: 'List To-Dos' },
+          ]},
+          { group: 'Messaging', options: [
+            { value: 'post_message',  label: 'Post Message' },
+            { value: 'post_comment',  label: 'Post Comment' },
+            { value: 'send_campfire', label: 'Send Campfire Message' },
+          ]},
+          { group: 'People', options: [
+            { value: 'get_project_people', label: 'Get People on a Project' },
+            { value: 'get_person',         label: 'Get Person' },
+          ]},
+          { group: 'Organization', options: [
+            { value: 'invite_users',       label: 'Invite User to Organization' },
+            { value: 'remove_user',        label: 'Remove User from Organization' },
+            { value: 'list_organizations', label: 'List Organizations' },
+          ]},
         ]}
       />
 
@@ -11916,8 +11933,8 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
         </>
       )}
 
-      {/* ── complete_todo / uncomplete_todo fields ──────────────────────── */}
-      {(action === 'complete_todo' || action === 'uncomplete_todo') && (
+      {/* ── complete_todo / uncomplete_todo / get_todo fields ───────────── */}
+      {(action === 'complete_todo' || action === 'uncomplete_todo' || action === 'get_todo') && (
         <>
           {/* Optional: pick from a list if project + todolist are set */}
           <div className="space-y-1">
