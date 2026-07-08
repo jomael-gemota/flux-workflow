@@ -3,13 +3,15 @@ import type { Skill } from '../types';
 export const skill: Skill = {
     name: 'basecamp',
     title: 'Basecamp — Todos, Messages, Campfire & Team',
-    summary: 'Create todos, post messages, send campfire chats, manage todolists, and invite users in Basecamp.',
+    summary: 'Create todos, post messages, send campfire chats, manage todolists, look up people, and invite users in Basecamp.',
     whenToUse:
         'Use for any Basecamp action — creating or completing todos, posting message board ' +
-        'announcements, chatting in Campfire, listing todos, or managing team membership.',
+        'announcements, chatting in Campfire, listing todos, looking up people on a project ' +
+        'or a single person\'s profile, or managing team membership.',
     keywords: [
         'basecamp', 'todo', 'task', 'message', 'campfire', 'chat', 'project',
         'invite', 'team', 'todolist', 'complete', 'assign',
+        'people', 'person', 'profile', 'member', 'roster',
     ],
     category: 'integration',
     nodeType: 'basecamp',
@@ -59,6 +61,33 @@ Fetch todos from a todolist.
 
 ### Output
 - \`todos\`: Array of \`{ id, content, completed, dueOn, assignees, url }\`
+
+---
+
+## Action: \`"get_project_people"\`
+Get all active people on a project.
+- \`projectId\` (string): The project whose roster to fetch.
+  Call \`list_basecamp_projects\` and present via \`ask_user\`. Accepts a numeric
+  id or the exact project name.
+
+### Output
+- \`people\`: Array of \`{ id, name, email, title, company, admin, owner, client, employee, timeZone, avatarUrl, … }\`
+- \`count\`: Number of people returned
+- \`projectId\`: The resolved project id
+
+---
+
+## Action: \`"get_person"\`
+Get a single person's full profile by id.
+- \`personId\` (string): The Basecamp person id.
+  Call \`list_basecamp_people\` and present via \`ask_user\`.
+
+### Output
+- Flat profile object: \`id\`, \`name\`, \`email\`, \`title\`, \`bio\`, \`location\`,
+  \`company\`, \`companyId\`, \`admin\`, \`owner\`, \`client\`, \`employee\`,
+  \`timeZone\`, \`avatarUrl\`, \`createdAt\`, \`updatedAt\`
+- \`outOfOffice\`: \`{ startDate, endDate }\` — only present when the person has
+  out-of-office enabled.
 
 ---
 
