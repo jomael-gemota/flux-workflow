@@ -142,7 +142,8 @@ const NODE_OUTPUT_FIELDS: Record<string, OutputField[]> = {
     { key: 'url',            label: 'Open URL (create_spreadsheet)' },
     { key: 'deleted',        label: 'Deleted flag (delete_*)' },
     { key: 'sheetId',        label: 'Sheet ID (create_sheet)' },
-    { key: 'clearedRange',   label: 'Cleared range (clear_sheet)' },
+    { key: 'clearedRange',   label: 'Cleared range (clear_sheet / clear_data)' },
+    { key: 'clearMode',      label: 'Clear mode: cell/range/sheet (clear_data)' },
     { key: 'action',         label: '"appended" or "updated" (append_update_row)' },
     { key: 'rowIndex',       label: 'Matched row index (append_update_row)' },
     { key: 'startColumn',    label: 'Start column letter (append_to_row)' },
@@ -10501,12 +10502,12 @@ function GSheetsSpreadsheetPicker({ cfg, onChange, label = 'Spreadsheet', otherN
 function GSheetsValueInputOption({ cfg, onChange }: { cfg: Record<string, unknown>; onChange: (p: Partial<Record<string, unknown>>) => void }) {
   return (
     <Select
-      label="Value input option"
+      label="How to write values"
       value={String(cfg.valueInputOption ?? 'USER_ENTERED')}
       onChange={(e) => onChange({ valueInputOption: e.target.value })}
       options={[
-        { value: 'USER_ENTERED', label: 'User Entered — parses formulas & numbers' },
-        { value: 'RAW',          label: 'Raw — everything stored as plain text' },
+        { value: 'USER_ENTERED', label: 'Apply formatting — parse formulas, numbers & dates' },
+        { value: 'RAW',          label: 'Paste as values — store text exactly as entered' },
       ]}
     />
   );
@@ -10627,6 +10628,7 @@ function GSheetsConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) 
           ]},
           { group: 'Formatting & Structure', options: [
             { value: 'format_cells',  label: 'Format Cells / Rows / Columns' },
+            { value: 'clear_data',    label: 'Clear Data (cell, range, or sheet)' },
             { value: 'clear_sheet',   label: 'Clear Sheet' },
             { value: 'create_sheet',  label: 'Create Sheet Tab' },
             { value: 'delete_sheet',  label: 'Delete Sheet Tab' },
@@ -10920,6 +10922,36 @@ function GSheetsConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) 
       {/* ── format_cells ─────────────────────────────────────────── */}
       {action === 'format_cells' && (
         <GSheetsFormatPanel cfg={cfg} onChange={onChange} otherNodes={otherNodes} testResults={testResults} />
+      )}
+
+      {/* ── clear_data ──────────────────────────────────────────── */}
+      {action === 'clear_data' && (
+        <>
+          <Select
+            label="What to clear"
+            value={String(cfg.clearMode ?? 'range')}
+            onChange={(e) => onChange({ clearMode: e.target.value })}
+            options={[
+              { value: 'cell',  label: 'A single cell' },
+              { value: 'range', label: 'A cell range' },
+              { value: 'sheet', label: 'The whole sheet' },
+            ]}
+          />
+          {(cfg.clearMode ?? 'range') === 'sheet' ? (
+            <ExpressionInput label="Sheet name" value={String(cfg.sheetName ?? '')}
+              onChange={(v) => onChange({ sheetName: v })} placeholder="Sheet1"
+              nodes={otherNodes} testResults={testResults}
+              hint="Every value in this tab is cleared. The tab and its formatting are kept." />
+          ) : (
+            <ExpressionInput
+              label={(cfg.clearMode ?? 'range') === 'cell' ? 'Cell (A1 notation)' : 'Range (A1 notation)'}
+              value={String(cfg.range ?? '')}
+              onChange={(v) => onChange({ range: v })}
+              placeholder={(cfg.clearMode ?? 'range') === 'cell' ? 'Sheet1!B2' : 'Sheet1!A1:C10'}
+              nodes={otherNodes} testResults={testResults}
+              hint="Only cell values are cleared; formatting, notes, and data validation are preserved." />
+          )}
+        </>
       )}
 
       {/* ── clear_sheet ─────────────────────────────────────────── */}
