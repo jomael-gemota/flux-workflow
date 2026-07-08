@@ -12,7 +12,7 @@ type GSheetsAction =
     // ── sheet-tab level ──────────────────────────────────────────────────────
     | 'get_rows' | 'append_row' | 'append_update_row'
     | 'append_to_row' | 'append_to_column'
-    | 'update_row' | 'clear_sheet'
+    | 'update_row' | 'clear_sheet' | 'clear_data'
     | 'create_sheet' | 'delete_sheet'
     | 'delete_rows_columns'
     | 'insert_rows' | 'insert_columns'
@@ -45,6 +45,10 @@ interface GSheetsConfig {
     // ── sheet-level target ────────────────────────────────────────────────────
     sheetName?: string;
     newSheetTitle?: string;
+
+    // ── clear_data ────────────────────────────────────────────────────────────
+    /** What to clear: a single cell, an A1 range, or the whole sheet tab. */
+    clearMode?: 'cell' | 'range' | 'sheet';
 
     // ── read / get_rows ───────────────────────────────────────────────────────
     /**
@@ -361,6 +365,29 @@ export class GSheetsNode implements NodeExecutor {
             const target    = range || sheetName || 'Sheet1';
             const res = await sheets.spreadsheets.values.clear({ spreadsheetId, range: target });
             return { spreadsheetId, clearedRange: res.data.clearedRange };
+        }
+
+        // ── clear_data (single cell / range / whole sheet) ────────────────────
+
+        if (action === 'clear_data') {
+            const mode      = config.clearMode ?? 'range';
+            const sheetName = this.resolver.resolveTemplate(config.sheetName ?? '', context).trim();
+            const range     = this.resolver.resolveTemplate(config.range ?? '', context).trim();
+
+            let target: string;
+            if (mode === 'sheet') {
+                target = sheetName || 'Sheet1';
+            } else {
+                target = range || sheetName;
+                if (!target) {
+                    throw new Error(
+                        `Google Sheets clear_data: a ${mode === 'cell' ? 'cell reference' : 'range'} is required`,
+                    );
+                }
+            }
+
+            const res = await sheets.spreadsheets.values.clear({ spreadsheetId, range: target });
+            return { spreadsheetId, clearMode: mode, clearedRange: res.data.clearedRange };
         }
 
         // ── get_rows ──────────────────────────────────────────────────────────
@@ -897,10 +924,39 @@ export class GSheetsNode implements NodeExecutor {
             const trimmed = values.trim();
             if (!trimmed) return [[]];
             resolved = this.resolver.resolve(trimmed, context);
-            if (resolved === values) return [[values]];   // literal string, not an expression
+        }
+
+        // A string here is either a literal the user pasted or the result of an
+        // expression. If it is JSON describing a grid/row/record (e.g. a pasted
+        // '[["a","b"],["c","d"]]'), parse it into structure so it is written as
+        // real rows/cells rather than one text cell. Plain text, numbers, and
+        // formula strings (=SUM(A1:B1)) are left untouched.
+        if (typeof resolved === 'string') {
+            resolved = this.coerceJsonGrid(resolved);
         }
 
         return this.normalizeToGrid(resolved, columnKeys);
+    }
+
+    /**
+     * Parse a string into a structured array/object when it is valid JSON that
+     * represents a grid, row, or record. Any other string (plain text, numbers,
+     * formulas, or non-JSON) is returned unchanged so it becomes a single cell.
+     */
+    private coerceJsonGrid(str: string): unknown {
+        const trimmed = str.trim();
+        if (trimmed.length < 2) return str;
+        const first = trimmed[0];
+        if (first !== '[' && first !== '{') return str;
+        try {
+            const parsed = JSON.parse(trimmed);
+            if (Array.isArray(parsed) || (parsed !== null && typeof parsed === 'object')) {
+                return parsed;
+            }
+        } catch {
+            // not valid JSON — treat as a literal string cell
+        }
+        return str;
     }
 
     private normalizeToGrid(value: unknown, columnKeys?: string[]): unknown[][] {
