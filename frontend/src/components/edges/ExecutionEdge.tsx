@@ -2,8 +2,10 @@ import { memo, useState } from 'react';
 import {
   getBezierPath,
   EdgeLabelRenderer,
+  useReactFlow,
   type EdgeProps,
 } from '@xyflow/react';
+import { Trash2 } from 'lucide-react';
 
 export type EdgeExecutionStatus = 'idle' | 'waiting' | 'flowing' | 'success' | 'failure' | 'skipped';
 
@@ -63,6 +65,7 @@ export const ExecutionEdge = memo(function ExecutionEdge({
   selected,
 }: EdgeProps) {
   const [isHovered, setIsHovered] = useState(false);
+  const { deleteElements } = useReactFlow();
 
   const d = data as ExecutionEdgeData | undefined;
   const status: EdgeExecutionStatus = d?.executionStatus ?? 'idle';
@@ -255,6 +258,41 @@ export const ExecutionEdge = memo(function ExecutionEdge({
             transition: 'stroke 0.55s ease, stroke-opacity 0.55s ease',
           }}
         />
+      )}
+
+      {/*
+        ── 3b. Selected toolbar (delete connector) ───────────────────────────────
+        Mirrors the node hover toolbar, but for edges it appears on click
+        (React Flow sets `selected` when the connector is clicked). For now the
+        only action is deleting the connector. Deletion goes through
+        deleteElements so it flows through onEdgesChange → setEdges, exactly like
+        pressing Delete on a selected edge.
+      */}
+      {selected && (
+        <EdgeLabelRenderer>
+          <div
+            style={{
+              position: 'absolute',
+              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY - (d?.label ? 22 : 0)}px)`,
+              pointerEvents: 'all',
+            }}
+            className="nodrag nopan flex items-center gap-1 rounded-lg bg-white/85 dark:bg-slate-800/85 border border-white/60 dark:border-slate-600/60 shadow-md backdrop-blur-sm p-1"
+          >
+            <button
+              type="button"
+              title="Delete connector"
+              aria-label="Delete connector"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                void deleteElements({ edges: [{ id }] });
+              }}
+              className="flex items-center justify-center w-7 h-7 rounded-md text-slate-500 dark:text-slate-300 transition-all duration-150 hover:bg-red-50 dark:hover:bg-red-500/15 hover:text-red-600 dark:hover:text-red-400 focus:outline-none"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </EdgeLabelRenderer>
       )}
 
       {/* ── 4. Optional mid-edge label ──────────────────────────────────────── */}
