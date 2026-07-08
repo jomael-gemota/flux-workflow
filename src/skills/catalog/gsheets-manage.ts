@@ -34,8 +34,11 @@ Write/overwrite data to a range.
   \`[["a","b"],["c","d"]]\` is parsed into rows/cells automatically (not written
   as a single text cell).
 - \`valueInputOption\` (\`"RAW" | "USER_ENTERED"\`): Default \`"USER_ENTERED"\`.
-  \`USER_ENTERED\` parses formulas, numbers, and dates ("apply formatting");
-  \`RAW\` stores each cell exactly as provided ("paste as values").
+  \`USER_ENTERED\` parses formulas, numbers, and dates ("apply formatting") and
+  leaves live formulas in cells; \`RAW\` stores each cell exactly as provided
+  ("paste as values"). Under \`RAW\`, any cell that is a formula (starts with
+  \`=\`) is evaluated first and its computed result is pasted as a plain value.
+  This computed-on-paste behavior applies to every write/append action.
 
 ## Action: \`"update_row"\`
 Update a specific row by matching a value in a key column.

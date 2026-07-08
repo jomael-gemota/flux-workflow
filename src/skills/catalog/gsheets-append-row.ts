@@ -30,6 +30,8 @@ Adds a new row to the bottom of a sheet range.
 
 ## Optional config
 - \`valueInputOption\` (\`"RAW" | "USER_ENTERED"\`): Defaults to \`"USER_ENTERED"\` so formulas / dates parse.
+  With \`"RAW"\` ("paste as values"), a cell that is a formula (starts with \`=\`) is
+  computed first and its result is appended as a plain value.
 
 ## Output fields
 - \`updatedRange\`: The range that was updated
