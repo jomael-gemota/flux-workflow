@@ -17,7 +17,8 @@ type BasecampAction =
     | 'remove_user'
     | 'list_organizations'
     | 'get_project_people'
-    | 'get_person';
+    | 'get_person'
+    | 'get_todo';
 
 interface BasecampConfig {
     credentialId: string;
@@ -134,6 +135,65 @@ function mapBasecampPerson(p: Record<string, unknown>): Record<string, unknown> 
         ...(ooo
             ? { outOfOffice: { startDate: ooo.start_date ?? null, endDate: ooo.end_date ?? null } }
             : {}),
+    };
+}
+
+/** Lightweight {id, name, email} projection of a Basecamp person sub-record. */
+function mapPersonSummary(p: Record<string, unknown> | null | undefined): Record<string, unknown> | null {
+    if (!p || typeof p !== 'object') return null;
+    return {
+        id:    p.id,
+        name:  p.name ?? null,
+        email: p.email_address ?? null,
+    };
+}
+
+/**
+ * Normalise a raw Basecamp to-do record (from Get a to-do / Get to-dos) into a
+ * flat camelCase shape. Nested people (assignees, creator, completion author)
+ * are reduced to {id, name, email} summaries, and the parent to-do list and
+ * containing project/bucket are surfaced for downstream routing.
+ */
+function mapBasecampTodo(t: Record<string, unknown>): Record<string, unknown> {
+    const parent     = t.parent     as Record<string, unknown> | null | undefined;
+    const bucket     = t.bucket     as Record<string, unknown> | null | undefined;
+    const completion = t.completion as Record<string, unknown> | null | undefined;
+    const assignees  = Array.isArray(t.assignees) ? t.assignees as Record<string, unknown>[] : [];
+    const subscribers = Array.isArray(t.completion_subscribers)
+        ? t.completion_subscribers as Record<string, unknown>[] : [];
+
+    return {
+        id:               t.id,
+        title:            t.title ?? t.content ?? null,
+        content:          t.content ?? null,
+        description:      t.description ?? '',
+        status:           t.status ?? null,
+        completed:        t.completed ?? false,
+        startsOn:         t.starts_on ?? null,
+        dueOn:            t.due_on ?? null,
+        position:         t.position ?? null,
+        visibleToClients: t.visible_to_clients ?? null,
+        commentsCount:    t.comments_count ?? null,
+        commentsUrl:      t.comments_url ?? null,
+        url:              t.url ?? null,
+        appUrl:           t.app_url ?? null,
+        createdAt:        t.created_at ?? null,
+        updatedAt:        t.updated_at ?? null,
+        creator:          mapPersonSummary(t.creator as Record<string, unknown> | undefined),
+        assignees:        assignees.map((a) => mapPersonSummary(a)),
+        completionSubscribers: subscribers.map((s) => mapPersonSummary(s)),
+        completion: completion
+            ? {
+                createdAt: completion.created_at ?? null,
+                by:        mapPersonSummary(completion.creator as Record<string, unknown> | undefined),
+            }
+            : null,
+        parent: parent
+            ? { id: parent.id, title: parent.title ?? null, type: parent.type ?? null }
+            : null,
+        project: bucket
+            ? { id: bucket.id, name: bucket.name ?? null, type: bucket.type ?? null }
+            : null,
     };
 }
 
@@ -1478,6 +1538,18 @@ export class BasecampNode implements NodeExecutor {
             }
             const person = await res.json() as Record<string, unknown>;
             return mapBasecampPerson(person);
+        }
+
+        if (action === 'get_todo') {
+            const todoId = this.resolver.resolveTemplate(config.todoId ?? '', context).trim();
+            if (!todoId) throw new Error('Basecamp get_todo: todoId is required');
+
+            const res = await fetch(`${baseUrl}/todos/${todoId}.json`, { headers });
+            if (!res.ok) {
+                throw new Error(`Basecamp get_todo failed (${res.status}): ${await extractBasecampError(res)}`);
+            }
+            const todo = await res.json() as Record<string, unknown>;
+            return mapBasecampTodo(todo);
         }
 
         throw new Error(`Basecamp node: unknown action "${action}"`);
