@@ -64,6 +64,23 @@ Fetch todos from a todolist.
 
 ---
 
+## Action: \`"get_todo"\`
+Fetch a single to-do by id.
+- \`todoId\` (string): The to-do id (from a previous create_todo / list_todos
+  output, or picked in the UI).
+
+### Output
+- Flat to-do object: \`id\`, \`title\`, \`content\`, \`description\`, \`status\`,
+  \`completed\`, \`startsOn\`, \`dueOn\`, \`position\`, \`commentsCount\`, \`url\`,
+  \`appUrl\`, \`createdAt\`, \`updatedAt\`
+- \`creator\`: \`{ id, name, email }\`
+- \`assignees\`: \`[{ id, name, email }]\`
+- \`completion\`: \`{ createdAt, by }\` — present when the to-do is completed
+- \`parent\`: \`{ id, title, type }\` — the containing to-do list
+- \`project\`: \`{ id, name, type }\` — the containing project
+
+---
+
 ## Action: \`"get_project_people"\`
 Get all active people on a project.
 - \`projectId\` (string): The project whose roster to fetch.
