@@ -5,6 +5,8 @@ import { WebhookPayloadSchema } from '../validation/schemas';
 import { toJsonSchema } from '../validation/toJsonSchema';
 import { NotFoundError } from '../errors/ApiError';
 import { createHmacVerifier } from '../middleware/hmac';
+import { webhookCaptureRegistry } from '../services/WebhookCaptureRegistry';
+import { executionEventBus } from '../events/ExecutionEventBus';
 
 export async function webhookRoutes(
     fastify: FastifyInstance,
@@ -63,6 +65,16 @@ export async function webhookRoutes(
                 body: (request.body ?? {}) as Record<string, unknown>,
                 receivedAt: new Date().toISOString(),
             };
+
+            // If a "listen for webhook" capture session is armed for this node,
+            // capture the payload (buffer + push over the SSE bus) and return 200
+            // WITHOUT executing the workflow, to avoid firing downstream side
+            // effects during a test. Only the first hit is captured; the SSE
+            // handler clears the session so subsequent hits execute normally.
+            if (webhookCaptureRegistry.markCaptured(workflowId, nodeId, payload)) {
+                executionEventBus.emitWebhookCaptured(workflowId, nodeId, payload);
+                return reply.code(200).send({ received: true, captured: true });
+            }
 
             try {
                 const summary = await workflowService.trigger(

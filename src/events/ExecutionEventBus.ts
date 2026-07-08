@@ -25,6 +25,16 @@ class ExecutionEventBus extends EventEmitter {
         this.on(`complete:${executionId}`, listener);
         return () => this.off(`complete:${executionId}`, listener);
     }
+
+    emitWebhookCaptured(workflowId: string, nodeId: string, payload: unknown): void {
+        this.emit(`webhook-capture:${workflowId}:${nodeId}`, payload);
+    }
+
+    onWebhookCaptured(workflowId: string, nodeId: string, listener: (payload: unknown) => void): () => void {
+        const event = `webhook-capture:${workflowId}:${nodeId}`;
+        this.on(event, listener);
+        return () => this.off(event, listener);
+    }
 }
 
 export const executionEventBus = new ExecutionEventBus();

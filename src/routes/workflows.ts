@@ -22,7 +22,12 @@ import {
 import { toJsonSchema } from '../validation/toJsonSchema';
 import { NotFoundError, BadRequestError } from '../errors/ApiError';
 import { ExecutionContext } from '../types/workflow.types';
+import { webhookCaptureRegistry } from '../services/WebhookCaptureRegistry';
+import { executionEventBus } from '../events/ExecutionEventBus';
+import { ApiKeyModel } from '../db/models/ApiKeyModel';
 import crypto from 'crypto';
+
+const WEBHOOK_CAPTURE_TTL_MS = 60_000;
 
 export async function workflowRoutes(
     fastify: FastifyInstance,
@@ -262,6 +267,128 @@ export async function workflowRoutes(
                 await executionRepo.saveNodeTestResult(workflow.id, node.id, result);
                 return reply.code(200).send(result);
             }
+        }
+    );
+
+    // ── Webhook "listen for real webhook" capture session ──────────────────────
+
+    fastify.post<{ Params: { id: string; nodeId: string } }>(
+        '/workflows/:id/nodes/:nodeId/webhook-capture/start',
+        { preHandler: apiKeyAuth },
+        async (request, reply) => {
+            const userId = getRequestUserId(request);
+
+            const workflow = await workflowRepo.findById(request.params.id, userId);
+            if (!workflow) throw NotFoundError(`Workflow ${request.params.id}`);
+
+            const node = workflow.nodes.find(n => n.id === request.params.nodeId);
+            if (!node) throw NotFoundError(`Node ${request.params.nodeId} in workflow ${request.params.id}`);
+
+            const cfg = (node.config ?? {}) as Record<string, unknown>;
+            if (node.type !== 'trigger' || cfg.triggerType !== 'webhook') {
+                throw BadRequestError(`Node ${request.params.nodeId} is not a webhook trigger`);
+            }
+
+            const captureId = crypto.randomUUID();
+            const session = webhookCaptureRegistry.arm(workflow.id, node.id, captureId, WEBHOOK_CAPTURE_TTL_MS);
+            return reply.code(200).send({ captureId: session.captureId, expiresAt: session.expiresAt });
+        }
+    );
+
+    // SSE: stream the next captured webhook payload back to the browser.
+    // EventSource cannot send custom headers, so auth is passed via query params.
+    fastify.get<{
+        Params: { id: string; nodeId: string; captureId: string };
+        Querystring: { token?: string; apiKey?: string };
+    }>(
+        '/workflows/:id/nodes/:nodeId/webhook-capture/:captureId/events',
+        async (request, reply) => {
+            const { token, apiKey } = request.query;
+
+            if (token) {
+                try {
+                    const decoded = (fastify as any).jwt.verify(token) as { status?: string };
+                    if (decoded.status && decoded.status !== 'approved') {
+                        return reply.code(403).send({ message: 'Account pending approval' });
+                    }
+                } catch {
+                    return reply.code(401).send({ message: 'Invalid or expired token' });
+                }
+            } else if (apiKey) {
+                const doc = await ApiKeyModel.findOne({ key: apiKey });
+                if (!doc) return reply.code(403).send({ message: 'Invalid API key' });
+            } else {
+                return reply.code(401).send({ message: 'Authentication required' });
+            }
+
+            const { id: workflowId, nodeId, captureId } = request.params;
+
+            const session = webhookCaptureRegistry.get(workflowId, nodeId);
+            if (!session || session.captureId !== captureId) {
+                return reply.code(404).send({ message: 'No active webhook capture session' });
+            }
+
+            // Hijack the raw response so Fastify doesn't auto-close it
+            reply.hijack();
+            const raw = reply.raw;
+
+            raw.writeHead(200, {
+                'Content-Type': 'text/event-stream',
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+                'X-Accel-Buffering': 'no',
+            });
+
+            const send = (event: string, data: unknown) => {
+                try {
+                    raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+                } catch { /* client already disconnected */ }
+            };
+
+            // A hit may have landed between arming and this subscription — replay
+            // the buffered payload and close immediately.
+            if (session.capturedPayload !== null) {
+                send('captured', session.capturedPayload);
+                webhookCaptureRegistry.clear(workflowId, nodeId);
+                raw.end();
+                return;
+            }
+
+            let closed = false;
+
+            const cleanup = () => {
+                if (closed) return;
+                closed = true;
+                clearInterval(heartbeat);
+                clearTimeout(timeout);
+                unsub();
+                webhookCaptureRegistry.clear(workflowId, nodeId);
+            };
+
+            const unsub = executionEventBus.onWebhookCaptured(workflowId, nodeId, (payload) => {
+                if (closed) return;
+                send('captured', payload);
+                cleanup();
+                raw.end();
+            });
+
+            // Auto-close when the capture window elapses without a hit.
+            const remaining = Math.max(1_000, session.expiresAt - Date.now());
+            const timeout = setTimeout(() => {
+                if (closed) return;
+                send('timeout', { message: 'No webhook received within the capture window' });
+                cleanup();
+                raw.end();
+            }, remaining);
+
+            // Keep-alive heartbeat (prevents proxies/load-balancers from closing idle connections)
+            const heartbeat = setInterval(() => {
+                if (closed) return;
+                try { raw.write(': heartbeat\n\n'); } catch { cleanup(); }
+            }, 15_000);
+
+            request.raw.on('close', cleanup);
+            request.raw.on('error', cleanup);
         }
     );
 
