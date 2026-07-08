@@ -10507,7 +10507,7 @@ function GSheetsValueInputOption({ cfg, onChange }: { cfg: Record<string, unknow
       onChange={(e) => onChange({ valueInputOption: e.target.value })}
       options={[
         { value: 'USER_ENTERED', label: 'Apply formatting — parse formulas, numbers & dates' },
-        { value: 'RAW',          label: 'Paste as values — store text exactly as entered' },
+        { value: 'RAW',          label: 'Paste as values — store text exactly; formulas are computed first' },
       ]}
     />
   );
