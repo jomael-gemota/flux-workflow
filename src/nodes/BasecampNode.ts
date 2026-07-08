@@ -15,7 +15,9 @@ type BasecampAction =
     | 'list_todos'
     | 'invite_users'
     | 'remove_user'
-    | 'list_organizations';
+    | 'list_organizations'
+    | 'get_project_people'
+    | 'get_person';
 
 interface BasecampConfig {
     credentialId: string;
@@ -25,6 +27,8 @@ interface BasecampConfig {
     groupId?: string;
     todoId?: string;
     recordingId?: string;
+    // get_person
+    personId?: string;
     // create_todo
     content?: string;
     description?: string;
@@ -97,6 +101,40 @@ function normalizeDueDate(raw: string): string {
     }
 
     return trimmed; // Return as-is; let the API reject with a clear error
+}
+
+/**
+ * Normalise a raw Basecamp person record into the flatter, camelCase shape used
+ * across this node's outputs. Handles the nested `company` object and the
+ * optional `out_of_office` window (present on the Get person endpoint when the
+ * person has out-of-office enabled).
+ */
+function mapBasecampPerson(p: Record<string, unknown>): Record<string, unknown> {
+    const co  = p.company       as { id?: number; name?: string } | null | undefined;
+    const ooo = p.out_of_office as { start_date?: string; end_date?: string } | null | undefined;
+    return {
+        id:             p.id,
+        name:           p.name ?? null,
+        email:          p.email_address ?? null,
+        title:          p.title ?? null,
+        bio:            p.bio ?? null,
+        location:       p.location ?? null,
+        company:        co?.name ?? null,
+        companyId:      co?.id ?? null,
+        admin:          p.admin ?? null,
+        owner:          p.owner ?? null,
+        client:         p.client ?? null,
+        employee:       p.employee ?? null,
+        timeZone:       p.time_zone ?? null,
+        avatarUrl:      p.avatar_url ?? null,
+        personableType: p.personable_type ?? null,
+        canPing:        p.can_ping ?? null,
+        createdAt:      p.created_at ?? null,
+        updatedAt:      p.updated_at ?? null,
+        ...(ooo
+            ? { outOfOffice: { startDate: ooo.start_date ?? null, endDate: ooo.end_date ?? null } }
+            : {}),
+    };
 }
 
 /**
@@ -1408,6 +1446,38 @@ export class BasecampNode implements NodeExecutor {
                 ...(nameMatchType ? { nameMatchType }                : {}),
                 ...(matchNote     ? { nameMatchNote: matchNote }      : {}),
             };
+        }
+
+        if (action === 'get_project_people') {
+            const projectId = await this.resolveProjectId(
+                this.resolver.resolveTemplate(config.projectId ?? '', context), baseUrl, headers,
+            );
+            if (!projectId) throw new Error('Basecamp get_project_people: projectId is required');
+
+            // GET /projects/{id}/people.json returns all active people on the
+            // project. throwOnError=true so an auth/permission failure surfaces
+            // rather than being mistaken for an empty roster.
+            const people = await this.fetchAllPages(
+                `${baseUrl}/projects/${projectId}/people.json`, headers, true,
+            );
+
+            return {
+                projectId,
+                people: people.map(mapBasecampPerson),
+                count:  people.length,
+            };
+        }
+
+        if (action === 'get_person') {
+            const personId = this.resolver.resolveTemplate(config.personId ?? '', context).trim();
+            if (!personId) throw new Error('Basecamp get_person: personId is required');
+
+            const res = await fetch(`${baseUrl}/people/${personId}.json`, { headers });
+            if (!res.ok) {
+                throw new Error(`Basecamp get_person failed (${res.status}): ${await extractBasecampError(res)}`);
+            }
+            const person = await res.json() as Record<string, unknown>;
+            return mapBasecampPerson(person);
         }
 
         throw new Error(`Basecamp node: unknown action "${action}"`);
