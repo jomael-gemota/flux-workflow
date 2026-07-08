@@ -298,16 +298,16 @@ export class GSheetsNode implements NodeExecutor {
 
             const columnKeys = this.parseColumnKeys(config.columnKeys);
             const values     = this.resolveValues(config.values, context, columnKeys);
-            const res = await sheets.spreadsheets.values.update({
-                spreadsheetId, range,
+            const res = await this.writeGridValues(sheets, {
+                spreadsheetId, range, grid: values,
                 valueInputOption: config.valueInputOption ?? 'USER_ENTERED',
-                requestBody:      { values },
+                mode: 'update',
             });
             return {
-                updatedRange:   res.data.updatedRange,
-                updatedRows:    res.data.updatedRows,
-                updatedColumns: res.data.updatedColumns,
-                updatedCells:   res.data.updatedCells,
+                updatedRange:   res.updatedRange,
+                updatedRows:    res.updatedRows,
+                updatedColumns: res.updatedColumns,
+                updatedCells:   res.updatedCells,
             };
         }
 
@@ -317,18 +317,17 @@ export class GSheetsNode implements NodeExecutor {
             const range      = this.resolver.resolveTemplate(config.range ?? 'Sheet1', context);
             const columnKeys = this.parseColumnKeys(config.columnKeys);
             const values     = this.resolveValues(config.values, context, columnKeys);
-            const res = await sheets.spreadsheets.values.append({
-                spreadsheetId, range,
+            const res = await this.writeGridValues(sheets, {
+                spreadsheetId, range, grid: values,
                 valueInputOption: config.valueInputOption ?? 'USER_ENTERED',
-                insertDataOption: 'INSERT_ROWS',
-                requestBody:      { values },
+                mode: 'append',
             });
             return {
                 spreadsheetId,
-                tableRange:    res.data.tableRange,
-                updatedRange:  res.data.updates?.updatedRange,
-                updatedRows:   res.data.updates?.updatedRows,
-                updatedCells:  res.data.updates?.updatedCells,
+                tableRange:    res.tableRange,
+                updatedRange:  res.updatedRange,
+                updatedRows:   res.updatedRows,
+                updatedCells:  res.updatedCells,
             };
         }
 
@@ -444,18 +443,17 @@ export class GSheetsNode implements NodeExecutor {
             const sheetName  = this.resolver.resolveTemplate(config.sheetName ?? 'Sheet1', context);
             const columnKeys = this.parseColumnKeys(config.columnKeys);
             const grid       = this.resolveValues(config.values, context, columnKeys);
-            const res = await sheets.spreadsheets.values.append({
-                spreadsheetId, range: sheetName,
+            const res = await this.writeGridValues(sheets, {
+                spreadsheetId, range: sheetName, grid,
                 valueInputOption: config.valueInputOption ?? 'USER_ENTERED',
-                insertDataOption: 'INSERT_ROWS',
-                requestBody:      { values: grid },
+                mode: 'append',
             });
             return {
                 spreadsheetId,
                 appendedRows:  grid.length,
-                tableRange:    res.data.tableRange,
-                updatedRange:  res.data.updates?.updatedRange,
-                updatedRows:   res.data.updates?.updatedRows,
+                tableRange:    res.tableRange,
+                updatedRange:  res.updatedRange,
+                updatedRows:   res.updatedRows,
             };
         }
 
@@ -486,22 +484,21 @@ export class GSheetsNode implements NodeExecutor {
                 const matchIdx = rows.findIndex((r, i) => i > 0 && r[keyColIdx]?.toString() === keyValue);
                 if (matchIdx > 0) {
                     const updateRange = `${sheetName}!A${matchIdx + 1}`;
-                    const res = await sheets.spreadsheets.values.update({
-                        spreadsheetId, range: updateRange,
+                    const res = await this.writeGridValues(sheets, {
+                        spreadsheetId, range: updateRange, grid: [flatRow],
                         valueInputOption: config.valueInputOption ?? 'USER_ENTERED',
-                        requestBody:      { values: [flatRow] },
+                        mode: 'update',
                     });
-                    return { action: 'updated', spreadsheetId, rowIndex: matchIdx, updatedRange: res.data.updatedRange };
+                    return { action: 'updated', spreadsheetId, rowIndex: matchIdx, updatedRange: res.updatedRange };
                 }
             }
 
-            const res = await sheets.spreadsheets.values.append({
-                spreadsheetId, range: sheetName,
+            const res = await this.writeGridValues(sheets, {
+                spreadsheetId, range: sheetName, grid: [flatRow],
                 valueInputOption: config.valueInputOption ?? 'USER_ENTERED',
-                insertDataOption: 'INSERT_ROWS',
-                requestBody:      { values: [flatRow] },
+                mode: 'append',
             });
-            return { action: 'appended', spreadsheetId, updatedRange: res.data.updates?.updatedRange };
+            return { action: 'appended', spreadsheetId, updatedRange: res.updatedRange };
         }
 
         // ── update_row ────────────────────────────────────────────────────────
@@ -512,17 +509,17 @@ export class GSheetsNode implements NodeExecutor {
 
             const columnKeys = this.parseColumnKeys(config.columnKeys);
             const values     = this.resolveValues(config.values, context, columnKeys);
-            const res = await sheets.spreadsheets.values.update({
-                spreadsheetId, range,
+            const res = await this.writeGridValues(sheets, {
+                spreadsheetId, range, grid: values,
                 valueInputOption: config.valueInputOption ?? 'USER_ENTERED',
-                requestBody:      { values },
+                mode: 'update',
             });
             return {
                 spreadsheetId,
-                updatedRange:   res.data.updatedRange,
-                updatedRows:    res.data.updatedRows,
-                updatedColumns: res.data.updatedColumns,
-                updatedCells:   res.data.updatedCells,
+                updatedRange:   res.updatedRange,
+                updatedRows:    res.updatedRows,
+                updatedColumns: res.updatedColumns,
+                updatedCells:   res.updatedCells,
             };
         }
 
@@ -549,10 +546,10 @@ export class GSheetsNode implements NodeExecutor {
             const startColLetter = colIdxToLetter(startColIdx);
             const writeRange     = `${sheetName}!${startColLetter}${rowNumber}`;
 
-            await sheets.spreadsheets.values.update({
-                spreadsheetId, range: writeRange,
+            await this.writeGridValues(sheets, {
+                spreadsheetId, range: writeRange, grid: [newCells],
                 valueInputOption: config.valueInputOption ?? 'USER_ENTERED',
-                requestBody:      { values: [newCells] },
+                mode: 'update',
             });
 
             return {
@@ -588,10 +585,10 @@ export class GSheetsNode implements NodeExecutor {
             const startRowNumber = lastRowIdx + 2; // 1-based
             const writeRange     = `${sheetName}!${columnLetter}${startRowNumber}`;
 
-            await sheets.spreadsheets.values.update({
-                spreadsheetId, range: writeRange,
+            await this.writeGridValues(sheets, {
+                spreadsheetId, range: writeRange, grid: newCells,
                 valueInputOption: config.valueInputOption ?? 'USER_ENTERED',
-                requestBody:      { values: newCells },
+                mode: 'update',
             });
 
             return {
@@ -910,8 +907,10 @@ export class GSheetsNode implements NodeExecutor {
      *  • Single object      → one row of the object's values
      *  • Primitive          → single-cell grid
      *
-     * Formula strings (starting with `=`) are preserved verbatim and are
-     * evaluated by Google Sheets when valueInputOption is USER_ENTERED.
+     * Formula strings (starting with `=`) are preserved verbatim here. Under
+     * USER_ENTERED, Google Sheets evaluates them into live formulas; under RAW
+     * ("Paste as values"), `writeGridValues()` evaluates them and pastes the
+     * computed result as a plain value.
      */
     private resolveValues(
         values: unknown,
@@ -982,6 +981,123 @@ export class GSheetsNode implements NodeExecutor {
         }
 
         return [[this.serializeCell(value)]];
+    }
+
+    /** A cell is a Google Sheets formula only when it is a string starting with `=`. */
+    private isFormulaCell(v: unknown): boolean {
+        return typeof v === 'string' && v.startsWith('=');
+    }
+
+    /** True when any cell in the grid is a formula string. */
+    private gridHasFormula(grid: unknown[][]): boolean {
+        return grid.some((row) => row.some((cell) => this.isFormulaCell(cell)));
+    }
+
+    /**
+     * Single write path for every value-writing action (write / append /
+     * append_row / update_row / append_to_row / append_to_column / upsert).
+     *
+     * Normal case (USER_ENTERED, or RAW without formulas): performs one ordinary
+     * update/append with the requested valueInputOption.
+     *
+     * "Paste as values" with formulas (RAW + a cell starting with `=`): Google
+     * Sheets would store the formula as literal text under RAW, but the user
+     * wants the computed output pasted as a value. So we (1) write with
+     * USER_ENTERED so Sheets evaluates each formula in its real target position,
+     * (2) read the written range back unformatted, (3) rewrite the range as RAW
+     * with a merged grid where formula cells hold their computed value and literal
+     * cells keep the user's original input verbatim.
+     *
+     * Returns a normalized subset of fields used across all callers.
+     */
+    private async writeGridValues(
+        sheets: ReturnType<typeof google.sheets>,
+        params: {
+            spreadsheetId: string;
+            range: string;
+            grid: unknown[][];
+            valueInputOption: 'RAW' | 'USER_ENTERED';
+            mode: 'update' | 'append';
+        },
+    ): Promise<{
+        updatedRange?: string | null;
+        updatedRows?: number | null;
+        updatedColumns?: number | null;
+        updatedCells?: number | null;
+        tableRange?: string | null;
+    }> {
+        const { spreadsheetId, range, grid, valueInputOption, mode } = params;
+        const needsCompute = valueInputOption === 'RAW' && this.gridHasFormula(grid);
+
+        // Effective option for the initial write: force USER_ENTERED so formulas
+        // evaluate when we need to paste their computed results.
+        const initialOption = needsCompute ? 'USER_ENTERED' : valueInputOption;
+
+        let writtenRange: string | null | undefined;
+        let normalized: {
+            updatedRange?: string | null;
+            updatedRows?: number | null;
+            updatedColumns?: number | null;
+            updatedCells?: number | null;
+            tableRange?: string | null;
+        };
+
+        if (mode === 'update') {
+            const res = await sheets.spreadsheets.values.update({
+                spreadsheetId, range,
+                valueInputOption: initialOption,
+                requestBody: { values: grid },
+            });
+            writtenRange = res.data.updatedRange;
+            normalized = {
+                updatedRange:   res.data.updatedRange,
+                updatedRows:    res.data.updatedRows,
+                updatedColumns: res.data.updatedColumns,
+                updatedCells:   res.data.updatedCells,
+            };
+        } else {
+            const res = await sheets.spreadsheets.values.append({
+                spreadsheetId, range,
+                valueInputOption: initialOption,
+                insertDataOption: 'INSERT_ROWS',
+                requestBody: { values: grid },
+            });
+            writtenRange = res.data.updates?.updatedRange;
+            normalized = {
+                updatedRange:   res.data.updates?.updatedRange,
+                updatedRows:    res.data.updates?.updatedRows,
+                updatedColumns: res.data.updates?.updatedColumns,
+                updatedCells:   res.data.updates?.updatedCells,
+                tableRange:     res.data.tableRange,
+            };
+        }
+
+        if (!needsCompute || !writtenRange) return normalized;
+
+        // Read back the computed results, then paste them as values (RAW).
+        const readRes = await sheets.spreadsheets.values.get({
+            spreadsheetId, range: writtenRange,
+            valueRenderOption: 'UNFORMATTED_VALUE',
+        });
+        const computed = readRes.data.values ?? [];
+
+        const merged = grid.map((row, r) =>
+            row.map((cell, c) => (this.isFormulaCell(cell) ? (computed[r]?.[c] ?? '') : cell)),
+        );
+
+        const rewrite = await sheets.spreadsheets.values.update({
+            spreadsheetId, range: writtenRange,
+            valueInputOption: 'RAW',
+            requestBody: { values: merged },
+        });
+
+        return {
+            ...normalized,
+            updatedRange:   rewrite.data.updatedRange ?? normalized.updatedRange,
+            updatedRows:    rewrite.data.updatedRows ?? normalized.updatedRows,
+            updatedColumns: rewrite.data.updatedColumns ?? normalized.updatedColumns,
+            updatedCells:   rewrite.data.updatedCells ?? normalized.updatedCells,
+        };
     }
 
     private objectToRow(obj: Record<string, unknown>, columnKeys?: string[]): unknown[] {
