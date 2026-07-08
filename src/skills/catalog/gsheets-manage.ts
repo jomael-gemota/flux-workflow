@@ -30,8 +30,12 @@ Full suite of write, update, and management actions for Google Sheets.
 ## Action: \`"write"\`
 Write/overwrite data to a range.
 - \`spreadsheetId\`, \`range\` (string): Target range.
-- \`values\` (array): 2-D array of cell values.
+- \`values\` (array): 2-D array of cell values. A pasted JSON string such as
+  \`[["a","b"],["c","d"]]\` is parsed into rows/cells automatically (not written
+  as a single text cell).
 - \`valueInputOption\` (\`"RAW" | "USER_ENTERED"\`): Default \`"USER_ENTERED"\`.
+  \`USER_ENTERED\` parses formulas, numbers, and dates ("apply formatting");
+  \`RAW\` stores each cell exactly as provided ("paste as values").
 
 ## Action: \`"update_row"\`
 Update a specific row by matching a value in a key column.
@@ -42,6 +46,14 @@ Update a specific row by matching a value in a key column.
 ## Action: \`"clear_sheet"\`
 Clear all data from a sheet tab (keeps the tab itself).
 - \`spreadsheetId\`, \`sheetName\` or \`range\` (string).
+
+## Action: \`"clear_data"\`
+Clear cell values by scope. Formatting, notes, and data validation are preserved.
+- \`spreadsheetId\` (string).
+- \`clearMode\` (\`"cell" | "range" | "sheet"\`): Default \`"range"\`.
+- \`range\` (string): Required for \`"cell"\` (e.g. \`"Sheet1!B2"\`) and \`"range"\`
+  (e.g. \`"Sheet1!A1:C10"\`).
+- \`sheetName\` (string): Required for \`"sheet"\` (clears the whole tab).
 
 ## Action: \`"create_spreadsheet"\`
 Create a new Google Sheets spreadsheet.
