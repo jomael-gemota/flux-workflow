@@ -12,7 +12,10 @@ const ACTION_LABELS: Record<string, string> = {
   post_comment:    'Post Comment',
   send_campfire:   'Campfire Message',
   list_todos:      'List To-Dos',
+  get_project_people: 'Get People on Project',
+  get_person:         'Get Person',
   invite_users:       'Invite User to Org',
+  remove_user:        'Remove User from Org',
   list_organizations: 'List Organizations',
 };
 

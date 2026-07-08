@@ -171,7 +171,9 @@ const NODE_OUTPUT_FIELDS: Record<string, OutputField[]> = {
     { key: 'message',     label: 'Human-readable summary — set when an existing user was matched, a ghost record was recovered (invite_users), or describes which projects were revoked and whether the Adminland purge succeeded (remove_user)' },
     { key: 'completed',   label: 'Completion flag (complete / uncomplete)' },
     { key: 'todos',       label: 'To-do list array (list_todos)' },
-    { key: 'count',       label: 'To-do count (list_todos)' },
+    { key: 'count',       label: 'Item count (list_todos, get_project_people)' },
+    { key: 'people',      label: 'People array [{id, name, email, title, company, …}] (get_project_people)' },
+    { key: 'outOfOffice', label: 'Out-of-office window { startDate, endDate }, present when set (get_person)' },
     { key: 'name',                label: 'Invited person\'s name (invite_users)' },
     { key: 'email',               label: 'Invited person\'s email address (invite_users)' },
     { key: 'company',             label: 'Invited person\'s company name (invite_users)' },
@@ -11600,8 +11602,9 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
 
   const [companyMode,       setCompanyMode]       = useState<'select' | 'expr'>(() => isExprVal(String(cfg.inviteCompany  ?? '')) ? 'expr' : 'select');
   const [removeCompanyMode, setRemoveCompanyMode] = useState<'select' | 'expr'>(() => isExprVal(String(cfg.removeCompany  ?? '')) ? 'expr' : 'select');
+  const [personMode,        setPersonMode]        = useState<'select' | 'expr'>(() => isExprVal(String(cfg.personId       ?? '')) ? 'expr' : 'select');
 
-  const needsProject  = ['create_todo', 'post_message', 'send_campfire', 'list_todos', 'invite_users'].includes(action);
+  const needsProject  = ['create_todo', 'post_message', 'send_campfire', 'list_todos', 'invite_users', 'get_project_people'].includes(action);
   const needsTodolist = ['create_todo', 'list_todos'].includes(action);
 
   return (
@@ -11614,7 +11617,7 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
       <Select
         label="Action"
         value={action}
-        onChange={(e) => onChange({ action: e.target.value, projectId: '', todolistId: '', groupId: '', todoId: '' })}
+        onChange={(e) => onChange({ action: e.target.value, projectId: '', todolistId: '', groupId: '', todoId: '', personId: '' })}
         options={[
           { value: 'create_todo',     label: 'Create To-Do' },
           { value: 'complete_todo',   label: 'Complete a To-Do' },
@@ -11623,6 +11626,8 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
           { value: 'post_comment',    label: 'Post Comment' },
           { value: 'send_campfire',   label: 'Send Campfire Message' },
           { value: 'list_todos',      label: 'List To-Dos' },
+          { value: 'get_project_people', label: 'Get People on a Project' },
+          { value: 'get_person',         label: 'Get Person' },
           { value: 'invite_users',       label: 'Invite User to Organization' },
           { value: 'remove_user',        label: 'Remove User from Organization' },
           { value: 'list_organizations', label: 'List Organizations' },
@@ -12116,6 +12121,74 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
           <label htmlFor="basecamp-include-completed" className="text-xs text-slate-500 dark:text-slate-400">
             Include completed to-dos (including hidden)
           </label>
+        </div>
+      )}
+
+      {/* ── get_project_people fields ──────────────────────────────────── */}
+      {action === 'get_project_people' && (
+        <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-relaxed">
+          Returns every active person on the selected project. Use the output <code className="font-mono bg-slate-100 dark:bg-slate-800 px-0.5 rounded">people</code> array (each entry has <code className="font-mono">id</code>, <code className="font-mono">name</code>, <code className="font-mono">email</code>, <code className="font-mono">title</code>, <code className="font-mono">company</code>, …) in downstream nodes.
+        </p>
+      )}
+
+      {/* ── get_person fields ─────────────────────────────────────────── */}
+      {action === 'get_person' && (
+        <div className="space-y-1">
+          <div className="flex items-center justify-between">
+            <span className="block text-xs font-medium text-slate-500 dark:text-slate-400">Person</span>
+            {credentialId && (
+              <button
+                type="button"
+                onClick={() => {
+                  const next = personMode === 'select' ? 'expr' : 'select';
+                  setPersonMode(next);
+                  if (next === 'select') onChange({ personId: '' });
+                }}
+                className="flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded transition-colors text-blue-400 hover:text-white hover:bg-blue-700"
+                title="Toggle between picking from the list and entering a variable expression"
+              >
+                <Braces className="w-2.5 h-2.5" />
+                {personMode === 'select' ? 'Use variable' : 'Select from list'}
+              </button>
+            )}
+          </div>
+
+          {!credentialId ? (
+            <p className="text-[10px] text-slate-400 dark:text-slate-500">Select an account first.</p>
+          ) : personMode === 'expr' ? (
+            <ExpressionInput
+              value={String(cfg.personId ?? '')}
+              onChange={(v) => onChange({ personId: v })}
+              placeholder="{{nodes.trigger.items[0].personId}}"
+              nodes={otherNodes}
+              testResults={testResults}
+              hint="Enter a Basecamp person ID directly or insert a variable expression."
+            />
+          ) : loadingPeople ? (
+            <div className="flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500 py-1">
+              <Loader2 className="w-3 h-3 animate-spin" /> Loading people…
+            </div>
+          ) : (
+            <>
+              <Select
+                value={String(cfg.personId ?? '')}
+                onChange={(e) => onChange({ personId: e.target.value })}
+                options={[
+                  { value: '', label: '— select person —' },
+                  ...people.map((p) => ({
+                    value: String(p.id),
+                    label: p.company ? `${p.name} (${p.company})` : p.name,
+                  })),
+                ]}
+              />
+              {people.length === 0 && (
+                <p className="text-[10px] text-slate-400 dark:text-slate-500">No people found for this account.</p>
+              )}
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-relaxed">
+                Returns the person's full profile (name, email, title, company, time zone, out-of-office window when set, …).
+              </p>
+            </>
+          )}
         </div>
       )}
 
