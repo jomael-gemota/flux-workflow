@@ -1,10 +1,11 @@
-import { Settings2, Star, Braces, Play, Loader2, ChevronDown, ChevronUp, AlertCircle, CheckCircle2, Clock, Copy, Check, ArrowRight, Power, X, AlertTriangle, Save, Wand2, Info } from 'lucide-react';
+import { Settings2, Star, Braces, Play, Loader2, ChevronDown, ChevronUp, AlertCircle, CheckCircle2, Clock, Copy, Check, ArrowRight, Power, X, AlertTriangle, Save, Wand2, Info, Radio } from 'lucide-react';
 import { useRef, useState, useEffect, useMemo, type ReactNode } from 'react';
 import { HttpBodyEditor, type BodyLanguage } from './HttpBodyEditor';
 import { useWorkflowStore } from '../../store/workflowStore';
 import type { CanvasNode } from '../../store/workflowStore';
 import { Select } from '../ui/Input';
 import { useTestNode, useNodeTestResults, useLastRunResults } from '../../hooks/useNodeTest';
+import { useWebhookCapture, type CapturedWebhook } from '../../hooks/useWebhookCapture';
 import type { NodeTestResult } from '../../types/workflow';
 import { useCredentialList } from '../../hooks/useCredentials';
 import { ConfirmModal } from '../ui/ConfirmModal';
@@ -3388,6 +3389,7 @@ function NodeTestPanel({
   const defaultSample = '{\n  "name": "Example User",\n  "email": "user@example.com"\n}';
   const [samplePayload, setSamplePayload] = useState(defaultSample);
   const [sampleParseError, setSampleParseError] = useState<string | null>(null);
+  const [listenMessage, setListenMessage] = useState<string | null>(null);
 
   const displayResult = localResult ?? savedResult;
 
@@ -3406,12 +3408,16 @@ function NodeTestPanel({
     }
   }
 
-  async function handleRun() {
+  async function runTest(context?: Record<string, unknown>) {
     // Commit the panel's draft config (including staged file IDs, etc.) to the
     // workflow store and persist to the backend BEFORE running the test, so the
     // backend always sees the latest values from the config panel.
     await onBeforeRun();
+    const result = await testNode.mutateAsync({ workflowId, nodeId, context });
+    setLocalResult(result);
+  }
 
+  async function handleRun() {
     let context: Record<string, unknown> | undefined;
     if (isWebhookTrigger) {
       const parsedBody = validateSample(samplePayload);
@@ -3426,10 +3432,34 @@ function NodeTestPanel({
         },
       };
     }
-
-    const result = await testNode.mutateAsync({ workflowId, nodeId, context });
-    setLocalResult(result);
+    await runTest(context);
   }
+
+  const webhookCapture = useWebhookCapture({
+    onCaptured: (payload: CapturedWebhook) => {
+      // Fill the sample textarea with the real captured body (pretty-printed) …
+      const body = payload.body ?? {};
+      setSamplePayload(JSON.stringify(body, null, 2));
+      setSampleParseError(null);
+      setListenMessage('Captured a live webhook — running test…');
+      // … and run the test using the full captured payload as context.input.
+      void runTest({ input: payload }).catch(() => {});
+    },
+    onTimeout: () => {
+      setListenMessage('No webhook received within 60s. Try again.');
+    },
+  });
+
+  const isListening = webhookCapture.status === 'listening';
+
+  function handleListen() {
+    setListenMessage(null);
+    void webhookCapture.start(workflowId, nodeId);
+  }
+
+  const countdownLabel = `${Math.floor(webhookCapture.secondsLeft / 60)}:${String(
+    webhookCapture.secondsLeft % 60,
+  ).padStart(2, '0')}`;
 
   return (
     <div className="rounded-md border border-slate-200 dark:border-slate-700 overflow-hidden">
@@ -3489,11 +3519,52 @@ function NodeTestPanel({
             </div>
           )}
 
+          {/* Listen for a real webhook (webhook triggers only) */}
+          {isWebhookTrigger && (
+            isListening ? (
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded border border-purple-300 dark:border-purple-500/50 bg-purple-50 dark:bg-purple-500/10">
+                <Loader2 className="w-3 h-3 animate-spin text-purple-500 shrink-0" />
+                <span className="text-[11px] font-medium text-purple-700 dark:text-purple-300 flex-1">
+                  Waiting for webhook… ({countdownLabel})
+                </span>
+                <button
+                  type="button"
+                  onClick={webhookCapture.cancel}
+                  className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 rounded transition-colors"
+                >
+                  <X className="w-3 h-3" /> Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleListen}
+                disabled={testNode.isPending}
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 border border-purple-300 dark:border-purple-500/50 text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-500/10 disabled:opacity-50 disabled:cursor-not-allowed rounded text-xs font-medium transition-colors"
+              >
+                <Radio className="w-3 h-3" /> Listen for webhook
+              </button>
+            )
+          )}
+
+          {isWebhookTrigger && listenMessage && !isListening && (
+            <p className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
+              <Info className="w-3 h-3 shrink-0" />
+              {listenMessage}
+            </p>
+          )}
+          {isWebhookTrigger && webhookCapture.error && !isListening && (
+            <p className="text-[10px] text-red-500 dark:text-red-400 flex items-center gap-1">
+              <AlertCircle className="w-3 h-3 shrink-0" />
+              {webhookCapture.error}
+            </p>
+          )}
+
           {/* Run button */}
           <button
             type="button"
             onClick={handleRun}
-            disabled={testNode.isPending || (isWebhookTrigger && !!sampleParseError)}
+            disabled={testNode.isPending || isListening || (isWebhookTrigger && !!sampleParseError)}
             className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-gray-900 dark:text-white rounded text-xs font-medium transition-colors"
           >
             {testNode.isPending

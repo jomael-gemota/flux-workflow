@@ -162,6 +162,20 @@ export function testNode(
   );
 }
 
+export interface WebhookCaptureSession {
+  captureId: string;
+  /** Epoch milliseconds after which the capture window expires. */
+  expiresAt: number;
+}
+
+/** Arms a ~60s capture session; the next real webhook hit on the node's URL is streamed back via SSE. */
+export function startWebhookCapture(workflowId: string, nodeId: string) {
+  return request<WebhookCaptureSession>(
+    `/workflows/${workflowId}/nodes/${nodeId}/webhook-capture/start`,
+    { method: 'POST', body: JSON.stringify({}) }
+  );
+}
+
 export function getNodeTestResults(workflowId: string) {
   return request<Record<string, NodeTestResult>>(
     `/workflows/${workflowId}/node-test-results`
