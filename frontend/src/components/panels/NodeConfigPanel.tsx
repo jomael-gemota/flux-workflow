@@ -198,6 +198,12 @@ const NODE_OUTPUT_FIELDS: Record<string, OutputField[]> = {
     { key: 'projectsInspectFailed', label: 'Projects whose roster could not be inspected [{id, name, status, reason}] (remove_user)' },
     { key: 'adminland',            label: 'Adminland purge result: { performed: false, reason } when no web session was synced, or { performed: true, ok, status, reason? } when attempted (remove_user)' },
     { key: 'organizations', label: 'Organizations array [{id, name}] (list_organizations)' },
+    { key: 'comments',    label: 'Comments array [{id, content, creator, createdAt, …}] (get_comments)' },
+    { key: 'recordingId', label: 'Recording ID the comments belong to (get_comments)' },
+    { key: 'content',     label: 'Comment body HTML (get_comment)' },
+    { key: 'creator',     label: 'Comment author { id, name, email } (get_comment)' },
+    { key: 'parent',      label: 'Parent recording { id, title, type } (get_comment / get_comments)' },
+    { key: 'appUrl',      label: 'Basecamp app URL for the comment (get_comment)' },
   ],
   slack: [
     { key: 'ok',        label: 'Slack API success flag' },
@@ -2932,6 +2938,36 @@ function TeamsResultDisplay({ result }: { result: NodeTestResult }) {
 
 function BasecampResultDisplay({ result }: { result: NodeTestResult }) {
   const out = (result.output ?? {}) as Record<string, unknown>;
+
+  // Get comments action
+  if (Array.isArray(out.comments)) {
+    type Comment = { id?: unknown; content?: string; creator?: { name?: string } | null; createdAt?: string };
+    const comments = out.comments as Comment[];
+    return (
+      <div className="p-3 space-y-2">
+        <div className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">
+          {comments.length} comment{comments.length !== 1 ? 's' : ''}
+        </div>
+        <ExpandableList
+          items={comments}
+          countLabel={() => ''}
+          initialShow={8}
+          emptyText="No comments found"
+          renderItem={(c) => (
+            <div className="bg-slate-100 dark:bg-slate-800 rounded-md px-3 py-2 space-y-1">
+              <div className="flex items-center gap-2 text-[10px] text-slate-500 dark:text-slate-400">
+                <span className="font-medium text-slate-700 dark:text-slate-200">{c.creator?.name ?? 'Unknown'}</span>
+                {c.createdAt && <span>· {new Date(c.createdAt).toLocaleString()}</span>}
+              </div>
+              <p className="text-xs text-slate-700 dark:text-slate-200 leading-snug break-words">
+                {String(c.content ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() || '(no content)'}
+              </p>
+            </div>
+          )}
+        />
+      </div>
+    );
+  }
 
   // List organizations action
   if (Array.isArray(out.organizations)) {
@@ -11781,7 +11817,7 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
       <Select
         label="Action"
         value={action}
-        onChange={(e) => onChange({ action: e.target.value, projectId: '', todolistId: '', groupId: '', todoId: '', personId: '' })}
+        onChange={(e) => onChange({ action: e.target.value, projectId: '', todolistId: '', groupId: '', todoId: '', personId: '', recordingId: '', commentId: '' })}
         options={[
           { group: 'To-Dos', options: [
             { value: 'create_todo',     label: 'Create To-Do' },
@@ -11793,6 +11829,8 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
           { group: 'Messaging', options: [
             { value: 'post_message',  label: 'Post Message' },
             { value: 'post_comment',  label: 'Post Comment' },
+            { value: 'get_comments',  label: 'Get Comments' },
+            { value: 'get_comment',   label: 'Get a Comment' },
             { value: 'send_campfire', label: 'Send Campfire Message' },
           ]},
           { group: 'People', options: [
@@ -12266,6 +12304,37 @@ function BasecampConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps)
             rows={3}
           />
         </>
+      )}
+
+      {/* ── get_comments fields ───────────────────────────────────────── */}
+      {action === 'get_comments' && (
+        <>
+          <ExpressionInput
+            label="Recording ID"
+            value={String(cfg.recordingId ?? '')}
+            onChange={(v) => onChange({ recordingId: v })}
+            placeholder="Basecamp recording ID (to-do, message, etc.)"
+            nodes={otherNodes}
+            testResults={testResults}
+            hint="The ID of the to-do, message, or other item whose comments you want to fetch."
+          />
+          <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-relaxed">
+            Returns every active comment on the recording. Use the output <code className="font-mono bg-slate-100 dark:bg-slate-800 px-0.5 rounded">comments</code> array (each entry has <code className="font-mono">id</code>, <code className="font-mono">content</code>, <code className="font-mono">creator</code>, <code className="font-mono">createdAt</code>, …) in downstream nodes.
+          </p>
+        </>
+      )}
+
+      {/* ── get_comment fields ────────────────────────────────────────── */}
+      {action === 'get_comment' && (
+        <ExpressionInput
+          label="Comment ID"
+          value={String(cfg.commentId ?? '')}
+          onChange={(v) => onChange({ commentId: v })}
+          placeholder="Basecamp comment ID"
+          nodes={otherNodes}
+          testResults={testResults}
+          hint="The ID of a single comment (e.g. from a Get Comments output or a variable)."
+        />
       )}
 
       {/* ── send_campfire fields ──────────────────────────────────────── */}

@@ -11,6 +11,8 @@ const ACTION_LABELS: Record<string, string> = {
   uncomplete_todo: 'Re-Open To-Do',
   post_message:    'Post Message',
   post_comment:    'Post Comment',
+  get_comments:    'Get Comments',
+  get_comment:     'Get Comment',
   send_campfire:   'Campfire Message',
   list_todos:      'List To-Dos',
   get_project_people: 'Get People on Project',
