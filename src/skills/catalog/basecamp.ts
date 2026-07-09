@@ -3,15 +3,17 @@ import type { Skill } from '../types';
 export const skill: Skill = {
     name: 'basecamp',
     title: 'Basecamp — Todos, Messages, Campfire & Team',
-    summary: 'Create todos, post messages, send campfire chats, manage todolists, look up people, and invite users in Basecamp.',
+    summary: 'Create todos, post messages, send campfire chats, manage todolists, look up people, read comments, and invite users in Basecamp.',
     whenToUse:
         'Use for any Basecamp action — creating or completing todos, posting message board ' +
-        'announcements, chatting in Campfire, listing todos, looking up people on a project ' +
-        'or a single person\'s profile, or managing team membership.',
+        'announcements, chatting in Campfire, listing todos, reading comments on a recording ' +
+        'or a single comment, looking up people on a project or a single person\'s profile, ' +
+        'or managing team membership.',
     keywords: [
         'basecamp', 'todo', 'task', 'message', 'campfire', 'chat', 'project',
         'invite', 'team', 'todolist', 'complete', 'assign',
         'people', 'person', 'profile', 'member', 'roster',
+        'comment', 'comments', 'reply', 'discussion',
     ],
     category: 'integration',
     nodeType: 'basecamp',
@@ -122,6 +124,33 @@ Post an announcement to the project message board.
 Comment on an existing recording (todo, message, etc.).
 - \`recordingId\` (string): The id of the item to comment on.
 - \`text\` (string): Comment content.
+
+---
+
+## Action: \`"get_comments"\`
+List all active comments on a recording (todo, message, etc.).
+\`projectId\` is NOT required — the recording id addresses the resource directly.
+- \`recordingId\` (string): The id of the item whose comments to fetch (e.g. from
+  a \`get_todo\` / \`post_comment\` output, a trigger event, or an expression).
+
+### Output
+- \`comments\`: Array of flat comments \`{ id, content, title, status, type,
+  visibleToClients, boostsCount, url, appUrl, createdAt, updatedAt, creator, parent, project }\`
+- \`count\`: Number of comments returned
+- \`recordingId\`: The recording id the comments belong to
+
+---
+
+## Action: \`"get_comment"\`
+Fetch a single comment by id. \`projectId\` is NOT required.
+- \`commentId\` (string): The comment id (e.g. from a \`get_comments\` output or an expression).
+
+### Output
+- Flat comment object: \`id\`, \`content\`, \`title\`, \`status\`, \`type\`,
+  \`visibleToClients\`, \`boostsCount\`, \`url\`, \`appUrl\`, \`createdAt\`, \`updatedAt\`
+- \`creator\`: \`{ id, name, email }\`
+- \`parent\`: \`{ id, title, type }\` — the recording the comment belongs to
+- \`project\`: \`{ id, name, type }\` — the containing project
 
 ---
 
