@@ -1,4 +1,4 @@
-import { Settings2, Star, Braces, Play, Loader2, ChevronDown, ChevronUp, AlertCircle, CheckCircle2, Clock, Copy, Check, ArrowRight, Power, X, AlertTriangle, Save, Wand2, Info, Radio } from 'lucide-react';
+import { Settings2, Star, Braces, Play, Loader2, ChevronDown, ChevronUp, ChevronRight, Search, AlertCircle, CheckCircle2, Clock, Copy, Check, ArrowRight, Power, X, AlertTriangle, Save, Wand2, Info, Radio } from 'lucide-react';
 import { useRef, useState, useEffect, useMemo, type ReactNode } from 'react';
 import { HttpBodyEditor, type BodyLanguage } from './HttpBodyEditor';
 import { useWorkflowStore } from '../../store/workflowStore';
@@ -469,6 +469,31 @@ function buildExtractPredictedFields(
   return named.map((f) => ({ key: f.name, label: `Extracted value: ${f.name}`, hasReal: false }));
 }
 
+type PickerField = { key: string; label: string; realValue?: unknown; hasReal: boolean };
+
+/**
+ * Resolve the insertable output fields for a node: real fields when the node has
+ * a successful test/last-run result, otherwise the predicted catalogue fields.
+ * Shared by the picker's search matching and its rendering.
+ */
+function computeNodeFields(
+  n: CanvasNode,
+  testResults: Record<string, NodeTestResult>,
+): { realOutput: Record<string, unknown> | null; fields: PickerField[] } {
+  const testResult = testResults[n.id];
+  const realOutput = testResult?.status === 'success' && testResult.output != null
+    ? (testResult.output as Record<string, unknown>)
+    : null;
+
+  const fields: PickerField[] = realOutput
+    ? Object.entries(realOutput).map(([key, val]) => ({ key, label: key, realValue: val, hasReal: true }))
+    : n.data.nodeType === 'extract'
+      ? buildExtractPredictedFields(n.data.config as Record<string, unknown>)
+      : (NODE_OUTPUT_FIELDS[n.data.nodeType] ?? []).map((f) => ({ ...f, hasReal: false }));
+
+  return { realOutput, fields };
+}
+
 export function VariablePickerPanel({
   nodes,
   testResults,
@@ -479,6 +504,7 @@ export function VariablePickerPanel({
   onInsert: (expression: string) => void;
 }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [query, setQuery] = useState('');
 
   // Workflow-scoped variables live on the active workflow (not on any node),
   // so read them straight from the store rather than threading a prop through
@@ -486,8 +512,64 @@ export function VariablePickerPanel({
   const workflowVariables = useWorkflowStore(
     (s) => s.activeWorkflow?.variables ?? EMPTY_VARIABLES,
   );
+  // Used to surface the node(s) feeding directly into the one being edited.
+  const selectedNodeId = useWorkflowStore((s) => s.selectedNodeId);
+  const edges = useWorkflowStore((s) => s.edges);
+
+  // Direct upstream node ids of the node currently being configured.
+  const upstreamIds = useMemo(() => {
+    const set = new Set<string>();
+    if (selectedNodeId) {
+      for (const e of edges) if (e.target === selectedNodeId) set.add(e.source);
+    }
+    return set;
+  }, [edges, selectedNodeId]);
+
+  // Ordering: direct inputs first, then newest-first. New nodes are appended to
+  // the store array, so reversing approximates creation order (newest → oldest).
+  const orderedNodes = useMemo(() => {
+    const reversed = [...nodes].reverse();
+    const up = reversed.filter((n) => upstreamIds.has(n.id));
+    const rest = reversed.filter((n) => !upstreamIds.has(n.id));
+    return [...up, ...rest];
+  }, [nodes, upstreamIds]);
+
+  // Precompute each node's insertable fields once (used for search + rendering).
+  const nodeEntries = useMemo(
+    () => orderedNodes.map((n) => ({ node: n, ...computeNodeFields(n, testResults) })),
+    [orderedNodes, testResults],
+  );
+
+  const q = query.trim().toLowerCase();
+
+  // Search filter: a node stays if its name/type matches (all fields shown) or
+  // any of its fields match (only matching fields shown).
+  const filteredEntries = useMemo(() => {
+    if (!q) return nodeEntries;
+    return nodeEntries.flatMap((entry) => {
+      const nameMatch =
+        entry.node.data.label.toLowerCase().includes(q) ||
+        String(entry.node.data.nodeType).toLowerCase().includes(q);
+      if (nameMatch) return [entry];
+      const matchedFields = entry.fields.filter(
+        (f) => f.key.toLowerCase().includes(q) || (f.label ?? '').toLowerCase().includes(q),
+      );
+      return matchedFields.length > 0 ? [{ ...entry, fields: matchedFields }] : [];
+    });
+  }, [nodeEntries, q]);
+
+  const filteredVars = useMemo(() => {
+    if (!q) return workflowVariables;
+    return workflowVariables.filter(
+      (v) => v.key.toLowerCase().includes(q) || (v.description ?? '').toLowerCase().includes(q),
+    );
+  }, [workflowVariables, q]);
 
   if (nodes.length === 0 && workflowVariables.length === 0) return null;
+
+  const topNodeId = filteredEntries[0]?.node.id;
+  const varsOpen = expanded['section::__vars__'] ?? true;
+  const noMatches = q.length > 0 && filteredEntries.length === 0 && filteredVars.length === 0;
 
   return (
     <div className="mt-1 border border-blue-300 dark:border-blue-800/50 rounded-md overflow-hidden shadow-lg">
@@ -495,65 +577,97 @@ export function VariablePickerPanel({
         <p className="text-[10px] font-semibold text-blue-700 dark:text-blue-400 uppercase tracking-wider">
           Click a field to insert it
         </p>
-        <p className="text-[10px] text-slate-600 dark:text-slate-400 mt-0.5">
-          Arrays &amp; objects can be expanded ▶ to insert individual values.
-        </p>
+        <div className="relative mt-1.5">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search variables & fields…"
+            spellCheck={false}
+            className="w-full pl-7 pr-6 py-1 text-[11px] rounded bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery('')}
+              title="Clear search"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          )}
+        </div>
       </div>
 
-      <div className="max-h-72 overflow-y-auto bg-white dark:bg-slate-900">
-        {workflowVariables.length > 0 && (
-          <div className="px-2.5 py-2 border-b border-slate-200 dark:border-slate-700/60">
-            <div className="flex items-center gap-1.5 mb-1.5">
+      <div className="max-h-96 overflow-y-auto bg-white dark:bg-slate-900">
+        {filteredVars.length > 0 && (
+          <div className="border-b border-slate-200 dark:border-slate-700/60">
+            <button
+              type="button"
+              onClick={() => setExpanded((prev) => ({ ...prev, ['section::__vars__']: !varsOpen }))}
+              className="w-full sticky top-0 z-10 flex items-center gap-1.5 px-2.5 py-2 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors text-left"
+            >
+              {varsOpen
+                ? <ChevronDown className="w-3 h-3 text-slate-400 shrink-0" />
+                : <ChevronRight className="w-3 h-3 text-slate-400 shrink-0" />
+              }
               <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-indigo-500" />
               <span className="text-[11px] font-semibold text-gray-900 dark:text-white truncate">
                 Workflow variables
               </span>
-              <span className="text-[9px] text-slate-500 dark:text-slate-500 shrink-0">vars</span>
-            </div>
-            <div className="flex flex-wrap gap-1">
-              {workflowVariables.map((v) => (
-                <button
-                  key={v.key}
-                  type="button"
-                  onClick={() => onInsert(`{{vars.${v.key}}}`)}
-                  title={v.description ? `${v.description} — Insert: {{vars.${v.key}}}` : `Insert: {{vars.${v.key}}}`}
-                  className="inline-flex items-center gap-1 text-[10px] bg-slate-100 dark:bg-slate-700 hover:bg-blue-600 dark:hover:bg-blue-700 border border-slate-300 dark:border-slate-600 hover:border-blue-600 text-indigo-700 dark:text-indigo-300 hover:text-white rounded px-1.5 py-0.5 font-mono transition-colors"
-                >
-                  {`vars.${v.key}`}
-                </button>
-              ))}
-            </div>
+              <span className="text-[9px] text-slate-400 dark:text-slate-500 shrink-0 ml-auto">
+                {filteredVars.length} var{filteredVars.length !== 1 ? 's' : ''}
+              </span>
+            </button>
+            {varsOpen && (
+              <div className="flex flex-wrap gap-1 px-2.5 pb-2">
+                {filteredVars.map((v) => (
+                  <button
+                    key={v.key}
+                    type="button"
+                    onClick={() => onInsert(`{{vars.${v.key}}}`)}
+                    title={v.description ? `${v.description} — Insert: {{vars.${v.key}}}` : `Insert: {{vars.${v.key}}}`}
+                    className="inline-flex items-center gap-1 text-[10px] bg-slate-100 dark:bg-slate-700 hover:bg-blue-600 dark:hover:bg-blue-700 border border-slate-300 dark:border-slate-600 hover:border-blue-600 text-indigo-700 dark:text-indigo-300 hover:text-white rounded px-1.5 py-0.5 font-mono transition-colors"
+                  >
+                    {`vars.${v.key}`}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
-        {nodes.map((n) => {
-          const testResult = testResults[n.id];
-          const realOutput = testResult?.status === 'success' && testResult.output != null
-            ? (testResult.output as Record<string, unknown>)
-            : null;
+        {noMatches && (
+          <div className="px-2.5 py-6 text-center text-[11px] text-slate-400 dark:text-slate-500">
+            No variables or fields match “{query.trim()}”.
+          </div>
+        )}
+        {filteredEntries.map((entry) => {
+          const n = entry.node;
+          const realOutput = entry.realOutput;
+          const fields = entry.fields;
 
           // Detect GSheets app-event trigger for Zapier-style column display
           const isGSheetsAppEvent =
             n.data.nodeType === 'trigger' &&
             (n.data.config as Record<string, unknown>)?.appType === 'gsheets';
 
-          const fields: Array<{ key: string; label: string; realValue?: unknown; hasReal: boolean }> =
-            realOutput
-              ? Object.entries(realOutput).map(([key, val]) => ({
-                  key,
-                  label: key,
-                  realValue: val,
-                  hasReal: true,
-                }))
-              : n.data.nodeType === 'extract'
-                ? buildExtractPredictedFields(n.data.config as Record<string, unknown>)
-                : (NODE_OUTPUT_FIELDS[n.data.nodeType] ?? []).map((f) => ({
-                    ...f,
-                    hasReal: false,
-                  }));
+          // When searching, force every matching section open; otherwise the top
+          // (most-relevant) node is open by default and the rest are collapsed.
+          const isNodeOpen = q
+            ? true
+            : (expanded[`section::${n.id}`] ?? n.id === topNodeId);
 
           return (
-            <div key={n.id} className="px-2.5 py-2 border-b border-slate-200 dark:border-slate-700/60 last:border-0">
-              <div className="flex items-center gap-1.5 mb-1.5">
+            <div key={n.id} className="border-b border-slate-200 dark:border-slate-700/60 last:border-0">
+              <button
+                type="button"
+                onClick={() => setExpanded((prev) => ({ ...prev, [`section::${n.id}`]: !isNodeOpen }))}
+                className="w-full sticky top-0 z-10 flex items-center gap-1.5 px-2.5 py-2 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors text-left"
+              >
+                {isNodeOpen
+                  ? <ChevronDown className="w-3 h-3 text-slate-400 shrink-0" />
+                  : <ChevronRight className="w-3 h-3 text-slate-400 shrink-0" />
+                }
                 <span
                   className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                     n.data.nodeType === 'http'      ? 'bg-blue-500' :
@@ -567,13 +681,19 @@ export function VariablePickerPanel({
                 />
                 <span className="text-[11px] font-semibold text-gray-900 dark:text-white truncate">{n.data.label}</span>
                 <span className="text-[9px] text-slate-500 dark:text-slate-500 shrink-0">{n.data.nodeType}</span>
+                {upstreamIds.has(n.id) && (
+                  <span className="text-[8px] font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10 rounded px-1 py-0.5 shrink-0" title="Feeds directly into this node">
+                    input
+                  </span>
+                )}
                 {realOutput
-                  ? <span className="text-[9px] text-emerald-600 dark:text-emerald-400 shrink-0 ml-auto font-medium">● live data</span>
-                  : <span className="text-[9px] text-slate-400 dark:text-slate-600 shrink-0 ml-auto italic">test node to see real fields</span>
+                  ? <span className="text-[9px] text-emerald-600 dark:text-emerald-400 shrink-0 ml-auto font-medium">● live</span>
+                  : <span className="text-[9px] text-slate-400 dark:text-slate-600 shrink-0 ml-auto italic">{fields.length} field{fields.length !== 1 ? 's' : ''}</span>
                 }
-              </div>
+              </button>
 
-              <div className="space-y-1">
+              {isNodeOpen && (
+              <div className="px-2.5 pb-2 space-y-1">
                 {n.data.nodeType === 'transform' && !realOutput ? (
                   <div className="flex flex-wrap items-center gap-1">
                     <button
@@ -813,6 +933,7 @@ export function VariablePickerPanel({
                   })
                 )}
               </div>
+              )}
             </div>
           );
         })}
