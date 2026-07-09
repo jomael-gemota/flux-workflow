@@ -42,6 +42,18 @@ export interface PersistedStickyNote {
     color: string;
 }
 
+/**
+ * A plain (non-secret) workflow-scoped variable. Each workflow has its own set,
+ * isolated from every other workflow. Referenced in node config via `vars.<key>`
+ * (or `{{vars.<key>}}`). Keys are constrained to identifier syntax so they are
+ * always referenceable without escaping.
+ */
+export interface WorkflowVariable {
+    key: string;
+    value: string;
+    description?: string;
+}
+
 export interface WorkflowDefinition {
     id: string;
     name: string;
@@ -54,12 +66,16 @@ export interface WorkflowDefinition {
     viewport?: { x: number; y: number; zoom: number };
     /** Canvas sticky-note annotations — stored inside definition, not workflow logic */
     stickyNotes?: PersistedStickyNote[];
+    /** Per-workflow plain variables, referenceable as `vars.<key>` in node config */
+    variables?: WorkflowVariable[];
 }
 
 export interface ExecutionContext {
     workflowId: string;
     executionId: string;
     variables: Record<string, unknown>;
+    /** Per-workflow plain variables, keyed by name. Referenced via `vars.<key>`. */
+    vars?: Record<string, string>;
     startedAt: Date;
 }
 

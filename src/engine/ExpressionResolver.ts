@@ -1,5 +1,19 @@
 import { JSONPath } from "jsonpath-plus";
-import { ExecutionContext } from '../types/workflow.types';
+import { ExecutionContext, WorkflowVariable } from '../types/workflow.types';
+
+/**
+ * Flatten a workflow's ordered variable list into the `Record<string, string>`
+ * map consumed by `ExecutionContext.vars`. Later entries win on duplicate keys.
+ */
+export function buildVarsMap(variables?: WorkflowVariable[]): Record<string, string> {
+    const map: Record<string, string> = {};
+    for (const v of variables ?? []) {
+        if (v && typeof v.key === 'string' && v.key.length > 0) {
+            map[v.key] = typeof v.value === 'string' ? v.value : String(v.value ?? '');
+        }
+    }
+    return map;
+}
 
 export class ExpressionResolver {
     resolve(expression: string, context: ExecutionContext): unknown {
@@ -16,11 +30,36 @@ export class ExpressionResolver {
             return this.resolveJsonPath(trimmed, context);
         }
 
+        if (trimmed.startsWith('vars.')) {
+            return this.resolveVars(trimmed, context);
+        }
+
         if (trimmed.startsWith('nodes.')) {
             return this.resolveDotNotation(trimmed, context);
         }
 
         return trimmed;
+    }
+
+    /**
+     * Resolve a `vars.<key>` reference to a plain workflow variable value.
+     * Variable values are plain strings, so there is no nested path to walk.
+     */
+    private resolveVars(expression: string, context: ExecutionContext): unknown {
+        const key = expression.slice('vars.'.length).trim();
+        if (!key) {
+            throw new Error(`Invalid variable expression: "${expression}". Expected format: vars.<name>`);
+        }
+
+        const vars = context.vars ?? {};
+        if (!(key in vars)) {
+            throw new Error(
+                `Workflow variable "${key}" is not defined. ` +
+                `Add it in the workflow's Variables panel or check the spelling.`
+            );
+        }
+
+        return vars[key];
     }
 
     private resolveDotNotation(expression: string, context: ExecutionContext): unknown {
@@ -53,7 +92,7 @@ export class ExpressionResolver {
     }
 
     private resolveJsonPath(expression: string, context: ExecutionContext): unknown {
-        const data = { nodes: context.variables };
+        const data = { nodes: context.variables, vars: context.vars ?? {} };
 
         try {
             const results = JSONPath({ path: expression, json: data as object });

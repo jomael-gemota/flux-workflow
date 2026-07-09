@@ -28,6 +28,13 @@ const StickyNoteSchema = z.object({
     color: z.string(),
 });
 
+const WorkflowVariableSchema = z.object({
+    // Identifier syntax so the key is always referenceable as `vars.<key>`.
+    key: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/, 'Variable key must start with a letter or underscore and contain only letters, numbers, and underscores'),
+    value: z.string(),
+    description: z.string().optional(),
+});
+
 export const WorkflowDefinitionSchema = z.object({
     id: z.string().min(1),
     name: z.string().min(1),
@@ -38,6 +45,7 @@ export const WorkflowDefinitionSchema = z.object({
     schedule: z.string().optional(),
     viewport: ViewportSchema.optional(),
     stickyNotes: z.array(StickyNoteSchema).optional(),
+    variables: z.array(WorkflowVariableSchema).optional(),
 });
 
 export const TriggerWorkflowSchema = z.object({
@@ -68,6 +76,7 @@ export const UpdateWorkflowSchema = z.object({
     entryNodeIds: z.array(z.string().min(1)).optional(),
     viewport: ViewportSchema.optional(),
     stickyNotes: z.array(StickyNoteSchema).optional(),
+    variables: z.array(WorkflowVariableSchema).optional(),
 });
 
 export const CursorPaginationSchema = z.object({

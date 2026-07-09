@@ -18,6 +18,7 @@ interface CapturedLog {
  * Globals exposed to user code:
  *   • `nodes`       — every prior node's output, keyed by node id
  *   • `input`       — workflow-level input payload
+ *   • `vars`        — per-workflow plain variables, keyed by name
  *   • `console`     — captured into the node output's `logs` array
  *   • `workflow`    — { id }
  *   • `execution`   — { id, startedAt }
@@ -58,7 +59,7 @@ export class CodeNode implements NodeExecutor {
         let asyncFn: Function;
         try {
             asyncFn = new Function(
-                'nodes', 'input', 'console', 'workflow', 'execution',
+                'nodes', 'input', 'vars', 'console', 'workflow', 'execution',
                 wrapped,
             );
         } catch (err) {
@@ -70,6 +71,7 @@ export class CodeNode implements NodeExecutor {
             result = await asyncFn(
                 context.variables,
                 context.variables.input,
+                context.vars ?? {},
                 sandboxConsole,
                 { id: context.workflowId },
                 { id: context.executionId, startedAt: context.startedAt.toISOString() },

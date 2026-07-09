@@ -4,7 +4,7 @@ import { NodeExecutorRegistry } from './NodeExecutorRegistry';
 import { WorkflowExecutionResult } from '../types/workflow.types';
 import { ConditionNodeOutput } from '../nodes/ConditionNode';
 import { SwitchNodeOutput } from '../nodes/SwitchNode';
-import { ExpressionResolver } from './ExpressionResolver';
+import { ExpressionResolver, buildVarsMap } from './ExpressionResolver';
 
 export class WorkflowRunner {
     private resolver = new ExpressionResolver();
@@ -21,6 +21,7 @@ export class WorkflowRunner {
             workflowId: workflow.id,
             executionId: crypto.randomUUID(),
             variables: { input },
+            vars: buildVarsMap(workflow.variables),
             startedAt: new Date(),
         };
 

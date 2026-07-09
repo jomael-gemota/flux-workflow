@@ -22,6 +22,7 @@ import {
 import { toJsonSchema } from '../validation/toJsonSchema';
 import { NotFoundError, BadRequestError } from '../errors/ApiError';
 import { ExecutionContext } from '../types/workflow.types';
+import { buildVarsMap } from '../engine/ExpressionResolver';
 import { webhookCaptureRegistry } from '../services/WebhookCaptureRegistry';
 import { executionEventBus } from '../events/ExecutionEventBus';
 import { ApiKeyModel } from '../db/models/ApiKeyModel';
@@ -246,6 +247,7 @@ export async function workflowRoutes(
                 workflowId: workflow.id,
                 executionId: crypto.randomUUID(),
                 variables: { ...injectedVars, ...(context ?? {}), input: resolvedInput },
+                vars: buildVarsMap(workflow.variables),
                 startedAt: new Date(),
             };
 
@@ -425,6 +427,7 @@ export async function workflowRoutes(
                 workflowId: workflow.id,
                 executionId,
                 variables: { ...injectedVars },
+                vars: buildVarsMap(workflow.variables),
                 startedAt: new Date(),
             };
 

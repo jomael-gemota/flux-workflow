@@ -20,10 +20,10 @@ interface LoopNodeConfig {
      * JavaScript body executed for each iteration. The last expression / `return`
      * value is the iteration result. Available identifiers depend on `mode`:
      *
-     *   • forEach → item, index, acc, nodes, input
-     *   • times   → index (also passed as item), acc, nodes, input
-     *   • while   → index, acc, nodes, input
-     *   • batch   → batch (an array slice, also passed as item), index, acc, nodes, input
+     *   • forEach → item, index, acc, nodes, input, vars
+     *   • times   → index (also passed as item), acc, nodes, input, vars
+     *   • while   → index, acc, nodes, input, vars
+     *   • batch   → batch (an array slice, also passed as item), index, acc, nodes, input, vars
      */
     body: string;
     /** JavaScript expression for the initial accumulator value (default: undefined). */
@@ -58,18 +58,20 @@ export class LoopNode implements NodeExecutor {
         let bodyFn: Function;
         try {
             bodyFn = new Function(
-                'item', 'index', 'acc', 'nodes', 'input',
+                'item', 'index', 'acc', 'nodes', 'input', 'vars',
                 `return (async () => {\n${body}\n})();`,
             );
         } catch (err) {
             throw new Error(`Loop node: body syntax error — ${(err as Error).message}`);
         }
 
+        const varsCtx = context.vars ?? {};
+
         let acc: unknown = undefined;
         if (config.initialAcc && config.initialAcc.trim()) {
             try {
-                const initFn = new Function('nodes', 'input', `return (${config.initialAcc});`);
-                acc = initFn(context.variables, context.variables.input);
+                const initFn = new Function('nodes', 'input', 'vars', `return (${config.initialAcc});`);
+                acc = initFn(context.variables, context.variables.input, varsCtx);
             } catch (err) {
                 throw new Error(`Loop node: initialAcc error — ${(err as Error).message}`);
             }
@@ -84,7 +86,7 @@ export class LoopNode implements NodeExecutor {
                 const items = this.resolveArray(config.items, context, 'forEach');
                 const limit = Math.min(items.length, maxIterations);
                 for (let index = 0; index < limit; index++) {
-                    const out = await bodyFn(items[index], index, acc, nodesCtx, inputCtx);
+                    const out = await bodyFn(items[index], index, acc, nodesCtx, inputCtx, varsCtx);
                     results.push(out);
                     acc = out;
                 }
@@ -108,7 +110,7 @@ export class LoopNode implements NodeExecutor {
                 const requested = Math.floor(raw);
                 const limit = Math.min(requested, maxIterations);
                 for (let index = 0; index < limit; index++) {
-                    const out = await bodyFn(index, index, acc, nodesCtx, inputCtx);
+                    const out = await bodyFn(index, index, acc, nodesCtx, inputCtx, varsCtx);
                     results.push(out);
                     acc = out;
                 }
@@ -128,7 +130,7 @@ export class LoopNode implements NodeExecutor {
                 // eslint-disable-next-line @typescript-eslint/ban-types
                 let condFn: Function;
                 try {
-                    condFn = new Function('index', 'acc', 'nodes', 'input', `return (${conditionSrc});`);
+                    condFn = new Function('index', 'acc', 'nodes', 'input', 'vars', `return (${conditionSrc});`);
                 } catch (err) {
                     throw new Error(`Loop node (while): condition syntax error — ${(err as Error).message}`);
                 }
@@ -138,12 +140,12 @@ export class LoopNode implements NodeExecutor {
                     if (index >= maxIterations) { hitCap = true; break; }
                     let keepGoing: unknown;
                     try {
-                        keepGoing = condFn(index, acc, nodesCtx, inputCtx);
+                        keepGoing = condFn(index, acc, nodesCtx, inputCtx, varsCtx);
                     } catch (err) {
                         throw new Error(`Loop node (while): condition runtime error — ${(err as Error).message}`);
                     }
                     if (!keepGoing) break;
-                    const out = await bodyFn(undefined, index, acc, nodesCtx, inputCtx);
+                    const out = await bodyFn(undefined, index, acc, nodesCtx, inputCtx, varsCtx);
                     results.push(out);
                     acc = out;
                     index++;
@@ -161,7 +163,7 @@ export class LoopNode implements NodeExecutor {
                 const limit = Math.min(batches.length, maxIterations);
                 for (let index = 0; index < limit; index++) {
                     const batch = batches[index];
-                    const out = await bodyFn(batch, index, acc, nodesCtx, inputCtx);
+                    const out = await bodyFn(batch, index, acc, nodesCtx, inputCtx, varsCtx);
                     results.push(out);
                     acc = out;
                 }
