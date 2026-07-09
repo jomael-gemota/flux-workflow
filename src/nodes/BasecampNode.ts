@@ -18,7 +18,9 @@ type BasecampAction =
     | 'list_organizations'
     | 'get_project_people'
     | 'get_person'
-    | 'get_todo';
+    | 'get_todo'
+    | 'get_comments'
+    | 'get_comment';
 
 interface BasecampConfig {
     credentialId: string;
@@ -28,6 +30,8 @@ interface BasecampConfig {
     groupId?: string;
     todoId?: string;
     recordingId?: string;
+    // get_comment
+    commentId?: string;
     // get_person
     personId?: string;
     // create_todo
@@ -188,6 +192,38 @@ function mapBasecampTodo(t: Record<string, unknown>): Record<string, unknown> {
                 by:        mapPersonSummary(completion.creator as Record<string, unknown> | undefined),
             }
             : null,
+        parent: parent
+            ? { id: parent.id, title: parent.title ?? null, type: parent.type ?? null }
+            : null,
+        project: bucket
+            ? { id: bucket.id, name: bucket.name ?? null, type: bucket.type ?? null }
+            : null,
+    };
+}
+
+/**
+ * Normalise a raw Basecamp comment record (from Get comments / Get a comment)
+ * into a flat camelCase shape. The comment author is reduced to an {id, name,
+ * email} summary, and the parent recording and containing project/bucket are
+ * surfaced for downstream routing.
+ */
+function mapBasecampComment(c: Record<string, unknown>): Record<string, unknown> {
+    const parent = c.parent as Record<string, unknown> | null | undefined;
+    const bucket = c.bucket as Record<string, unknown> | null | undefined;
+
+    return {
+        id:               c.id,
+        content:          c.content ?? null,
+        title:            c.title ?? null,
+        status:           c.status ?? null,
+        type:             c.type ?? null,
+        visibleToClients: c.visible_to_clients ?? null,
+        boostsCount:      c.boosts_count ?? null,
+        url:              c.url ?? null,
+        appUrl:           c.app_url ?? null,
+        createdAt:        c.created_at ?? null,
+        updatedAt:        c.updated_at ?? null,
+        creator:          mapPersonSummary(c.creator as Record<string, unknown> | undefined),
         parent: parent
             ? { id: parent.id, title: parent.title ?? null, type: parent.type ?? null }
             : null,
@@ -1550,6 +1586,36 @@ export class BasecampNode implements NodeExecutor {
             }
             const todo = await res.json() as Record<string, unknown>;
             return mapBasecampTodo(todo);
+        }
+
+        if (action === 'get_comments') {
+            const recordingId = this.resolver.resolveTemplate(config.recordingId ?? '', context).trim();
+            if (!recordingId) throw new Error('Basecamp get_comments: recordingId is required');
+
+            // GET /recordings/{id}/comments.json returns a paginated list of the
+            // recording's active comments. throwOnError=true so an auth/permission
+            // failure surfaces rather than being mistaken for an empty thread.
+            const comments = await this.fetchAllPages(
+                `${baseUrl}/recordings/${recordingId}/comments.json`, headers, true,
+            );
+
+            return {
+                recordingId,
+                comments: comments.map(mapBasecampComment),
+                count:    comments.length,
+            };
+        }
+
+        if (action === 'get_comment') {
+            const commentId = this.resolver.resolveTemplate(config.commentId ?? '', context).trim();
+            if (!commentId) throw new Error('Basecamp get_comment: commentId is required');
+
+            const res = await fetch(`${baseUrl}/comments/${commentId}.json`, { headers });
+            if (!res.ok) {
+                throw new Error(`Basecamp get_comment failed (${res.status}): ${await extractBasecampError(res)}`);
+            }
+            const comment = await res.json() as Record<string, unknown>;
+            return mapBasecampComment(comment);
         }
 
         throw new Error(`Basecamp node: unknown action "${action}"`);
