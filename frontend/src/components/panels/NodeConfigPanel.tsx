@@ -6,7 +6,7 @@ import type { CanvasNode } from '../../store/workflowStore';
 import { Select } from '../ui/Input';
 import { useTestNode, useNodeTestResults, useLastRunResults } from '../../hooks/useNodeTest';
 import { useWebhookCapture, type CapturedWebhook } from '../../hooks/useWebhookCapture';
-import type { NodeTestResult } from '../../types/workflow';
+import type { NodeTestResult, WorkflowVariable } from '../../types/workflow';
 import { useCredentialList } from '../../hooks/useCredentials';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import { useSaveWorkflow } from '../../hooks/useSaveWorkflow';
@@ -20,6 +20,10 @@ import { useBasecampProjects, useBasecampTodolists, useBasecampTodos, useBasecam
 import { NodeIcon } from '../nodes/NodeIcons';
 
 // ── Output field catalogue (human-friendly labels per node type) ──────────────
+
+// Stable empty reference so the zustand selector in VariablePickerPanel never
+// returns a fresh array (which would cause needless re-renders / loops).
+const EMPTY_VARIABLES: WorkflowVariable[] = [];
 
 interface OutputField {
   key: string;
@@ -476,7 +480,14 @@ export function VariablePickerPanel({
 }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
-  if (nodes.length === 0) return null;
+  // Workflow-scoped variables live on the active workflow (not on any node),
+  // so read them straight from the store rather than threading a prop through
+  // every call site of this panel.
+  const workflowVariables = useWorkflowStore(
+    (s) => s.activeWorkflow?.variables ?? EMPTY_VARIABLES,
+  );
+
+  if (nodes.length === 0 && workflowVariables.length === 0) return null;
 
   return (
     <div className="mt-1 border border-blue-300 dark:border-blue-800/50 rounded-md overflow-hidden shadow-lg">
@@ -490,6 +501,30 @@ export function VariablePickerPanel({
       </div>
 
       <div className="max-h-72 overflow-y-auto bg-white dark:bg-slate-900">
+        {workflowVariables.length > 0 && (
+          <div className="px-2.5 py-2 border-b border-slate-200 dark:border-slate-700/60">
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-indigo-500" />
+              <span className="text-[11px] font-semibold text-gray-900 dark:text-white truncate">
+                Workflow variables
+              </span>
+              <span className="text-[9px] text-slate-500 dark:text-slate-500 shrink-0">vars</span>
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {workflowVariables.map((v) => (
+                <button
+                  key={v.key}
+                  type="button"
+                  onClick={() => onInsert(`{{vars.${v.key}}}`)}
+                  title={v.description ? `${v.description} — Insert: {{vars.${v.key}}}` : `Insert: {{vars.${v.key}}}`}
+                  className="inline-flex items-center gap-1 text-[10px] bg-slate-100 dark:bg-slate-700 hover:bg-blue-600 dark:hover:bg-blue-700 border border-slate-300 dark:border-slate-600 hover:border-blue-600 text-indigo-700 dark:text-indigo-300 hover:text-white rounded px-1.5 py-0.5 font-mono transition-colors"
+                >
+                  {`vars.${v.key}`}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {nodes.map((n) => {
           const testResult = testResults[n.id];
           const realOutput = testResult?.status === 'success' && testResult.output != null

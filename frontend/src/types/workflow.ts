@@ -42,6 +42,16 @@ export interface PersistedStickyNote {
   color: string;
 }
 
+/**
+ * A plain (non-secret) workflow-scoped variable, referenceable in node config
+ * via `{{vars.<key>}}`. Each workflow has its own isolated set.
+ */
+export interface WorkflowVariable {
+  key: string;
+  value: string;
+  description?: string;
+}
+
 export interface WorkflowDefinition {
   id: string;
   name: string;
@@ -54,6 +64,8 @@ export interface WorkflowDefinition {
   viewport?: { x: number; y: number; zoom: number };
   /** Sticky note annotations saved with the canvas */
   stickyNotes?: PersistedStickyNote[];
+  /** Per-workflow plain variables, referenceable as `{{vars.<key>}}` in node config */
+  variables?: WorkflowVariable[];
 }
 
 export interface NodeResult {

@@ -1,4 +1,4 @@
-import { CloudUpload, Zap, BellRing, GitBranch, Loader2, Check, Sparkles } from 'lucide-react';
+import { CloudUpload, Zap, BellRing, GitBranch, Loader2, Check, Sparkles, Braces } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useWorkflowStore } from '../../store/workflowStore';
@@ -6,6 +6,7 @@ import { useTriggerWorkflow } from '../../hooks/useWorkflows';
 import { useSaveWorkflow } from '../../hooks/useSaveWorkflow';
 import { VersionHistoryModal } from '../ui/VersionHistoryModal';
 import { NotificationSettingsModal } from '../ui/NotificationSettingsModal';
+import { WorkflowVariablesModal } from '../ui/WorkflowVariablesModal';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import { getNotificationSettingsForWorkflow } from '../../api/client';
 
@@ -79,6 +80,7 @@ export function CanvasActionDock() {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [variablesOpen, setVariablesOpen] = useState(false);
   const [alertModal, setAlertModal] = useState<{ open: boolean; title: string; message: string }>({
     open: false, title: '', message: '',
   });
@@ -172,6 +174,7 @@ export function CanvasActionDock() {
         workflowId={activeWorkflowId}
         workflowName={activeWorkflow?.name}
       />
+      <WorkflowVariablesModal open={variablesOpen} onClose={() => setVariablesOpen(false)} />
 
       {/* ── Save feedback toast ── */}
       <div
@@ -236,6 +239,18 @@ export function CanvasActionDock() {
           dot={notifEnabled}
         >
           <BellRing className="w-[18px] h-[18px]" />
+        </DockButton>
+
+        {/* Divider */}
+        <span className="w-px h-5 bg-black/[0.07] dark:bg-white/[0.07] mx-0.5" />
+
+        {/* Workflow Variables */}
+        <DockButton
+          label="Variables"
+          onClick={() => setVariablesOpen(true)}
+          disabled={!activeWorkflow}
+        >
+          <Braces className="w-[18px] h-[18px]" />
         </DockButton>
 
         {/* Divider */}

@@ -42,6 +42,7 @@ export function useSaveWorkflow() {
       activeWorkflow.schedule,
       entryNodeIds,
       canvasViewport,
+      activeWorkflow.variables,
     );
 
     if (!activeWorkflow.id || activeWorkflow.id.startsWith('__new__')) {
@@ -64,6 +65,7 @@ export function useSaveWorkflow() {
           entryNodeIds: def.entryNodeIds,
           viewport: def.viewport,
           stickyNotes: def.stickyNotes,
+          variables: def.variables,
         },
       });
 

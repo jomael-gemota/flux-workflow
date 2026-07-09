@@ -1,5 +1,5 @@
 import type { CanvasEdge, CanvasNode } from '../../store/workflowStore';
-import type { WorkflowDefinition, WorkflowNode, PersistedStickyNote } from '../../types/workflow';
+import type { WorkflowDefinition, WorkflowNode, PersistedStickyNote, WorkflowVariable } from '../../types/workflow';
 
 const NODE_WIDTH = 200;
 const NODE_HEIGHT = 80;
@@ -108,6 +108,7 @@ export function serialize(
   schedule?: string,
   _entryNodeIds?: string[],
   viewport?: { x: number; y: number; zoom: number } | null,
+  variables?: WorkflowVariable[],
 ): WorkflowDefinition {
   // Separate sticky notes from workflow nodes before serializing
   const rfWorkflowNodes = rfNodes.filter((n) => n.type !== 'stickyNote');
@@ -270,6 +271,9 @@ export function serialize(
     // JSON.stringify to omit the key entirely, leaving the backend's existing sticky
     // notes untouched (it can't distinguish "not provided" from "clear them all").
     stickyNotes,
+    // Always send variables (even as an empty array) for the same reason as
+    // stickyNotes — so the backend can explicitly clear them when all are removed.
+    variables: variables ?? [],
   };
 }
 

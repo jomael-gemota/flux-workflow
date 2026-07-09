@@ -110,7 +110,7 @@ export function createWorkflow(
 
 export function updateWorkflow(
   id: string,
-  body: Partial<Pick<WorkflowDefinition, 'name' | 'nodes' | 'entryNodeId' | 'entryNodeIds' | 'schedule' | 'viewport' | 'stickyNotes'>>
+  body: Partial<Pick<WorkflowDefinition, 'name' | 'nodes' | 'entryNodeId' | 'entryNodeIds' | 'schedule' | 'viewport' | 'stickyNotes' | 'variables'>>
 ) {
   return request<WorkflowDefinition>(`/workflows/${id}`, {
     method: 'PUT',

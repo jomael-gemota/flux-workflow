@@ -39,7 +39,7 @@ export function useUpdateWorkflow() {
       body,
     }: {
       id: string;
-      body: Partial<Pick<WorkflowDefinition, 'name' | 'nodes' | 'entryNodeId' | 'entryNodeIds' | 'schedule' | 'viewport' | 'stickyNotes'>>;
+      body: Partial<Pick<WorkflowDefinition, 'name' | 'nodes' | 'entryNodeId' | 'entryNodeIds' | 'schedule' | 'viewport' | 'stickyNotes' | 'variables'>>;
     }) => api.updateWorkflow(id, body),
     onSuccess: (data, vars) => {
       if (data) {
