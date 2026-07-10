@@ -1,5 +1,5 @@
-import { Fragment, useState, useRef, useCallback } from 'react';
-import { Handle, Position } from '@xyflow/react';
+import { Fragment, useState, useRef, useCallback, useEffect } from 'react';
+import { Handle, Position, useUpdateNodeInternals } from '@xyflow/react';
 import type { ReactNode } from 'react';
 import { useWorkflowStore } from '../../store/workflowStore';
 import type { NodeExecutionStatus } from '../../store/workflowStore';
@@ -90,6 +90,14 @@ export function BaseNode({
   const squareBg      = nodeHeaderColor(nodeType);
   const inputs        = handles?.inputs  ?? [{}];
   const outputs       = handles?.outputs ?? [{}];
+
+  // When the number of handles changes (e.g. adding/removing Switch cases),
+  // React Flow must re-measure handle positions so connected edges reroute in
+  // real time. Otherwise existing connectors stay pinned to stale coordinates.
+  const updateNodeInternals = useUpdateNodeInternals();
+  useEffect(() => {
+    if (nodeId) updateNodeInternals(nodeId);
+  }, [nodeId, inputs.length, outputs.length, updateNodeInternals]);
   const badge         = status ? STATUS_BADGE[status]  : undefined;
   const wrapperCls    = status ? STATUS_WRAPPER[status] : '';
   const squareRingCls = status ? STATUS_SQUARE[status]  : '';
