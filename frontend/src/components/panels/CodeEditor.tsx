@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
-import { EditorView, tooltips } from '@codemirror/view';
+import { EditorView, tooltips, keymap } from '@codemirror/view';
+import { Prec } from '@codemirror/state';
+import { acceptCompletion } from '@codemirror/autocomplete';
 import { javascript, javascriptLanguage, scopeCompletionSource } from '@codemirror/lang-javascript';
 import { useWorkflowStore } from '../../store/workflowStore';
 
@@ -41,7 +43,15 @@ export function JsCodeMirror({
   const isDark = useWorkflowStore((s) => s.theme === 'dark');
 
   const extensions = useMemo(
-    () => [javascript(), jsGlobals, tooltips({ position: 'fixed', parent: document.body }), baseTheme],
+    () => [
+      // Tab accepts the open autocomplete suggestion; when no completion is
+      // active acceptCompletion returns false so Tab falls through to indent.
+      Prec.highest(keymap.of([{ key: 'Tab', run: acceptCompletion }])),
+      javascript(),
+      jsGlobals,
+      tooltips({ position: 'fixed', parent: document.body }),
+      baseTheme,
+    ],
     [],
   );
 
