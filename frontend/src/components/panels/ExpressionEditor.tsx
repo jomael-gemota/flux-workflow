@@ -20,6 +20,8 @@ import {
   StateField,
 } from '@codemirror/state';
 import { javascript, javascriptLanguage, scopeCompletionSource } from '@codemirror/lang-javascript';
+import { HighlightStyle, syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
+import { tags as t } from '@lezer/highlight';
 import {
   autocompletion,
   completionKeymap,
@@ -36,6 +38,27 @@ import type { CanvasNode } from '../../store/workflowStore';
 import type { NodeTestResult } from '../../types/workflow';
 import { VariablePickerPanel, computeNodeFields, nodeTypeLabel, iconTypeForNode } from './NodeConfigPanel';
 import { NodeIcon } from '../nodes/NodeIcons';
+
+// ── Syntax highlighting (code mode) ─────────────────────────────────────────────
+//
+// The default highlight style is tuned for light backgrounds, so its dark token
+// colors are nearly invisible on the dark editor. This palette (Material-ish)
+// keeps code legible in dark mode; light mode keeps the built-in style.
+
+const darkHighlightStyle = HighlightStyle.define([
+  { tag: [t.keyword, t.moduleKeyword, t.definitionKeyword, t.operatorKeyword], color: '#c792ea' },
+  { tag: [t.controlKeyword], color: '#c792ea' },
+  { tag: [t.string, t.special(t.string), t.regexp], color: '#c3e88d' },
+  { tag: [t.number, t.bool, t.null, t.atom], color: '#f78c6c' },
+  { tag: [t.comment, t.lineComment, t.blockComment], color: '#7d8799', fontStyle: 'italic' },
+  { tag: [t.function(t.variableName), t.function(t.propertyName)], color: '#82aaff' },
+  { tag: [t.propertyName], color: '#89ddff' },
+  { tag: [t.variableName, t.name, t.labelName], color: '#eeffff' },
+  { tag: [t.typeName, t.className, t.namespace], color: '#ffcb6b' },
+  { tag: [t.operator, t.punctuation, t.separator, t.bracket, t.paren, t.brace, t.derefOperator], color: '#89ddff' },
+  { tag: [t.self, t.constant(t.variableName)], color: '#ff5370' },
+  { tag: [t.escape], color: '#c3e88d' },
+]);
 
 // ── Token model ───────────────────────────────────────────────────────────────
 //
@@ -819,6 +842,8 @@ export function ExpressionEditor({
         // Tab accepts an open suggestion, else falls through to indent.
         Prec.highest(keymap.of([{ key: 'Tab', run: acceptCompletion }])),
         javascript(),
+        // Dark-legible token colors in dark mode; built-in style in light mode.
+        syntaxHighlighting(isDark ? darkHighlightStyle : defaultHighlightStyle),
         // Both the @ variable source and JS globals feed the completion menu.
         javascriptLanguage.data.of({ autocomplete: makeCompletionSource(runtimeSingleton) }),
         javascriptLanguage.data.of({ autocomplete: scopeCompletionSource(globalThis) }),
@@ -919,7 +944,7 @@ export function ExpressionEditor({
       <div className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-md overflow-hidden focus-within:ring-1 focus-within:ring-blue-500 focus-within:border-blue-500 transition-shadow">
         <CodeMirror
           value={value}
-          basicSetup={codeMode ? { autocompletion: false } : false}
+          basicSetup={codeMode ? { autocompletion: false, syntaxHighlighting: false } : false}
           extensions={extensions}
           theme="none"
           placeholder={placeholder}
