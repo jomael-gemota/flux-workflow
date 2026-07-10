@@ -8,6 +8,7 @@ import {
   WidgetType,
   ViewPlugin,
   keymap,
+  tooltips,
   type DecorationSet,
   type ViewUpdate,
 } from '@codemirror/view';
@@ -699,6 +700,9 @@ export function ExpressionEditor({
     return [
       revealField,
       clearRevealOnBlur,
+      // Render the @ autocomplete popup in document.body so it isn't clipped by
+      // the config drawer's overflow.
+      tooltips({ position: 'fixed', parent: document.body }),
       keymap.of([
         { key: 'Tab', run: acceptCompletion },
         ...completionKeymap,
