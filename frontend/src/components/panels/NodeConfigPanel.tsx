@@ -1,6 +1,7 @@
 import { Settings2, Star, Braces, Play, Loader2, ChevronDown, ChevronUp, ChevronRight, Search, AlertCircle, CheckCircle2, Clock, Copy, Check, ArrowRight, Power, X, AlertTriangle, Save, Wand2, Info, Radio } from 'lucide-react';
 import { useRef, useState, useEffect, useMemo, type ReactNode } from 'react';
 import { HttpBodyEditor, type BodyLanguage } from './HttpBodyEditor';
+import { ExpressionEditor } from './ExpressionEditor';
 import { useWorkflowStore } from '../../store/workflowStore';
 import type { CanvasNode } from '../../store/workflowStore';
 import { Select } from '../ui/Input';
@@ -268,31 +269,8 @@ const NODE_TYPE_LABEL: Record<string, string> = {
   basecamp: 'Basecamp',
 };
 
-function nodeTypeLabel(type: string) {
+export function nodeTypeLabel(type: string) {
   return NODE_TYPE_LABEL[type] ?? type.toUpperCase();
-}
-
-type ExprSegment =
-  | { kind: 'text'; text: string }
-  | { kind: 'expr'; nodeType: string; nodeName: string; field: string };
-
-function parseExprSegments(value: string, nodes: CanvasNode[]): ExprSegment[] {
-  // Guard: AI proposals may supply non-string config values; coerce defensively.
-  const safeValue = typeof value === 'string' ? value : String(value ?? '');
-  const parts = safeValue.split(/(\{\{nodes\.[^}]+\}\})/g);
-  return parts.flatMap((part): ExprSegment[] => {
-    const m = part.match(/^\{\{nodes\.([^.}]+)\.([^}]+)\}\}$/);
-    if (m) {
-      const node = nodes.find(n => n.id === m[1]);
-      return [{
-        kind: 'expr',
-        nodeType: node?.data.nodeType ?? '',
-        nodeName: node?.data.label ?? m[1],
-        field: m[2],
-      }];
-    }
-    return part ? [{ kind: 'text', text: part }] : [];
-  });
 }
 
 const EXPR_RE = /\{\{nodes\.[^}]+\}\}/;
@@ -405,34 +383,6 @@ function resolveValueRaw(
   return resolveValue(value, testResults);
 }
 
-function ExprToken({ nodeType, nodeName, field }: { nodeType: string; nodeName: string; field: string }) {
-  return (
-    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/60 border border-blue-300 dark:border-blue-700/50 text-[10px] font-medium mx-0.5 align-middle whitespace-nowrap">
-      <span className="text-blue-700 dark:text-blue-400 font-bold uppercase text-[9px]">{nodeTypeLabel(nodeType)}</span>
-      <span className="text-blue-400 dark:text-blue-600">·</span>
-      <span className="text-gray-900 dark:text-slate-200">{nodeName}</span>
-      <span className="text-blue-400 dark:text-blue-600">·</span>
-      <span className="font-mono text-blue-700 dark:text-blue-300">{field}</span>
-    </span>
-  );
-}
-
-function DisplayValue({ value, nodes, placeholder }: { value: string; nodes: CanvasNode[]; placeholder?: string }) {
-  // Guard: coerce non-string values (e.g. numbers from AI proposals) before parsing.
-  const strValue = typeof value === 'string' ? value : (value != null ? String(value) : '');
-  if (!strValue) return <span className="text-slate-400 dark:text-slate-500 text-xs italic">{placeholder ?? ''}</span>;
-  const segs = parseExprSegments(strValue, nodes);
-  return (
-    <>
-      {segs.map((seg, i) =>
-        seg.kind === 'text'
-          ? <span key={i} className="text-gray-800 dark:text-slate-200 text-xs">{seg.text}</span>
-          : <ExprToken key={i} nodeType={seg.nodeType} nodeName={seg.nodeName} field={seg.field} />
-      )}
-    </>
-  );
-}
-
 // ── Variable picker panel ─────────────────────────────────────────────────────
 
 /**
@@ -482,7 +432,7 @@ type PickerField = { key: string; label: string; realValue?: unknown; hasReal: b
  * a successful test/last-run result, otherwise the predicted catalogue fields.
  * Shared by the picker's search matching and its rendering.
  */
-function computeNodeFields(
+export function computeNodeFields(
   n: CanvasNode,
   testResults: Record<string, NodeTestResult>,
 ): { realOutput: Record<string, unknown> | null; fields: PickerField[] } {
@@ -1117,7 +1067,6 @@ function ExpressionTextArea({
   onChange,
   nodes,
   testResults,
-  resizable = false,
 }: {
   label: string;
   value: string;
@@ -1126,75 +1075,19 @@ function ExpressionTextArea({
   onChange: (v: string) => void;
   nodes: CanvasNode[];
   testResults: Record<string, NodeTestResult>;
+  /** Retained for call-site compatibility; the editor now auto-grows. */
   resizable?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
-  const [focused, setFocused] = useState(false);
-  const ref = useRef<HTMLTextAreaElement>(null);
-
-  const showDisplay = !focused && !open && EXPR_RE.test(value);
-
-  function handleInsert(expr: string) {
-    setFocused(true);
-    requestAnimationFrame(() => {
-      if (ref.current) {
-        ref.current.focus();
-        insertAtCursor(ref.current, expr, value, onChange);
-      } else {
-        onChange(value + expr);
-      }
-    });
-    setOpen(false);
-  }
-
   return (
-    <div className="space-y-1">
-      <div className="flex items-center justify-between gap-1">
-        <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">{label}</label>
-        {nodes.length > 0 && (
-          <button
-            type="button"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => setOpen((p) => !p)}
-            title="Insert a variable from another node"
-            className={`flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded transition-colors shrink-0 ${
-              open ? 'bg-blue-600 text-white' : 'text-blue-500 dark:text-blue-400 hover:text-gray-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700'
-            }`}
-          >
-            <Braces className="w-2.5 h-2.5" />
-            Insert variable
-          </button>
-        )}
-      </div>
-
-      {/* Display mode: readable tokens when blurred */}
-      {showDisplay && (
-        <div
-          onClick={() => { setFocused(true); requestAnimationFrame(() => ref.current?.focus()); }}
-          className="w-full flex flex-wrap items-start gap-y-1 content-start bg-white dark:bg-slate-800 border border-blue-300 dark:border-blue-700/60 hover:border-blue-400 dark:hover:border-blue-600 rounded-md px-2.5 py-1.5 cursor-text shadow-sm"
-          style={{ minHeight: `${rows * 20 + 12}px` }}
-          title="Click to edit"
-        >
-          <DisplayValue value={value} nodes={nodes} placeholder={placeholder} />
-        </div>
-      )}
-
-      {/* Raw textarea — always mounted but visually hidden in display mode */}
-      <textarea
-        ref={ref}
-        rows={rows}
-        value={value}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        className={`w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${resizable ? 'resize-y' : 'resize-none'} ${showDisplay ? 'sr-only' : ''}`}
-        style={resizable ? { minHeight: `${rows * 20 + 12}px` } : undefined}
-      />
-      {open && (
-        <VariablePickerPanel nodes={nodes} testResults={testResults} onInsert={handleInsert} />
-      )}
-    </div>
+    <ExpressionEditor
+      label={label}
+      value={value}
+      rows={rows}
+      placeholder={placeholder}
+      onChange={onChange}
+      nodes={nodes}
+      testResults={testResults}
+    />
   );
 }
 
@@ -1222,85 +1115,18 @@ function ExpressionInput({
    *  with a separator character. Use e.g. ", " for comma-separated list fields. */
   autoSeparator?: string;
 }) {
-  const [open, setOpen] = useState(false);
-  const [focused, setFocused] = useState(false);
-  const ref = useRef<HTMLInputElement>(null);
-
-  const showDisplay = !focused && !open && EXPR_RE.test(value);
-
-  function handleInsert(expr: string) {
-    setFocused(true);
-    requestAnimationFrame(() => {
-      const el = ref.current;
-      if (el) {
-        let toInsert = expr;
-        if (autoSeparator) {
-          const before = value.slice(0, el.selectionStart ?? value.length).trimEnd();
-          if (before.length > 0 && !/[,;]$/.test(before)) {
-            toInsert = autoSeparator + expr;
-          }
-        }
-        insertAtCursor(el, toInsert, value, onChange);
-      } else {
-        const before = value.trimEnd();
-        const toInsert = (autoSeparator && before.length > 0 && !/[,;]$/.test(before))
-          ? autoSeparator + expr
-          : expr;
-        onChange(value + toInsert);
-      }
-    });
-    setOpen(false);
-  }
-
   return (
-    <div className="space-y-1">
-      {(label || nodes.length > 0) && (
-        <div className="flex items-center justify-between gap-1">
-          {label && <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">{label}</label>}
-          {nodes.length > 0 && (
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => setOpen((p) => !p)}
-              title="Insert a variable from another node"
-              className={`flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded transition-colors shrink-0 ${
-                open ? 'bg-blue-600 text-white' : 'text-blue-500 dark:text-blue-400 hover:text-gray-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700'
-              }`}
-            >
-              <Braces className="w-2.5 h-2.5" />
-              Insert variable
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Display mode: readable tokens when blurred */}
-      {showDisplay && (
-        <div
-          onClick={() => { setFocused(true); requestAnimationFrame(() => ref.current?.focus()); }}
-          className="w-full min-h-[30px] flex flex-wrap items-center gap-y-0.5 bg-white dark:bg-slate-800 border border-blue-300 dark:border-blue-700/60 hover:border-blue-400 dark:hover:border-blue-600 rounded-md px-2.5 py-1.5 cursor-text shadow-sm"
-          title="Click to edit"
-        >
-          <DisplayValue value={value} nodes={nodes} placeholder={placeholder} />
-        </div>
-      )}
-
-      {/* Raw input — always mounted but visually hidden in display mode */}
-      <input
-        ref={ref}
-        type="text"
-        value={value}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        className={`w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${showDisplay ? 'sr-only' : ''}`}
-      />
-      {hint && <p className="text-slate-400 dark:text-slate-500 text-[10px]">{hint}</p>}
-      {open && (
-        <VariablePickerPanel nodes={nodes} testResults={testResults} onInsert={handleInsert} />
-      )}
-    </div>
+    <ExpressionEditor
+      singleLine
+      label={label}
+      value={value}
+      placeholder={placeholder}
+      onChange={onChange}
+      nodes={nodes}
+      testResults={testResults}
+      hint={hint}
+      autoSeparator={autoSeparator}
+    />
   );
 }
 
