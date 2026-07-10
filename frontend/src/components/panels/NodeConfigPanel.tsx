@@ -276,6 +276,21 @@ export function nodeTypeLabel(type: string) {
   return NODE_TYPE_LABEL[type] ?? type.toUpperCase();
 }
 
+/**
+ * Resolve the icon variant for a node, mirroring the canvas widgets so the
+ * variable picker / menus show the same brand logo (e.g. Anthropic vs OpenAI
+ * for LLM nodes) rather than a generic dot.
+ */
+export function iconTypeForNode(n: { data: { nodeType: string; config?: unknown } }): string {
+  const type = n.data.nodeType;
+  if (type === 'llm') {
+    const provider = String((n.data.config as Record<string, unknown> | undefined)?.provider ?? '');
+    if (provider === 'anthropic' || provider === 'gemini' || provider === 'meta') return provider;
+    return 'llm';
+  }
+  return type;
+}
+
 const EXPR_RE = /\{\{nodes\.[^}]+\}\}/;
 
 /**
@@ -627,17 +642,9 @@ export function VariablePickerPanel({
                   ? <ChevronDown className="w-3 h-3 text-slate-400 shrink-0" />
                   : <ChevronRight className="w-3 h-3 text-slate-400 shrink-0" />
                 }
-                <span
-                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                    n.data.nodeType === 'http'      ? 'bg-blue-500' :
-                    n.data.nodeType === 'llm'       ? 'bg-emerald-500' :
-                    n.data.nodeType === 'trigger'   ? 'bg-violet-500' :
-                    n.data.nodeType === 'transform' ? 'bg-cyan-500' :
-                    n.data.nodeType === 'condition' ? 'bg-amber-500' :
-                    n.data.nodeType === 'switch'    ? 'bg-orange-500' :
-                    'bg-rose-500'
-                  }`}
-                />
+                <span className="shrink-0 flex items-center justify-center">
+                  <NodeIcon type={iconTypeForNode(n)} size={14} />
+                </span>
                 <span className="text-[11px] font-semibold text-gray-900 dark:text-white truncate">{n.data.label}</span>
                 <span className="text-[9px] text-slate-500 dark:text-slate-500 shrink-0">{n.data.nodeType}</span>
                 {upstreamIds.has(n.id) && (
