@@ -204,36 +204,52 @@ export function BaseNode({
       ))}
 
       {/* ── Output handles (right edge) ───────────────────────────────────── */}
-      {outputs.map((h, i) => {
-        const pct = ((i + 1) / (outputs.length + 1)) * 100;
-        return (
-          <Fragment key={`out-${h.id ?? i}`}>
-            {h.label && (
-              <span
-                className="absolute whitespace-nowrap text-[11px] font-semibold
-                  text-slate-600 dark:text-slate-300
-                  bg-white/90 dark:bg-slate-800/90
-                  px-2 py-0.5 rounded-full
-                  border border-slate-200/80 dark:border-slate-600/60
-                  shadow-sm pointer-events-none z-10"
-                style={{
-                  left: SZ + 22,
-                  top: `calc(${pct}% - 11px)`,
-                }}
-              >
-                {h.label}
-              </span>
-            )}
-            <Handle
-              type="source"
-              position={Position.Right}
-              id={h.id}
-              style={{ top: `${pct}%` }}
-              className="!w-[16px] !h-[16px] !bg-white dark:!bg-slate-200 !border-[3px] !border-slate-400 dark:!border-slate-500 !rounded-full !shadow-md"
-            />
-          </Fragment>
-        );
-      })}
+      {/*
+        Handles are evenly distributed across the square, but never closer than
+        OUT_MIN_GAP so an unlimited number of cases (e.g. a Switch node) always
+        keeps distinct, clickable connectors. When more handles are needed than
+        fit inside the square they extend symmetrically above/below it — the
+        wrapper is `overflow-visible`, and React Flow routes edges to the actual
+        handle position regardless of the node's measured box.
+      */}
+      {(() => {
+        const OUT_MIN_GAP = 26; // px — comfortable spacing between connectors
+        const count = outputs.length;
+        const evenGap = SZ / (count + 1);
+        const gap = Math.max(evenGap, OUT_MIN_GAP);
+        const span = gap * (count + 1);
+        const startY = (SZ - span) / 2; // 0 when it fits; negative → overflows & centers
+        return outputs.map((h, i) => {
+          const topPx = startY + gap * (i + 1);
+          return (
+            <Fragment key={`out-${h.id ?? i}`}>
+              {h.label && (
+                <span
+                  className="absolute whitespace-nowrap text-[11px] font-semibold
+                    text-slate-600 dark:text-slate-300
+                    bg-white/90 dark:bg-slate-800/90
+                    px-2 py-0.5 rounded-full
+                    border border-slate-200/80 dark:border-slate-600/60
+                    shadow-sm pointer-events-none z-10"
+                  style={{
+                    left: SZ + 22,
+                    top: `${topPx - 11}px`,
+                  }}
+                >
+                  {h.label}
+                </span>
+              )}
+              <Handle
+                type="source"
+                position={Position.Right}
+                id={h.id}
+                style={{ top: `${topPx}px` }}
+                className="!w-[16px] !h-[16px] !bg-white dark:!bg-slate-200 !border-[3px] !border-slate-400 dark:!border-slate-500 !rounded-full !shadow-md"
+              />
+            </Fragment>
+          );
+        });
+      })()}
     </div>
   );
 }
