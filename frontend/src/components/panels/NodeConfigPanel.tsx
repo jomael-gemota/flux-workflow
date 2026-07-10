@@ -2,6 +2,9 @@ import { Settings2, Star, Braces, Play, Loader2, ChevronDown, ChevronUp, Chevron
 import { useRef, useState, useEffect, useMemo, type ReactNode } from 'react';
 import { HttpBodyEditor, type BodyLanguage } from './HttpBodyEditor';
 import { ExpressionEditor } from './ExpressionEditor';
+import { JsCodeMirror } from './CodeEditor';
+import type { EditorView as CodeMirrorEditorView } from '@codemirror/view';
+import { uniqueNodeName } from '../../utils/nodeUtils';
 import { useWorkflowStore } from '../../store/workflowStore';
 import type { CanvasNode } from '../../store/workflowStore';
 import { Select } from '../ui/Input';
@@ -981,13 +984,23 @@ function JsCodeArea({
 }) {
   const [open, setOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const taRef    = useRef<HTMLTextAreaElement>(null);
+  const jsViewRef = useRef<CodeMirrorEditorView | null>(null);
 
   function handleInsert(template: string) {
     const jsExpr = templateToJsAccess(template);
-    const el = singleLine ? inputRef.current : taRef.current;
-    if (el) insertAtCursor(el, jsExpr, value, onChange);
-    else onChange(value + jsExpr);
+    if (!singleLine) {
+      const view = jsViewRef.current;
+      if (view) {
+        view.dispatch(view.state.replaceSelection(jsExpr));
+        view.focus();
+      } else {
+        onChange(value + jsExpr);
+      }
+    } else {
+      const el = inputRef.current;
+      if (el) insertAtCursor(el, jsExpr, value, onChange);
+      else onChange(value + jsExpr);
+    }
     setOpen(false);
   }
 
@@ -1030,15 +1043,12 @@ function JsCodeArea({
           className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 font-mono"
         />
       ) : (
-        <textarea
-          ref={taRef}
-          rows={rows}
+        <JsCodeMirror
           value={value}
           placeholder={placeholder}
-          onChange={(e) => onChange(e.target.value)}
-          spellCheck={false}
-          className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 font-mono leading-relaxed resize-y"
-          style={{ minHeight: rows * 18 + 16 }}
+          minHeightPx={rows * 18 + 16}
+          onChange={onChange}
+          onCreateEditor={(view) => { jsViewRef.current = view; }}
         />
       )}
 
@@ -3943,13 +3953,20 @@ export function NodeConfigPanel() {
     if (!currentDraft) return;
     // Read the latest nodes directly from the store to avoid stale React hook closure
     const latestNodes = useWorkflowStore.getState().nodes;
+    // Final safety net: guarantee the name is unique per workflow on commit.
+    const uniqueLabel = uniqueNodeName(
+      currentDraft.label,
+      latestNodes
+        .filter((n) => n.id !== selectedNodeId && n.type !== 'stickyNote')
+        .map((n) => n.data.label),
+    );
     setNodes(latestNodes.map((n) =>
       n.id === selectedNodeId
         ? {
             ...n,
             data: {
               ...n.data,
-              label:        currentDraft.label,
+              label:        uniqueLabel,
               config:       currentDraft.config,
               retries:      currentDraft.retries ?? 0,
               retryDelayMs: currentDraft.retryDelayMs ?? 0,
@@ -4100,8 +4117,31 @@ export function NodeConfigPanel() {
           type="text"
           value={draft?.label ?? data.label}
           onChange={(e) => setDraft((prev) => prev ? { ...prev, label: e.target.value } : prev)}
+          onBlur={() => setDraft((prev) => {
+            if (!prev) return prev;
+            const others = nodes
+              .filter((n) => n.id !== selectedNodeId && n.type !== 'stickyNote')
+              .map((n) => n.data.label);
+            const unique = uniqueNodeName(prev.label, others);
+            return unique === prev.label ? prev : { ...prev, label: unique };
+          })}
           className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-gray-900 dark:text-slate-200 rounded-md px-2.5 py-1.5 text-xs placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
         />
+      </div>
+
+      {/* Node ID (read-only) */}
+      <div className="space-y-1">
+        <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Node ID</label>
+        <div className="flex items-center gap-1">
+          <input
+            type="text"
+            readOnly
+            value={selectedNode.id}
+            onFocus={(e) => e.currentTarget.select()}
+            className="flex-1 min-w-0 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 rounded-md px-2.5 py-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-default select-all"
+          />
+          <CopyButton text={selectedNode.id} />
+        </div>
       </div>
 
       {/* Test panel */}
