@@ -1,5 +1,6 @@
 import { NodeExecutor } from '../engine/NodeExecutor';
 import { WorkflowNode, ExecutionContext } from '../types/workflow.types';
+import { ExpressionResolver } from '../engine/ExpressionResolver';
 
 interface CodeNodeConfig {
     /** User-supplied JavaScript. Last expression / explicit `return` becomes the node output. */
@@ -25,14 +26,40 @@ interface CapturedLog {
  *   • `require`     — full Node.js `require` (this is a privileged execution mode)
  *   • `process`, `Buffer`, `fetch`, etc. — inherited from the host
  *
+ * Variable chips: any `{{nodes.<id>.<path>}}` / `{{vars.<key>}}` token in the
+ * code is resolved to its *real value* (not a stringified copy) and injected as
+ * a generated binding, so authors can use the same @-menu chips as other fields
+ * while keeping object references and types intact. Code with no tokens (e.g.
+ * plain `nodes['id'].result` access) is unaffected.
+ *
  * The user code is wrapped in an `async` IIFE so `await` is always available.
  * The value returned from the user code becomes `output.result`.
  */
 export class CodeNode implements NodeExecutor {
+    private resolver = new ExpressionResolver();
+
     async execute(node: WorkflowNode, context: ExecutionContext): Promise<unknown> {
         const config = node.config as unknown as CodeNodeConfig;
-        const userCode = (config.code ?? '').trim();
-        if (!userCode) throw new Error('Code node: code is required');
+        const rawCode = (config.code ?? '').trim();
+        if (!rawCode) throw new Error('Code node: code is required');
+
+        // Replace each {{...}} token with a generated identifier bound to its
+        // resolved value. This keeps real objects/arrays (unlike template
+        // string substitution, which would stringify them).
+        const injectedNames: string[] = [];
+        const injectedValues: unknown[] = [];
+        const userCode = rawCode.replace(/\{\{\s*(.+?)\s*\}\}/g, (_match, expr: string) => {
+            const name = `__var${injectedNames.length}`;
+            let value: unknown;
+            try {
+                value = this.resolver.resolve(String(expr).trim(), context);
+            } catch {
+                value = undefined;
+            }
+            injectedNames.push(name);
+            injectedValues.push(value);
+            return name;
+        });
 
         const logs: CapturedLog[] = [];
         const capture = (level: CapturedLog['level']) =>
@@ -60,6 +87,7 @@ export class CodeNode implements NodeExecutor {
         try {
             asyncFn = new Function(
                 'nodes', 'input', 'vars', 'console', 'workflow', 'execution',
+                ...injectedNames,
                 wrapped,
             );
         } catch (err) {
@@ -75,6 +103,7 @@ export class CodeNode implements NodeExecutor {
                 sandboxConsole,
                 { id: context.workflowId },
                 { id: context.executionId, startedAt: context.startedAt.toISOString() },
+                ...injectedValues,
             );
         } catch (err) {
             const detail = err instanceof Error ? err.message : String(err);
