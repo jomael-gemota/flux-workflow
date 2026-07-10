@@ -5127,16 +5127,19 @@ function CodeConfig({ cfg, onChange, otherNodes, testResults }: ConfigProps) {
         <code className="font-mono text-slate-600 dark:text-slate-300">return</code> to set the
         node's output. <code className="font-mono">await</code> is supported.
       </p>
-      <JsCodeArea
+      <ExpressionEditor
+        codeMode
         value={code}
         rows={14}
         onChange={(v) => onChange({ code: v })}
         nodes={otherNodes}
         testResults={testResults}
-        placeholder={`// Example: return only Gmail threads where the bot has not yet replied\nconst threads = nodes['<gmail-list-id>'].threads;\nconst botEmail = 'flux-workflow@outdoorequippedservice.com';\n\nreturn threads.filter(t =>\n  !t.messages.some(m => m.from.includes(botEmail))\n);`}
+        placeholder={`// Type @ to insert a node's output as a variable chip\nconst threads = {{nodes.<gmail-list-id>.result}};\nconst botEmail = 'flux-workflow@outdoorequippedservice.com';\n\nreturn threads.filter(t =>\n  !t.messages.some(m => m.from.includes(botEmail))\n);`}
         hint={
           <>
-            Output: <code className="font-mono text-slate-600 dark:text-slate-300">{'{ result, logs }'}</code>.
+            Type <code className="font-mono text-slate-600 dark:text-slate-300">@</code> to insert a
+            node variable, or use <code className="font-mono text-slate-600 dark:text-slate-300">nodes</code>{' '}
+            directly. Output: <code className="font-mono text-slate-600 dark:text-slate-300">{'{ result, logs }'}</code>.
             Reference downstream as{' '}
             <code className="font-mono text-slate-600 dark:text-slate-300">{'{{nodes.<id>.result}}'}</code>.
           </>

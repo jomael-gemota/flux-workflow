@@ -14,10 +14,12 @@ import {
 } from '@codemirror/view';
 import {
   EditorState,
+  Prec,
   RangeSetBuilder,
   StateEffect,
   StateField,
 } from '@codemirror/state';
+import { javascript, javascriptLanguage, scopeCompletionSource } from '@codemirror/lang-javascript';
 import {
   autocompletion,
   completionKeymap,
@@ -603,6 +605,9 @@ export interface ExpressionEditorProps {
   /** For comma-separated list fields: inserted before a token when the text
    *  before the cursor is non-empty and not already separated. */
   autoSeparator?: string;
+  /** Full JavaScript editor mode: line numbers, JS autocomplete, code-editing
+   *  keymap — plus the same chip / @ variable machinery. Always multi-line. */
+  codeMode?: boolean;
 }
 
 export function ExpressionEditor({
@@ -616,7 +621,10 @@ export function ExpressionEditor({
   label,
   hint,
   autoSeparator,
+  codeMode = false,
 }: ExpressionEditorProps) {
+  // Code mode is always multi-line.
+  if (codeMode) singleLine = false;
   const isDark = useWorkflowStore((s) => s.theme === 'dark');
   const edges = useWorkflowStore((s) => s.edges);
   const selectedNodeId = useWorkflowStore((s) => s.selectedNodeId);
@@ -654,17 +662,38 @@ export function ExpressionEditor({
       {
         '&': { color: isDark ? '#e2e8f0' : '#1e293b', backgroundColor: 'transparent', fontSize: '12px' },
         '.cm-content': {
-          padding: '6px 10px',
-          fontFamily: 'inherit',
+          padding: codeMode ? '6px 4px' : '6px 10px',
+          fontFamily: codeMode
+            ? 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace'
+            : 'inherit',
           caretColor: isDark ? '#60a5fa' : '#3b82f6',
-          ...(singleLine ? {} : { minHeight: `${rows * 20}px` }),
+          ...(codeMode
+            ? { minHeight: `${rows * 18}px` }
+            : singleLine
+              ? {}
+              : { minHeight: `${rows * 20}px` }),
         },
         '.cm-scroller': {
-          fontFamily: 'inherit',
+          fontFamily: codeMode
+            ? 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace'
+            : 'inherit',
           lineHeight: singleLine ? '1.5' : '1.6',
-          overflowX: singleLine ? 'auto' : 'hidden',
-          overflowY: singleLine ? 'hidden' : 'auto',
+          overflowX: singleLine && !codeMode ? 'auto' : codeMode ? 'auto' : 'hidden',
+          overflowY: codeMode ? 'auto' : singleLine ? 'hidden' : 'auto',
+          ...(codeMode ? { maxHeight: '60vh' } : {}),
         },
+        ...(codeMode
+          ? {
+              '.cm-gutters': {
+                backgroundColor: 'transparent',
+                border: 'none',
+                color: isDark ? '#475569' : '#94a3b8',
+                fontSize: '11px',
+              },
+              '.cm-activeLineGutter': { backgroundColor: 'transparent' },
+              '.cm-activeLine': { backgroundColor: isDark ? 'rgba(148,163,184,0.06)' : 'rgba(148,163,184,0.10)' },
+            }
+          : {}),
         '.cm-line': { padding: '0' },
         '&.cm-focused': { outline: 'none' },
         '.cm-placeholder': { color: isDark ? '#64748b' : '#94a3b8' },
@@ -767,6 +796,39 @@ export function ExpressionEditor({
       },
     });
 
+    // Renders the node's brand logo next to each @ completion option.
+    const iconAddToOptions = [
+      {
+        position: 20,
+        render: (completion: Completion) => {
+          const nodeType = (completion as NodeCompletion).nodeType;
+          if (!nodeType) return null;
+          const span = document.createElement('span');
+          span.className = 'cm-expr-opt-icon';
+          span.innerHTML = renderToStaticMarkup(<NodeIcon type={nodeType} size={14} />);
+          return span;
+        },
+      },
+    ];
+
+    // ── Code mode: full JS editor + the same chip / @ machinery ───────────────
+    if (codeMode) {
+      return [
+        revealField,
+        clearRevealOnBlur,
+        // Tab accepts an open suggestion, else falls through to indent.
+        Prec.highest(keymap.of([{ key: 'Tab', run: acceptCompletion }])),
+        javascript(),
+        // Both the @ variable source and JS globals feed the completion menu.
+        javascriptLanguage.data.of({ autocomplete: makeCompletionSource(runtimeSingleton) }),
+        javascriptLanguage.data.of({ autocomplete: scopeCompletionSource(globalThis) }),
+        tooltips({ position: 'fixed', parent: document.body }),
+        autocompletion({ icons: false, activateOnTyping: true, addToOptions: iconAddToOptions }),
+        makeChipPlugin(runtimeSingleton),
+        theme,
+      ];
+    }
+
     return [
       revealField,
       clearRevealOnBlur,
@@ -784,19 +846,7 @@ export function ExpressionEditor({
         override: [makeCompletionSource(runtimeSingleton)],
         icons: false,
         activateOnTyping: true,
-        addToOptions: [
-          {
-            position: 20,
-            render: (completion: Completion) => {
-              const nodeType = (completion as NodeCompletion).nodeType;
-              if (!nodeType) return null;
-              const span = document.createElement('span');
-              span.className = 'cm-expr-opt-icon';
-              span.innerHTML = renderToStaticMarkup(<NodeIcon type={nodeType} size={14} />);
-              return span;
-            },
-          },
-        ],
+        addToOptions: iconAddToOptions,
       }),
       makeChipPlugin(runtimeSingleton),
       theme,
@@ -804,7 +854,7 @@ export function ExpressionEditor({
     ];
     // Extensions read live data via runtimeSingleton; only structural props rebuild.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDark, singleLine, rows]);
+  }, [isDark, singleLine, rows, codeMode]);
 
   function handleInsert(expr: string) {
     const view = viewRef.current;
@@ -869,11 +919,11 @@ export function ExpressionEditor({
       <div className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-md overflow-hidden focus-within:ring-1 focus-within:ring-blue-500 focus-within:border-blue-500 transition-shadow">
         <CodeMirror
           value={value}
-          basicSetup={false}
+          basicSetup={codeMode ? { autocompletion: false } : false}
           extensions={extensions}
           theme="none"
           placeholder={placeholder}
-          indentWithTab={false}
+          indentWithTab={codeMode}
           onChange={onChange}
           onCreateEditor={(view) => {
             viewRef.current = view;
