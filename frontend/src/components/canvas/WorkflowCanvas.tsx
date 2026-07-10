@@ -23,6 +23,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import { useWorkflowStore, type CanvasNode, type CanvasEdge, type CanvasNodeData } from '../../store/workflowStore';
 import { ExecutionEdge, type EdgeExecutionStatus } from '../edges/ExecutionEdge';
+import { uniqueNodeName } from '../../utils/nodeUtils';
 import { NodePickerPopup } from './NodePickerPopup';
 import { ContextMenu, type ContextMenuState } from './ContextMenu';
 import { nodeAccentColor } from '../nodes/NodeIcons';
@@ -388,12 +389,13 @@ export function WorkflowCanvas() {
 
       const id = `node-${randomId()}`;
       const isFirst = nodes.filter(n => n.type !== 'stickyNote').length === 0;
+      const existingNames = nodes.filter(n => n.type !== 'stickyNote').map(n => n.data.label);
       const newNode: CanvasNode = {
         id,
         type: 'workflowNode',
         position,
         data: {
-          label,
+          label: uniqueNodeName(label, existingNames),
           nodeType: type,
           config: { ...(DEFAULT_CONFIGS[type] ?? {}) },
           isEntry: isFirst,
@@ -602,12 +604,13 @@ export function WorkflowCanvas() {
 
       const id = `node-${randomId()}`;
       const isFirst = nodes.filter(n => n.type !== 'stickyNote').length === 0;
+      const existingNames = nodes.filter(n => n.type !== 'stickyNote').map(n => n.data.label);
       const newNode: CanvasNode = {
         id,
         type: 'workflowNode',
         position,
         data: {
-          label,
+          label: uniqueNodeName(label, existingNames),
           nodeType: type,
           config: { ...(DEFAULT_CONFIGS[type] ?? {}) },
           isEntry: isFirst,

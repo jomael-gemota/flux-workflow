@@ -17,6 +17,29 @@ export function safeText(value: unknown): string {
   try { return JSON.stringify(value); } catch { return String(value); }
 }
 
+/**
+ * Return a node name that is unique among `existingNames`, appending a Windows
+ * Explorer–style suffix when needed: "HTTP Request" → "HTTP Request (1)" →
+ * "HTTP Request (2)". If `desired` already ends in " (n)", its root is reused so
+ * duplicating a duplicate keeps counting from the base name.
+ */
+export function uniqueNodeName(desired: string, existingNames: string[]): string {
+  const base = (desired ?? '').trim() || 'Node';
+  const taken = new Set(existingNames);
+  if (!taken.has(base)) return base;
+
+  const m = base.match(/^(.*?)\s*\((\d+)\)$/);
+  const root = (m ? m[1].trim() : base) || 'Node';
+
+  let i = 1;
+  let candidate = `${root} (${i})`;
+  while (taken.has(candidate)) {
+    i += 1;
+    candidate = `${root} (${i})`;
+  }
+  return candidate;
+}
+
 /** Recursively search any config value for {{nodes.<targetId>. expressions. */
 export function configReferencesNode(obj: unknown, targetId: string): boolean {
   if (typeof obj === 'string') {

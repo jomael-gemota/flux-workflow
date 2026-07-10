@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { Node, Edge } from '@xyflow/react';
 import type { WorkflowDefinition } from '../types/workflow';
 import type { WorkflowProposal } from '../types/fluxelle';
-import { layoutNewNodes } from '../utils/nodeUtils';
+import { layoutNewNodes, uniqueNodeName } from '../utils/nodeUtils';
 
 export interface CanvasNodeData extends Record<string, unknown> {
   label: string;
@@ -294,11 +294,20 @@ export const useWorkflowStore = create<WorkflowStore>((set) => ({
       if (!source) return {};
       const prefix = source.type === 'stickyNote' ? 'sticky' : 'node';
       const newId = `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+      // Keep node names unique per workflow (sticky notes are not renamed).
+      const label =
+        source.type === 'stickyNote'
+          ? source.data.label
+          : uniqueNodeName(
+              source.data.label,
+              state.nodes.filter((n) => n.type !== 'stickyNote').map((n) => n.data.label),
+            );
       const newNode: CanvasNode = {
         ...source,
         id: newId,
         position: { x: source.position.x + 24, y: source.position.y + 24 },
         selected: false,
+        data: { ...source.data, label },
       };
       return { nodes: [...state.nodes, newNode], isDirty: true };
     }),
@@ -384,15 +393,21 @@ export const useWorkflowStore = create<WorkflowStore>((set) => ({
       );
 
       // ── Phase 4: build the new CanvasNodes with computed positions ──────────
+      // Track names so added nodes stay unique per workflow (Explorer-style).
+      const usedNames = updatedNodes
+        .filter((n) => n.type !== 'stickyNote')
+        .map((n) => n.data.label);
       const newCanvasNodes: CanvasNode[] = finalAdds.map(({ add, finalId }) => {
         const position =
           add.position ?? layoutPositions.get(finalId) ?? { x: 80, y: 80 };
+        const label = uniqueNodeName(add.name, usedNames);
+        usedNames.push(label);
         return {
           id: finalId,
           type: 'workflowNode',
           position,
           data: {
-            label:    add.name,
+            label,
             nodeType: add.type,
             config:   add.config ?? {},
             isEntry:  add.type === 'trigger',
