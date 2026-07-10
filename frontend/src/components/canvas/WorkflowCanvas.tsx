@@ -56,6 +56,20 @@ function randomId() {
   return Math.random().toString(36).slice(2, 10);
 }
 
+/**
+ * Give a copied/duplicated node an Explorer-style unique label
+ * ("HTTP" → "HTTP (1)") and record the new name in `takenNames` so batch
+ * pastes/duplicates stay unique among themselves. Sticky notes are left as-is.
+ */
+function withUniqueLabel(node: CanvasNode, takenNames: string[]): CanvasNode {
+  if (node.type === 'stickyNote') return node;
+  const data = node.data as CanvasNodeData;
+  if (!data?.label) return node;
+  const unique = uniqueNodeName(data.label, takenNames);
+  takenNames.push(unique);
+  return { ...node, data: { ...data, label: unique } } as CanvasNode;
+}
+
 // ── Node renderers ────────────────────────────────────────────────────────────
 
 function WorkflowNodeRenderer(props: NodeProps) {
@@ -519,14 +533,22 @@ export function WorkflowCanvas() {
 
       if (ctrlOrMeta && e.key === 'v') {
         if (clipboardRef.current.length === 0) return;
+        // Track taken names so pasted copies get Explorer-style "(n)" suffixes.
+        const takenNames = nodesRef.current
+          .filter((n) => n.type !== 'stickyNote')
+          .map((n) => (n.data as CanvasNodeData).label)
+          .filter((l): l is string => Boolean(l));
         const pasted = clipboardRef.current.map((n) => {
           const prefix = n.type === 'stickyNote' ? 'sticky' : 'node';
-          return {
-            ...n,
-            id: `${prefix}-${randomId()}`,
-            position: { x: n.position.x + 24, y: n.position.y + 24 },
-            selected: true,
-          } as CanvasNode;
+          return withUniqueLabel(
+            {
+              ...n,
+              id: `${prefix}-${randomId()}`,
+              position: { x: n.position.x + 24, y: n.position.y + 24 },
+              selected: true,
+            } as CanvasNode,
+            takenNames,
+          );
         });
         setNodes([
           ...nodesRef.current.map((n) => ({ ...n, selected: false })),
@@ -540,14 +562,21 @@ export function WorkflowCanvas() {
         e.preventDefault();
         const selected = nodesRef.current.filter((n) => n.selected);
         if (selected.length === 0) return;
+        const takenNames = nodesRef.current
+          .filter((n) => n.type !== 'stickyNote')
+          .map((n) => (n.data as CanvasNodeData).label)
+          .filter((l): l is string => Boolean(l));
         const duped = selected.map((n) => {
           const prefix = n.type === 'stickyNote' ? 'sticky' : 'node';
-          return {
-            ...n,
-            id: `${prefix}-${randomId()}`,
-            position: { x: n.position.x + 24, y: n.position.y + 24 },
-            selected: false,
-          } as CanvasNode;
+          return withUniqueLabel(
+            {
+              ...n,
+              id: `${prefix}-${randomId()}`,
+              position: { x: n.position.x + 24, y: n.position.y + 24 },
+              selected: false,
+            } as CanvasNode,
+            takenNames,
+          );
         });
         setNodes([...nodesRef.current, ...duped]);
         setDirty(true);
