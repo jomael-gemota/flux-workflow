@@ -32,7 +32,7 @@ import { Braces, X, ChevronLeft } from 'lucide-react';
 import { useWorkflowStore } from '../../store/workflowStore';
 import type { CanvasNode } from '../../store/workflowStore';
 import type { NodeTestResult } from '../../types/workflow';
-import { VariablePickerPanel, computeNodeFields, nodeTypeLabel } from './NodeConfigPanel';
+import { VariablePickerPanel, computeNodeFields, nodeTypeLabel, iconTypeForNode } from './NodeConfigPanel';
 import { NodeIcon } from '../nodes/NodeIcons';
 
 // ── Token model ───────────────────────────────────────────────────────────────
@@ -373,7 +373,7 @@ function makeCompletionSource(rt: EditorRuntime) {
             label: n.data.label || n.id,
             detail: `${n.data.nodeType} · ${shortId(n.id)}`,
             type: 'variable',
-            nodeType: n.data.nodeType,
+            nodeType: iconTypeForNode(n),
             apply: (view: EditorView) => {
               const to = view.state.selection.main.head;
               if (hasFields) {
@@ -668,8 +668,78 @@ export function ExpressionEditor({
         '.cm-line': { padding: '0' },
         '&.cm-focused': { outline: 'none' },
         '.cm-placeholder': { color: isDark ? '#64748b' : '#94a3b8' },
-        '.cm-tooltip-autocomplete ul li': { display: 'flex', alignItems: 'center', gap: '6px', padding: '3px 8px' },
-        '.cm-expr-opt-icon': { display: 'inline-flex', alignItems: 'center', width: '15px', height: '15px' },
+
+        // ── @ / field autocomplete menu ──────────────────────────────────────
+        '.cm-tooltip.cm-tooltip-autocomplete': {
+          border: isDark ? '1px solid #334155' : '1px solid #e2e8f0',
+          borderRadius: '10px',
+          backgroundColor: isDark ? '#0f172a' : '#ffffff',
+          boxShadow: isDark
+            ? '0 12px 32px -8px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.02)'
+            : '0 12px 32px -8px rgba(15,23,42,0.22)',
+          padding: '5px',
+          overflow: 'hidden',
+        },
+        '.cm-tooltip-autocomplete > ul': {
+          maxHeight: '18rem',
+          fontFamily: 'inherit',
+        },
+        '.cm-tooltip-autocomplete ul li': {
+          display: 'flex',
+          alignItems: 'center',
+          gap: '9px',
+          padding: '7px 10px',
+          borderRadius: '7px',
+          lineHeight: '1.25',
+          color: isDark ? '#e2e8f0' : '#1e293b',
+        },
+        '.cm-tooltip-autocomplete ul li:hover': {
+          backgroundColor: isDark ? 'rgba(148,163,184,0.12)' : 'rgba(148,163,184,0.14)',
+        },
+        '.cm-tooltip-autocomplete ul li[aria-selected]': {
+          backgroundColor: isDark ? '#1d4ed8' : '#3b82f6',
+          color: '#ffffff',
+        },
+        '.cm-tooltip-autocomplete .cm-completionLabel': {
+          fontWeight: '600',
+          fontSize: '12.5px',
+          whiteSpace: 'nowrap',
+        },
+        '.cm-tooltip-autocomplete .cm-completionMatchedText': {
+          textDecoration: 'none',
+          color: isDark ? '#93c5fd' : '#2563eb',
+          fontWeight: '700',
+        },
+        '.cm-tooltip-autocomplete ul li[aria-selected] .cm-completionMatchedText': {
+          color: '#ffffff',
+          textDecoration: 'underline',
+          textUnderlineOffset: '2px',
+        },
+        '.cm-tooltip-autocomplete .cm-completionDetail': {
+          marginLeft: 'auto',
+          paddingLeft: '14px',
+          fontStyle: 'normal',
+          fontSize: '10.5px',
+          letterSpacing: '0.01em',
+          color: isDark ? '#64748b' : '#94a3b8',
+          whiteSpace: 'nowrap',
+        },
+        '.cm-tooltip-autocomplete ul li[aria-selected] .cm-completionDetail': {
+          color: 'rgba(255,255,255,0.85)',
+        },
+        '.cm-expr-opt-icon': {
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flex: '0 0 auto',
+          width: '20px',
+          height: '20px',
+          borderRadius: '5px',
+          backgroundColor: isDark ? 'rgba(148,163,184,0.14)' : 'rgba(148,163,184,0.16)',
+        },
+        '.cm-tooltip-autocomplete ul li[aria-selected] .cm-expr-opt-icon': {
+          backgroundColor: 'rgba(255,255,255,0.22)',
+        },
         '.cm-expr-opt-icon img, .cm-expr-opt-icon svg': { width: '14px', height: '14px' },
       },
       { dark: isDark },
