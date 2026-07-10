@@ -493,12 +493,19 @@ export function WorkflowCanvas() {
       const source = nodesRef.current.find((n) => n.id === nodeId);
       if (!source) return;
       const prefix = source.type === 'stickyNote' ? 'sticky' : 'node';
-      const newNode: CanvasNode = {
-        ...source,
-        id: `${prefix}-${randomId()}`,
-        position: { x: source.position.x + 24, y: source.position.y + 24 },
-        selected: false,
-      };
+      const takenNames = nodesRef.current
+        .filter((n) => n.type !== 'stickyNote')
+        .map((n) => (n.data as CanvasNodeData).label)
+        .filter((l): l is string => Boolean(l));
+      const newNode = withUniqueLabel(
+        {
+          ...source,
+          id: `${prefix}-${randomId()}`,
+          position: { x: source.position.x + 24, y: source.position.y + 24 },
+          selected: false,
+        } as CanvasNode,
+        takenNames,
+      );
       setNodes([...nodesRef.current, newNode]);
       setDirty(true);
     },
