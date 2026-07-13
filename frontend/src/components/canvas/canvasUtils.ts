@@ -164,11 +164,16 @@ export function serialize(
         cases?: Array<{ label?: string; condition: unknown; next?: string }>;
         defaultNext?: string;
       };
+      // Rebuild each case's `next` purely from the canvas edges. Do NOT fall
+      // back to the previously-stored `c.next`: deleting a connector removes it
+      // from the edges array but never clears `c.next`, so a fallback would
+      // resurrect the deleted connection on the next reload. This mirrors how
+      // Condition nodes collapse a missing edge to '' (see trueNext/falseNext).
       const updatedCases = (cfg.cases ?? []).map((c, idx) => {
         const edge = rfEdges.find(
           (e) => e.source === rfn.id && e.sourceHandle === String(idx)
         );
-        return { ...c, next: edge?.target ?? c.next ?? '' };
+        return { ...c, next: edge?.target ?? '' };
       });
       const defaultEdge = rfEdges.find(
         (e) => e.source === rfn.id && e.sourceHandle === 'default'
@@ -180,7 +185,7 @@ export function serialize(
         config: {
           ...d.config,
           cases: updatedCases,
-          defaultNext: defaultEdge?.target ?? cfg.defaultNext ?? '',
+          defaultNext: defaultEdge?.target ?? '',
         },
         next: [],
         retries: d.retries,

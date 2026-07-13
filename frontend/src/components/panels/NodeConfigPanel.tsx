@@ -3876,15 +3876,56 @@ export function NodeConfigPanel() {
           ? { ...n, data: { ...n.data, config: { ...n.data.config, cases: newCases } } }
           : n
       ));
-      // Only prune edges when cases are added or removed (not on label/condition edits).
+      // Only touch edges when cases are added or removed (not on label/condition edits).
       if (newCases.length !== currentCases.length) {
-        const validHandles = new Set([
-          ...newCases.map((_, idx) => String(idx)),
-          'default',
-        ]);
-        setEdges(edges.filter(e =>
-          e.source !== selectedNodeId || validHandles.has(e.sourceHandle ?? '')
-        ));
+        const latestEdges = useWorkflowStore.getState().edges;
+        if (newCases.length < currentCases.length) {
+          // A case was removed. Because case handles are index-based
+          // (sourceHandle = "0", "1", …), removing a middle case re-indexes every
+          // later handle. We must (a) drop the removed case's connector and
+          // (b) shift every higher connector's sourceHandle/id down by one so each
+          // surviving case stays wired to its own target. Find the removed index
+          // as the first position whose case content changed (falls back to the
+          // last index when only the tail was removed).
+          let removedIdx = currentCases.length - 1;
+          for (let k = 0; k < newCases.length; k++) {
+            if (JSON.stringify(newCases[k]) !== JSON.stringify(currentCases[k])) {
+              removedIdx = k;
+              break;
+            }
+          }
+          const remapped = latestEdges
+            .filter(e => {
+              if (e.source !== selectedNodeId) return true;
+              const handle = e.sourceHandle ?? '';
+              if (handle === 'default') return true;
+              const idx = Number(handle);
+              if (!Number.isInteger(idx)) return true;
+              return idx !== removedIdx; // drop the removed case's connector
+            })
+            .map(e => {
+              if (e.source !== selectedNodeId) return e;
+              const handle = e.sourceHandle ?? '';
+              if (handle === 'default') return e;
+              const idx = Number(handle);
+              if (Number.isInteger(idx) && idx > removedIdx) {
+                const nextIdx = idx - 1;
+                return { ...e, id: `${selectedNodeId}-case-${nextIdx}`, sourceHandle: String(nextIdx) };
+              }
+              return e;
+            });
+          setEdges(remapped);
+        } else {
+          // Cases were appended — no re-indexing needed, but keep a safety prune
+          // for any connectors left on now-invalid handles.
+          const validHandles = new Set([
+            ...newCases.map((_, idx) => String(idx)),
+            'default',
+          ]);
+          setEdges(latestEdges.filter(e =>
+            e.source !== selectedNodeId || validHandles.has(e.sourceHandle ?? '')
+          ));
+        }
       }
     }
   }
