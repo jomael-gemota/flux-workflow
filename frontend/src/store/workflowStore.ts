@@ -89,6 +89,11 @@ interface WorkflowStore {
   // Live execution overlay
   executionStatuses: Record<string, NodeExecutionStatus>;
   setExecutionStatuses: (s: Record<string, NodeExecutionStatus>) => void;
+  /** Maps a branch node id → the sourceHandle that actually fired (e.g. the
+   *  matched Switch case or Condition branch), so only that connector is
+   *  highlighted as taken. Empty until a run produces branch results. */
+  executionTakenHandles: Record<string, string>;
+  setExecutionTakenHandles: (m: Record<string, string>) => void;
   clearExecutionStatuses: () => void;
   /** Single atomic update: sets statuses + isExecuting=true in one set() to avoid grey flash */
   beginExecution: (statuses: Record<string, NodeExecutionStatus>) => void;
@@ -242,8 +247,10 @@ export const useWorkflowStore = create<WorkflowStore>((set) => ({
 
   executionStatuses: {},
   setExecutionStatuses: (s) => set({ executionStatuses: s }),
-  clearExecutionStatuses: () => set({ executionStatuses: {}, isExecuting: false }),
-  beginExecution: (statuses) => set({ executionStatuses: statuses, isExecuting: true }),
+  executionTakenHandles: {},
+  setExecutionTakenHandles: (m) => set({ executionTakenHandles: m }),
+  clearExecutionStatuses: () => set({ executionStatuses: {}, executionTakenHandles: {}, isExecuting: false }),
+  beginExecution: (statuses) => set({ executionStatuses: statuses, executionTakenHandles: {}, isExecuting: true }),
   isExecuting: false,
   setIsExecuting: (v) => set({ isExecuting: v }),
 

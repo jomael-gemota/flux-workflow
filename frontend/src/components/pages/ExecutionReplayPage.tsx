@@ -28,6 +28,7 @@ import { useResizablePanel } from '../../hooks/useResizablePanel';
 import { useWorkflowStore, type NodeExecutionStatus, type CanvasNode, type CanvasEdge } from '../../store/workflowStore';
 import { deserialize } from '../canvas/canvasUtils';
 import { resolveEdgeStatus, nodeTypes, edgeTypes } from '../canvas/WorkflowCanvas';
+import { computeTakenHandles, isEdgeTaken } from '../canvas/executionEdges';
 import { ReplayNodeConfigPanel } from '../panels/ReplayNodeConfigPanel';
 import * as api from '../../api/client';
 import type { NodeResult } from '../../types/workflow';
@@ -222,6 +223,13 @@ export function ExecutionReplayPage() {
     }
   }, [rawNodes, workflow?.entryNodeId]);
 
+  // Which branch (switch case / condition side) actually fired, so only the
+  // taken connector highlights green — not every sibling sharing a target.
+  const takenHandles = useMemo<Record<string, string>>(
+    () => computeTakenHandles((execution?.results ?? []) as NodeResult[]),
+    [execution],
+  );
+
   // Apply edge statuses derived from node statuses
   const edges = useMemo<CanvasEdge[]>(() => {
     return rawEdges.map((edge) => ({
@@ -234,10 +242,11 @@ export function ExecutionReplayPage() {
           nodeStatuses[edge.source],
           nodeStatuses[edge.target],
           isActive,
+          isEdgeTaken(takenHandles, edge.source, edge.sourceHandle),
         ),
       },
     }));
-  }, [rawEdges, nodeStatuses, isActive]);
+  }, [rawEdges, nodeStatuses, isActive, takenHandles]);
 
   // Non-draggable nodes; `selected` drives the blue-ring highlight in BaseNode
   const nodes = useMemo<CanvasNode[]>(() => {

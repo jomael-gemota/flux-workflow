@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { useExecution } from './useExecutions';
 import { useWorkflowStore, type NodeExecutionStatus } from '../store/workflowStore';
+import { computeTakenHandles } from '../components/canvas/executionEdges';
+import type { NodeResult } from '../types/workflow';
 
 // How long to keep isExecuting=true after completion so the "flowing" animation
 // has a visual runway before settling into the final solid colour.
@@ -12,6 +14,7 @@ export function useExecutionOverlay() {
   // stale-closure bugs when the canvas changes between poll ticks.
   const lastExecutionId = useWorkflowStore((s) => s.lastExecutionId);
   const setExecutionStatuses = useWorkflowStore((s) => s.setExecutionStatuses);
+  const setExecutionTakenHandles = useWorkflowStore((s) => s.setExecutionTakenHandles);
   const clearExecutionStatuses = useWorkflowStore((s) => s.clearExecutionStatuses);
   const setIsExecuting = useWorkflowStore((s) => s.setIsExecuting);
 
@@ -65,6 +68,7 @@ export function useExecutionOverlay() {
     }
 
     setExecutionStatuses(statuses);
+    setExecutionTakenHandles(computeTakenHandles(execution.results as NodeResult[]));
 
     if (active) {
       setIsExecuting(true);

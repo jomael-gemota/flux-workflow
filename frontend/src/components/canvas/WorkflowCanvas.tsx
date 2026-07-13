@@ -26,6 +26,7 @@ import { ExecutionEdge, type EdgeExecutionStatus } from '../edges/ExecutionEdge'
 import { uniqueNodeName } from '../../utils/nodeUtils';
 import { NodePickerPopup } from './NodePickerPopup';
 import { ContextMenu, type ContextMenuState } from './ContextMenu';
+import { isEdgeTaken } from './executionEdges';
 import { nodeAccentColor } from '../nodes/NodeIcons';
 import { StickyNoteNode } from '../nodes/StickyNoteNode';
 import { HttpNodeWidget } from '../nodes/HttpNodeWidget';
@@ -129,12 +130,18 @@ const DEFAULT_CONFIGS: Partial<Record<NodeType, Record<string, unknown>>> = {
 export function resolveEdgeStatus(
   srcStatus: string | undefined,
   tgtStatus: string | undefined,
-  isExecuting: boolean
+  isExecuting: boolean,
+  isTakenBranch: boolean = true,
 ): EdgeExecutionStatus {
   if (srcStatus === 'waiting' || tgtStatus === 'waiting') return 'waiting';
   if (!srcStatus) return 'idle';
   if (srcStatus === 'running') return 'flowing';
   if (srcStatus === 'success') {
+    // For branch nodes (switch/condition), once the source has resolved, only the
+    // connector of the case/branch that actually fired is "taken". Every other
+    // outgoing edge is a path not taken and renders as skipped (grey) — this stops
+    // sibling cases sharing a target from all lighting up green.
+    if (!isTakenBranch) return 'skipped';
     if (tgtStatus === 'skipped') return 'skipped';
     if (tgtStatus === 'failure') return 'failure';
     if (isExecuting) return 'flowing';
@@ -240,6 +247,7 @@ export function WorkflowCanvas() {
     activeWorkflow,
     setDirty,
     executionStatuses,
+    executionTakenHandles,
     isExecuting,
     theme,
     setCanvasViewport,
@@ -669,7 +677,8 @@ export function WorkflowCanvas() {
       const execStatus = resolveEdgeStatus(
         executionStatuses[edge.source],
         executionStatuses[edge.target],
-        isExecuting
+        isExecuting,
+        isEdgeTaken(executionTakenHandles, edge.source, edge.sourceHandle),
       );
       return {
         ...edge,
@@ -678,7 +687,7 @@ export function WorkflowCanvas() {
         data: { ...(edge.data ?? {}), executionStatus: execStatus, label: edge.label },
       };
     });
-  }, [edges, executionStatuses, isExecuting]);
+  }, [edges, executionStatuses, executionTakenHandles, isExecuting]);
 
   // ── Loading / empty state ────────────────────────────────────────────────────
 
