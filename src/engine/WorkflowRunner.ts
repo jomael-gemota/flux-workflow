@@ -314,22 +314,32 @@ export class WorkflowRunner {
         }
     }
 
-    /** Returns all possible outgoing node IDs for a node (regardless of runtime output). */
+    /**
+     * Returns all possible outgoing node IDs for a node (regardless of runtime output).
+     *
+     * The list is de-duplicated: condition/switch are exclusive-choice branches, so
+     * multiple edges pointing at the same target (e.g. two Switch cases → one Output
+     * node) still represent a single logical arrival. Keeping duplicates would make
+     * `buildPendingCounts` over-count the target's in-degree, leaving it gated forever
+     * (executed once but expecting two arrivals) so it never runs. De-duping keeps the
+     * pending-count, skip, and reachability accounting consistent.
+     */
     private getAllNextIds(node: WorkflowNode): string[] {
+        let ids: string[];
         if (node.type === 'condition') {
             const cfg = node.config as { trueNext?: string; falseNext?: string };
-            return [cfg.trueNext, cfg.falseNext].filter((id): id is string => !!id);
-        }
-        if (node.type === 'switch') {
+            ids = [cfg.trueNext, cfg.falseNext].filter((id): id is string => !!id);
+        } else if (node.type === 'switch') {
             const cfg = node.config as {
                 cases?: Array<{ next?: string }>;
                 defaultNext?: string;
             };
-            const ids: string[] = (cfg.cases ?? []).map(c => c.next ?? '').filter(Boolean);
+            ids = (cfg.cases ?? []).map(c => c.next ?? '').filter(Boolean);
             if (cfg.defaultNext) ids.push(cfg.defaultNext);
-            return ids;
+        } else {
+            ids = node.next.filter(Boolean);
         }
-        return node.next.filter(Boolean);
+        return [...new Set(ids)];
     }
 
     private async executeWithRetryAndTimeout(
