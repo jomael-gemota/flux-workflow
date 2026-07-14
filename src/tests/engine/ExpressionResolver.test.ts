@@ -122,4 +122,34 @@ describe('ExpressionResolver', () => {
             expect(result).toBe('Data: {"id":1,"name":"Test"}');
         });
     });
+
+    describe('resolveTemplateJson', () => {
+        it('JSON-encodes string values so unquoted tokens form valid JSON', () => {
+            const ctx = makeContext({ 'n1': { a: 'foo', b: 'bar', c: 'baz' } });
+            const result = resolver.resolveTemplateJson(
+                '[[{{nodes.n1.a}}, {{nodes.n1.b}}, {{nodes.n1.c}}]]',
+                ctx,
+            );
+            expect(result).toBe('[["foo", "bar", "baz"]]');
+            expect(JSON.parse(result)).toEqual([['foo', 'bar', 'baz']]);
+        });
+
+        it('leaves numbers and booleans bare', () => {
+            const ctx = makeContext({ 'n1': { n: 5, flag: true } });
+            const result = resolver.resolveTemplateJson('[{{nodes.n1.n}}, {{nodes.n1.flag}}]', ctx);
+            expect(JSON.parse(result)).toEqual([5, true]);
+        });
+
+        it('stringifies nested objects/arrays', () => {
+            const ctx = makeContext({ 'n1': { obj: { id: 1 } } });
+            const result = resolver.resolveTemplateJson('[{{nodes.n1.obj}}]', ctx);
+            expect(JSON.parse(result)).toEqual([{ id: 1 }]);
+        });
+
+        it('encodes missing references as a quoted placeholder to keep JSON valid', () => {
+            const ctx = makeContext({});
+            const result = resolver.resolveTemplateJson('[{{nodes.missing.field}}]', ctx);
+            expect(JSON.parse(result)).toEqual(['[missing: nodes.missing.field]']);
+        });
+    });
 });
