@@ -922,43 +922,78 @@ export class GSheetsNode implements NodeExecutor {
         if (typeof values === 'string') {
             const trimmed = values.trim();
             if (!trimmed) return [[]];
-            resolved = this.resolver.resolve(trimmed, context);
+
+            if (this.isSingleExpression(trimmed)) {
+                // The whole field is one expression (e.g. {{nodes.x.data}}).
+                // Resolve it to its native value so arrays/objects keep their
+                // structure. (Unchanged behavior.)
+                resolved = this.resolver.resolve(trimmed, context);
+            } else if (this.looksLikeJson(trimmed)) {
+                // JSON grid/row/record, possibly containing embedded {{...}}
+                // tokens. Prefer parsing the raw text first so the recommended
+                // quoted form (e.g. '[["{{a}}","{{b}}"]]') keeps its structure;
+                // per-cell tokens are resolved later in serializeCell().
+                const rawParsed = this.tryParseJson(trimmed);
+                if (rawParsed !== undefined) {
+                    resolved = rawParsed;
+                } else {
+                    // Raw text isn't valid JSON — usually because of *unquoted*
+                    // tokens like '[[{{a}}, {{b}}]]'. Substitute tokens as JSON
+                    // values so the result parses, then fall back to a plain
+                    // template if it still isn't JSON.
+                    const substituted = this.resolver.resolveTemplateJson(trimmed, context);
+                    const parsed = this.tryParseJson(substituted);
+                    resolved = parsed !== undefined
+                        ? parsed
+                        : this.resolver.resolveTemplate(trimmed, context);
+                }
+            } else {
+                // Plain text, possibly mixing literals and {{...}} tokens
+                // (e.g. 'Order: {{nodes.x.result}}'). Resolve every token.
+                resolved = this.resolver.resolveTemplate(trimmed, context);
+            }
         }
 
-        // A string here is either a literal the user pasted or the result of an
-        // expression. If it is JSON describing a grid/row/record (e.g. a pasted
-        // '[["a","b"],["c","d"]]'), parse it into structure so it is written as
-        // real rows/cells rather than one text cell. Plain text, numbers, and
-        // formula strings (=SUM(A1:B1)) are left untouched.
-        if (typeof resolved === 'string') {
-            resolved = this.coerceJsonGrid(resolved);
-        }
+        return this.normalizeToGrid(resolved, context, columnKeys);
+    }
 
-        return this.normalizeToGrid(resolved, columnKeys);
+    /**
+     * True when the entire string is a single `{{...}}` expression with no other
+     * tokens or surrounding text. Only these should be resolved to a native
+     * value; anything else is a template with embedded tokens.
+     */
+    private isSingleExpression(trimmed: string): boolean {
+        const match = trimmed.match(/^\{\{\s*(.+?)\s*\}\}$/);
+        if (!match) return false;
+        const inner = match[1];
+        return !inner.includes('{{') && !inner.includes('}}');
+    }
+
+    /** A string is a JSON candidate only when it opens with an array/object. */
+    private looksLikeJson(trimmed: string): boolean {
+        return trimmed.length >= 2 && (trimmed[0] === '[' || trimmed[0] === '{');
     }
 
     /**
      * Parse a string into a structured array/object when it is valid JSON that
-     * represents a grid, row, or record. Any other string (plain text, numbers,
-     * formulas, or non-JSON) is returned unchanged so it becomes a single cell.
+     * represents a grid, row, or record. Returns `undefined` for any other
+     * string (plain text, numbers, formulas, or non-JSON).
      */
-    private coerceJsonGrid(str: string): unknown {
+    private tryParseJson(str: string): unknown {
         const trimmed = str.trim();
-        if (trimmed.length < 2) return str;
-        const first = trimmed[0];
-        if (first !== '[' && first !== '{') return str;
+        if (!this.looksLikeJson(trimmed)) return undefined;
         try {
             const parsed = JSON.parse(trimmed);
             if (Array.isArray(parsed) || (parsed !== null && typeof parsed === 'object')) {
                 return parsed;
             }
         } catch {
-            // not valid JSON — treat as a literal string cell
+            // not valid JSON
         }
-        return str;
+        return undefined;
     }
 
-    private normalizeToGrid(value: unknown, columnKeys?: string[]): unknown[][] {
+    private normalizeToGrid(value: unknown, context: ExecutionContext, columnKeys?: string[]): unknown[][] {
         if (value == null) return [['']];
 
         if (Array.isArray(value)) {
@@ -967,20 +1002,20 @@ export class GSheetsNode implements NodeExecutor {
 
             if (Array.isArray(first)) {
                 return (value as unknown[][]).map((row) =>
-                    (Array.isArray(row) ? row : [row]).map((c) => this.serializeCell(c)),
+                    (Array.isArray(row) ? row : [row]).map((c) => this.serializeCell(c, context)),
                 );
             }
             if (first !== null && typeof first === 'object') {
-                return (value as Record<string, unknown>[]).map((obj) => this.objectToRow(obj, columnKeys));
+                return (value as Record<string, unknown>[]).map((obj) => this.objectToRow(obj, context, columnKeys));
             }
-            return [value.map((v) => this.serializeCell(v))];
+            return [value.map((v) => this.serializeCell(v, context))];
         }
 
         if (typeof value === 'object' && value !== null) {
-            return [this.objectToRow(value as Record<string, unknown>, columnKeys)];
+            return [this.objectToRow(value as Record<string, unknown>, context, columnKeys)];
         }
 
-        return [[this.serializeCell(value)]];
+        return [[this.serializeCell(value, context)]];
     }
 
     /** A cell is a Google Sheets formula only when it is a string starting with `=`. */
@@ -1100,16 +1135,18 @@ export class GSheetsNode implements NodeExecutor {
         };
     }
 
-    private objectToRow(obj: Record<string, unknown>, columnKeys?: string[]): unknown[] {
+    private objectToRow(obj: Record<string, unknown>, context: ExecutionContext, columnKeys?: string[]): unknown[] {
         if (columnKeys && columnKeys.length > 0) {
-            return columnKeys.map((k) => this.serializeCell(obj[k]));
+            return columnKeys.map((k) => this.serializeCell(obj[k], context));
         }
-        return Object.values(obj).map((v) => this.serializeCell(v));
+        return Object.values(obj).map((v) => this.serializeCell(v, context));
     }
 
-    private serializeCell(v: unknown): unknown {
+    private serializeCell(v: unknown, context: ExecutionContext): unknown {
         if (v == null)             return '';
-        if (typeof v === 'string') return v;
+        // Resolve any embedded {{...}} tokens in cell text (e.g. a parsed JSON
+        // cell "{{nodes.x.name}}" or concatenated "Order: {{n}}").
+        if (typeof v === 'string') return this.resolver.resolveTemplate(v, context);
         if (typeof v === 'number') return v;
         if (typeof v === 'boolean') return v;
         return JSON.stringify(v);

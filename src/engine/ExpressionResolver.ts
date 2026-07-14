@@ -159,6 +159,27 @@ export class ExpressionResolver {
     }
 
     /**
+     * Like `resolveTemplate()`, but each substituted value is inserted as its
+     * JSON encoding rather than its plain string form. This lets a template that
+     * is JSON with *unquoted* expression tokens — e.g. `[[{{a}}, {{b}}]]` — parse
+     * as valid JSON after substitution, regardless of each value's type:
+     * strings become `"..."`, numbers/booleans stay bare, objects/arrays are
+     * stringified. Missing or erroring tokens encode to `"[missing: expr]"` so
+     * the surrounding JSON stays well-formed.
+     */
+    resolveTemplateJson(template: string, context: ExecutionContext): string {
+        return template.replace(/\{\{\s*(.+?)\s*\}\}/g, (_, expr) => {
+            try {
+                const value = this.resolve(expr.trim(), context);
+                if (value === undefined || value === null) return JSON.stringify(`[missing: ${expr.trim()}]`);
+                return JSON.stringify(value);
+            } catch {
+                return JSON.stringify(`[missing: ${expr.trim()}]`);
+            }
+        });
+    }
+
+    /**
      * Recursively walk any config value and resolve all embedded `{{...}}`
      * expressions in string leaves. Non-string scalars and undefined/null
      * pass through unchanged. Errors in individual expressions are swallowed
